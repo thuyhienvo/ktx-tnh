@@ -41,15 +41,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Trigger Render deploy
-        env:
-          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        run: |
-          if [ -n "$HOOK" ]; then
-            echo "Đang gọi Render deploy hook..."
-            curl -fsSL -X POST "$HOOK"
-            echo "Đã kích hoạt deploy trên Render."
-          else
-            echo "Chưa cấu hình secret RENDER_DEPLOY_HOOK_URL — bỏ qua bước deploy."
-            echo "Image đã đẩy lên GHCR: ${{ steps.img.outputs.name }}:latest"
-          fi
+      # --- Bước deploy Render đã TẮT: để Render tự bắt commit và deploy ---
+      # - name: Trigger Render deploy
+      #   env:
+      #     HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      #   run: |
+      #     if [ -n "$HOOK" ]; then
+      #       curl -fsSL -X POST "$HOOK"
+      #     fi
+
+      - name: Xong
+        run: echo "Image đã đẩy lên GHCR:${{ steps.img.outputs.name }}:latest — Render tự deploy."
