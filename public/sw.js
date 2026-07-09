@@ -1,14 +1,10 @@
-// Service worker: cache vỏ ứng dụng để chạy offline (dữ liệu API luôn lấy mới)
-const CACHE = 'ktx-shell-v1';
+// Service worker: ưu tiên MẠNG cho giao diện (luôn có bản mới nhất khi online),
+// dùng cache làm dự phòng khi offline. API luôn lấy trực tiếp từ mạng.
+const CACHE = 'ktx-shell-v3';
 const SHELL = [
-  '/',
-  '/index.html',
-  '/css/styles.css',
-  '/js/api.js',
-  '/js/ui.js',
-  '/js/app.js',
-  '/manifest.webmanifest',
-  '/icons/icon.svg',
+  '/', '/index.html', '/css/styles.css',
+  '/js/api.js', '/js/ui.js', '/js/app.js',
+  '/manifest.webmanifest', '/icons/icon.svg',
 ];
 
 self.addEventListener('install', e => {
@@ -24,21 +20,16 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
+  if (url.pathname.startsWith('/api/')) return; // API: luôn qua mạng
 
-  // API: luôn ưu tiên mạng (không cache để dữ liệu luôn mới)
-  if (url.pathname.startsWith('/api/')) return;
-
-  // Vỏ ứng dụng: cache-first, cập nhật nền
+  // Giao diện: network-first → luôn cập nhật khi online, cache khi offline
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      const fetched = fetch(e.request).then(res => {
-        if (res && res.status === 200 && url.origin === location.origin) {
-          const copy = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, copy));
-        }
-        return res;
-      }).catch(() => cached);
-      return cached || fetched;
-    })
+    fetch(e.request).then(res => {
+      if (res && res.status === 200 && url.origin === location.origin) {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+      }
+      return res;
+    }).catch(() => caches.match(e.request))
   );
 });
