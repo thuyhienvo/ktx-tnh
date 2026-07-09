@@ -14,7 +14,7 @@ const LIST_SELECT = `
     s.status, s.note, s.uses_washing, s.deposit_amount, s.deposit_status, s.deposit_date, s.deposit_refund_date,
     s.checkout_notice_date, s.checkout_reason, s.birth_date, s.class_name, s.rental_type, s.residency_status,
     s.contract_no, s.contract_date, s.contract_status, s.deposit_bank, s.deposit_account,
-    (s.cccd_image IS NOT NULL) AS has_cccd,
+    (s.cccd_front IS NOT NULL OR s.cccd_image IS NOT NULL) AS has_cccd,
     r.name AS room_name, r.floor AS room_floor, r.gender AS room_gender, r.hang AS room_hang,
     u.username AS login_username,
     (SELECT COUNT(*) FROM vehicles v WHERE v.student_id=s.id)::int AS vehicle_count,
@@ -80,9 +80,10 @@ router.post('/', requireRole('admin'), async (req, res, next) => {
       `INSERT INTO students
         (code, name, gender, phone, id_card, birth_date, class_name, room_id, check_in_date, note,
          uses_washing, rental_type, residency_status, contract_no, contract_date, contract_status, cccd_image,
-         status, check_out_date, deposit_amount, deposit_status, deposit_date)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
-      [...f, status, checkOut, takeDeposit ? depositFee : 0, takeDeposit ? 'held' : 'none', takeDeposit ? checkIn : null]
+         status, check_out_date, deposit_amount, deposit_status, deposit_date, cccd_front, cccd_back)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
+      [...f, status, checkOut, takeDeposit ? depositFee : 0, takeDeposit ? 'held' : 'none', takeDeposit ? checkIn : null,
+       b.cccd_front || null, b.cccd_back || null]
     );
     const student = rows[0];
 
@@ -116,15 +117,15 @@ router.post('/', requireRole('admin'), async (req, res, next) => {
 router.put('/:id', requireRole('admin'), async (req, res, next) => {
   try {
     const b = req.body;
-    // cccd_image: chỉ cập nhật nếu gửi kèm (giữ ảnh cũ nếu bỏ trống)
-    const setCccd = b.cccd_image !== undefined;
     const f = studentFields(b);
     const cols = `code=$1, name=$2, gender=$3, phone=$4, id_card=$5, birth_date=$6, class_name=$7, room_id=$8,
       check_in_date=$9, note=$10, uses_washing=$11, rental_type=$12, residency_status=$13,
       contract_no=$14, contract_date=$15, contract_status=$16`;
     const params = f.slice(0, 16);
     let extra = '';
-    if (setCccd) { extra = `, cccd_image=$17`; params.push(b.cccd_image || null); }
+    // Ảnh CCCD: chỉ cập nhật nếu gửi kèm (giữ ảnh cũ nếu bỏ trống)
+    if (b.cccd_front !== undefined) { extra += `, cccd_front=$${params.length + 1}`; params.push(b.cccd_front || null); }
+    if (b.cccd_back !== undefined) { extra += `, cccd_back=$${params.length + 1}`; params.push(b.cccd_back || null); }
     params.push(req.params.id);
     const { rows } = await query(
       `UPDATE students SET ${cols}${extra} WHERE id=$${params.length} RETURNING *`, params);

@@ -13,13 +13,20 @@ async function renderPublicRegister() {
     <div class="brand"><div class="ic">🏠</div><h1 id="pubTitle">Đăng ký ở Ký túc xá</h1><p>Điền thông tin, quản lý sẽ liên hệ xếp phòng cho bạn</p></div>
     <div id="pubBody"><div class="spinner"></div></div>
   </div></div>`;
-  let info = {}, rooms = [];
-  try { [info, rooms] = await Promise.all([API.publicInfo(), API.publicRooms()]); } catch (e) {}
+  let info = {};
+  try { info = await API.publicInfo(); } catch (e) {}
   if (info.dorm_name) el('pubTitle').textContent = 'Đăng ký ở ' + info.dorm_name;
-  const female = rooms.filter(r => r.gender === 'female').reduce((a, r) => a + r.free, 0);
-  const male = rooms.filter(r => r.gender === 'male').reduce((a, r) => a + r.free, 0);
+  window._pubCccd = {};
   el('pubBody').innerHTML = `
-    <div class="hint">🛏️ Còn trống: <strong>${female}</strong> chỗ Nữ · <strong>${male}</strong> chỗ Nam. Giá thuê ghép ${money(info.room_fee)}/người, cọc ${money(info.deposit_fee)}.</div>
+    <div class="hint" style="flex-direction:column;align-items:stretch;gap:4px">
+      <div style="font-weight:700;margin-bottom:2px">💰 Bảng chi phí</div>
+      <div style="font-size:13px;line-height:1.95">
+        • Tiền phòng (thuê ghép): <strong>${money(info.room_fee)}</strong>/người/tháng<br>
+        • Điện: <strong>${money(info.electric_unit)}</strong>/kWh &nbsp;·&nbsp; Nước: <strong>${money(info.water_fee)}</strong>/người/tháng<br>
+        • Dịch vụ chung: <strong>${money(info.service_fee)}</strong>/người &nbsp;·&nbsp; Máy giặt: <strong>${money(info.washing_fee)}</strong>/tháng &nbsp;·&nbsp; Gửi xe: <strong>${money(info.parking_fee)}</strong>/xe<br>
+        • Cọc khi nhận phòng: <strong>${money(info.deposit_fee)}</strong>
+      </div>
+    </div>
     <form id="applyForm">
       <div class="grid2">
         <div class="field"><label>Họ tên *</label><input id="a_name" required></div>
@@ -33,14 +40,19 @@ async function renderPublicRegister() {
         <div class="field"><label>Mã học viên</label><input id="a_code"></div>
         <div class="field"><label>Lớp</label><input id="a_class"></div>
       </div>
-      <div class="grid2">
-        <div class="field"><label>Hình thức thuê</label><select id="a_rental"><option value="ghep">Thuê ghép (ở chung)</option><option value="phong">Thuê nguyên phòng</option></select></div>
-        <div class="field"><label>Nguyện vọng (tầng/loại phòng)</label><input id="a_pref" placeholder="VD: tầng thấp, phòng ít người"></div>
-      </div>
+      <div class="field"><label>Hình thức thuê</label><select id="a_rental"><option value="ghep">Thuê ghép (ở chung)</option><option value="phong">Thuê nguyên phòng</option></select></div>
       <div class="field"><label>Dịch vụ đăng ký thêm</label>
         <label class="check"><input type="checkbox" id="a_wash"> 🧺 Máy giặt (${money(info.washing_fee)}/tháng)</label>
         <label class="check" style="margin-top:8px"><input type="checkbox" id="a_park" onchange="el('plateBox').style.display=this.checked?'block':'none'"> 🏍️ Gửi xe (${money(info.parking_fee)}/xe/tháng)</label>
         <div id="plateBox" style="display:none;margin-top:8px"><input id="a_plate" placeholder="Biển số xe (VD: 63-B4 508.58)"></div>
+      </div>
+      <div class="field"><label>Ảnh CCCD (2 mặt)</label>
+        <div class="grid2">
+          <div><div class="muted" style="font-size:12px;margin-bottom:4px">Mặt trước</div>
+            <input type="file" id="a_cccd_front" accept="image/*" onchange="pubCccd(this,'front')"><div id="cccdFrontPrev" style="margin-top:6px"></div></div>
+          <div><div class="muted" style="font-size:12px;margin-bottom:4px">Mặt sau</div>
+            <input type="file" id="a_cccd_back" accept="image/*" onchange="pubCccd(this,'back')"><div id="cccdBackPrev" style="margin-top:6px"></div></div>
+        </div>
       </div>
       <div class="field"><label>Ghi chú</label><textarea id="a_note" rows="2"></textarea></div>
       <button class="btn pri lg" type="submit">Gửi đăng ký</button>
@@ -51,8 +63,9 @@ async function renderPublicRegister() {
     const body = {
       name: el('a_name').value.trim(), phone: el('a_phone').value.trim(), gender: el('a_gender').value,
       birth_date: el('a_birth').value || null, code: el('a_code').value.trim(), class_name: el('a_class').value.trim(),
-      rental_type: el('a_rental').value, pref: el('a_pref').value.trim(), note: el('a_note').value.trim(),
+      rental_type: el('a_rental').value, note: el('a_note').value.trim(),
       wants_washing: el('a_wash').checked, wants_parking: el('a_park').checked, plate: el('a_plate').value.trim(),
+      cccd_front: window._pubCccd.front || null, cccd_back: window._pubCccd.back || null,
     };
     try {
       await API.publicApply(body);
@@ -63,6 +76,13 @@ async function renderPublicRegister() {
       </div>`;
     } catch (err) { toast(err.message, 'err'); btn.disabled = false; btn.textContent = 'Gửi đăng ký'; }
   });
+}
+function pubCccd(input, side) {
+  const f = input.files[0]; if (!f) return;
+  if (f.size > 6 * 1024 * 1024) { input.value = ''; return toast('Ảnh quá lớn (tối đa 6MB)', 'err'); }
+  const r = new FileReader();
+  r.onload = () => { window._pubCccd[side] = r.result; el(side === 'front' ? 'cccdFrontPrev' : 'cccdBackPrev').innerHTML = `<img src="${r.result}" style="max-width:100%;max-height:130px;border-radius:8px;border:1px solid var(--line)">`; };
+  r.readAsDataURL(f);
 }
 
 /* ================= ĐĂNG NHẬP ================= */
@@ -541,7 +561,11 @@ async function studentDetail(id) {
 
       <div class="panel" style="margin-top:12px"><div class="hd"><h2 style="font-size:14px">📄 Hợp đồng</h2></div><div class="pad">
         <p style="margin:0">Số HĐ: <strong>${esc(s.contract_no || '—')}</strong> · Ngày ký: ${fmtDate(s.contract_date)} · <span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span></p>
-        ${s.cccd_image ? `<div style="margin-top:10px"><div class="muted" style="font-size:12px;margin-bottom:4px">Ảnh CCCD:</div><img src="${s.cccd_image}" style="max-width:100%;max-height:220px;border-radius:8px;border:1px solid var(--line);cursor:pointer" onclick="window.open('').document.write('<img src=\\'${s.cccd_image}\\' style=\\'max-width:100%\\'>')"></div>` : '<p class="muted" style="margin:8px 0 0;font-size:12px">Chưa có ảnh CCCD</p>'}
+        ${(s.cccd_front || s.cccd_back || s.cccd_image) ? `<div style="margin-top:10px"><div class="muted" style="font-size:12px;margin-bottom:4px">Ảnh CCCD:</div><div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${s.cccd_front ? `<img src="${s.cccd_front}" title="Mặt trước" style="max-width:48%;max-height:180px;border-radius:8px;border:1px solid var(--line)">` : ''}
+          ${s.cccd_back ? `<img src="${s.cccd_back}" title="Mặt sau" style="max-width:48%;max-height:180px;border-radius:8px;border:1px solid var(--line)">` : ''}
+          ${!s.cccd_front && !s.cccd_back && s.cccd_image ? `<img src="${s.cccd_image}" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--line)">` : ''}
+        </div></div>` : '<p class="muted" style="margin:8px 0 0;font-size:12px">Chưa có ảnh CCCD</p>'}
       </div></div>
 
       <div class="panel"><div class="hd"><h2 style="font-size:14px">🏍️ Xe (${vehicles.length})</h2><button class="btn sm" onclick="vehicleForm(0, ${s.id})">➕ Thêm xe</button></div><div class="pad">

@@ -7,7 +7,11 @@ const router = express.Router(); // KHÔNG yêu cầu đăng nhập
 router.get('/info', async (req, res, next) => {
   try {
     const s = await getSettings();
-    res.json({ dorm_name: s.dorm_name, room_fee: s.room_fee, deposit_fee: s.deposit_fee, washing_fee: s.washing_fee, parking_fee: s.parking_fee });
+    res.json({
+      dorm_name: s.dorm_name, room_fee: s.room_fee, deposit_fee: s.deposit_fee,
+      electric_unit: s.electric_unit, water_fee: s.water_fee, service_fee: s.service_fee,
+      washing_fee: s.washing_fee, parking_fee: s.parking_fee,
+    });
   } catch (e) { next(e); }
 });
 
@@ -40,11 +44,11 @@ router.post('/apply', async (req, res, next) => {
     if (!b.name || !b.name.trim()) return res.status(400).json({ error: 'Vui lòng nhập họ tên' });
     if (!b.phone || !b.phone.trim()) return res.status(400).json({ error: 'Vui lòng nhập số điện thoại' });
     const { rows } = await query(
-      `INSERT INTO applications (name, phone, gender, birth_date, code, class_name, rental_type, pref, note, wants_washing, wants_parking, plate)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+      `INSERT INTO applications (name, phone, gender, birth_date, code, class_name, rental_type, pref, note, wants_washing, wants_parking, plate, cccd_front, cccd_back)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
       [b.name.trim(), b.phone.trim(), b.gender === 'male' ? 'male' : 'female', b.birth_date || null,
        b.code || '', b.class_name || '', b.rental_type === 'phong' ? 'phong' : 'ghep', b.pref || '', b.note || '',
-       !!b.wants_washing, !!b.wants_parking, b.plate || '']
+       !!b.wants_washing, !!b.wants_parking, b.plate || '', b.cccd_front || null, b.cccd_back || null]
     );
     res.status(201).json({ ok: true, id: rows[0].id });
   } catch (e) { next(e); }

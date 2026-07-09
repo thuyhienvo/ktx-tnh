@@ -31,12 +31,14 @@ router.post('/:id/approve', async (req, res, next) => {
 
     const { rows } = await client.query(
       `INSERT INTO students (code, name, gender, phone, birth_date, class_name, room_id, check_in_date, status, note,
-         rental_type, residency_status, contract_no, contract_date, contract_status, uses_washing, deposit_amount, deposit_status, deposit_date)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'in',$9,$10,'unregistered',$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+         rental_type, residency_status, contract_no, contract_date, contract_status, uses_washing, deposit_amount, deposit_status, deposit_date,
+         cccd_front, cccd_back)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'in',$9,$10,'unregistered',$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
       [app.code || '', app.name, app.gender, app.phone, app.birth_date, app.class_name,
        b.room_id || null, checkIn, app.note || '', b.rental_type || app.rental_type || 'ghep',
        b.contract_no || '', b.contract_date || null, cStatus,
-       !!app.wants_washing, takeDeposit ? depositAmt : 0, takeDeposit ? 'held' : 'none', takeDeposit ? checkIn : null]
+       !!app.wants_washing, takeDeposit ? depositAmt : 0, takeDeposit ? 'held' : 'none', takeDeposit ? checkIn : null,
+       app.cccd_front || null, app.cccd_back || null]
     );
     const student = rows[0];
     await client.query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'in',$2,$3,'Duyệt đơn & vào ở','admin')`,

@@ -63,7 +63,9 @@ ALTER TABLE students ADD COLUMN IF NOT EXISTS residency_status TEXT DEFAULT 'unr
 ALTER TABLE students ADD COLUMN IF NOT EXISTS contract_no TEXT DEFAULT '';        -- số HĐ
 ALTER TABLE students ADD COLUMN IF NOT EXISTS contract_date DATE;                 -- ngày ký HĐ
 ALTER TABLE students ADD COLUMN IF NOT EXISTS contract_status TEXT DEFAULT 'unsigned'; -- 'done'|'scanned'|'unsigned'|'none'
-ALTER TABLE students ADD COLUMN IF NOT EXISTS cccd_image TEXT;                    -- ảnh CCCD (data URL base64)
+ALTER TABLE students ADD COLUMN IF NOT EXISTS cccd_image TEXT;                    -- (cũ) ảnh CCCD 1 mặt
+ALTER TABLE students ADD COLUMN IF NOT EXISTS cccd_front TEXT;                    -- ảnh CCCD mặt trước
+ALTER TABLE students ADD COLUMN IF NOT EXISTS cccd_back TEXT;                     -- ảnh CCCD mặt sau
 ALTER TABLE students ADD COLUMN IF NOT EXISTS deposit_bank TEXT DEFAULT '';       -- ngân hàng hoàn cọc
 ALTER TABLE students ADD COLUMN IF NOT EXISTS deposit_account TEXT DEFAULT '';    -- số TK hoàn cọc
 ALTER TABLE students ADD COLUMN IF NOT EXISTS deposit_deduction NUMERIC(12,0) DEFAULT 0;  -- khấu trừ hư hao khi trả phòng
@@ -165,6 +167,8 @@ CREATE TABLE IF NOT EXISTS applications (
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS wants_parking BOOLEAN DEFAULT false;
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS plate TEXT DEFAULT '';
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS wants_washing BOOLEAN DEFAULT false;
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS cccd_front TEXT;   -- ảnh CCCD mặt trước
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS cccd_back TEXT;    -- ảnh CCCD mặt sau
 
 -- Báo cáo hư hỏng (học viên gửi)
 CREATE TABLE IF NOT EXISTS damage_reports (
