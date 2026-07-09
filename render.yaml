@@ -1,0 +1,30 @@
+# Cấu hình triển khai lên Render (https://render.com) — 1 web service + 1 PostgreSQL
+# Render đọc file này (Blueprint) để tự tạo app + cơ sở dữ liệu.
+
+databases:
+  - name: ktx-db
+    plan: free            # Postgres miễn phí (nâng cấp trả phí khi dùng thật)
+    databaseName: ktx
+    user: ktx
+
+services:
+  - type: web
+    name: ktx-tnh
+    runtime: docker
+    plan: free            # web service miễn phí (ngủ khi không dùng, tự thức khi truy cập)
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL           # tự lấy chuỗi kết nối từ CSDL ở trên
+        fromDatabase:
+          name: ktx-db
+          property: connectionString
+      - key: JWT_SECRET             # tự sinh chuỗi bí mật ngẫu nhiên
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD         # chị tự đặt trong bảng điều khiển Render (không lưu vào code)
+        sync: false
+      - key: DORM_NAME
+        value: "Ký túc xá KTX TNH"

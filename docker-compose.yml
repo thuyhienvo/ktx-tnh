@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ktx-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ktx}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ktx_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-ktx}
+    volumes:
+      - ktx_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ktx} -d ${POSTGRES_DB:-ktx}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    container_name: ktx-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-ktx}:${POSTGRES_PASSWORD:-ktx_secret}@db:5432/${POSTGRES_DB:-ktx}
+      JWT_SECRET: ${JWT_SECRET:-doi_chuoi_bi_mat_nay_di}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      DORM_NAME: ${DORM_NAME:-Ký túc xá Học viên}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+
+volumes:
+  ktx_pgdata:
