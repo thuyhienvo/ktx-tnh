@@ -72,8 +72,8 @@ async function renderLogin() {
       <div class="auth-left">
         <div class="auth-brand"><span class="auth-logo">🏠</span> KTX TNH</div>
         <div class="auth-hero">
-          <h1>Quản lý khu nội trú, gọn trong một màn hình.</h1>
-          <p>Phòng ở, học viên, thu tiền, điện nước, xe cộ và sự cố — tất cả đồng bộ, cập nhật theo thời gian thực.</p>
+          <h1>Ở an tâm, rèn nề nếp —<br>sẵn sàng sang Nhật.</h1>
+          <p>Ký túc xá là mái nhà thứ hai của học viên: sống quy củ, rèn tính kỷ luật và làm quen nếp sống Nhật ngay từ hôm nay, cho hành trình phía trước.</p>
           <div class="auth-stats">
             <div><b id="st_rooms">–</b><span>phòng</span></div>
             <div><b>2</b><span>khu (E2·S2)</span></div>
