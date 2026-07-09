@@ -70,15 +70,16 @@ async function renderLogin() {
   el('app').innerHTML = `
     <div class="auth">
       <div class="auth-left">
-        <div class="auth-brand"><span class="auth-logo">🏠</span> KTX TNH</div>
+        <div class="auth-brand">
+          <span class="auth-logo">🏠</span>
+          <div>
+            <div class="ab-title">KHU NỘI TRÚ ESUHAI</div>
+            <div class="ab-sub">Cơ sở Thoại Ngọc Hầu</div>
+          </div>
+        </div>
         <div class="auth-hero">
           <h1>Ở an tâm,<br>quen dần nếp Nhật.</h1>
-          <p>Một chỗ ở yên tâm, sinh hoạt ngăn nắp — để nếp sống và sự kỷ luật của người Nhật dần thành thói quen, trước ngày lên đường.</p>
-          <div class="auth-stats">
-            <div><b id="st_rooms">–</b><span>phòng</span></div>
-            <div><b>2</b><span>khu (E2·S2)</span></div>
-            <div><b id="st_stu">–</b><span>học viên</span></div>
-          </div>
+          <p>Một chỗ ở yên tâm, sinh hoạt ngăn nắp — để nếp sống và sự kỷ luật của người Nhật dần thành thói quen.</p>
         </div>
       </div>
       <div class="auth-right">
@@ -107,7 +108,6 @@ async function renderLogin() {
       Auth.token = r.token; Auth.user = r.user; boot();
     } catch (err) { toast(err.message, 'err'); btn.disabled = false; btn.textContent = 'Vào hệ thống →'; }
   });
-  try { const s = await API.publicStats(); el('st_rooms').textContent = s.rooms; el('st_stu').textContent = s.students; } catch {}
 }
 
 /* ================================================================= */
@@ -152,7 +152,7 @@ function renderAdmin() {
   el('app').innerHTML = `
     <div class="app">
       <aside class="side">
-        <div class="logo">🏠 <span>KTX TNH</span></div>
+        <div class="logo">🏠 <span>Nội trú Esuhai</span></div>
         <nav id="nav">
           <div class="grp">Quản lý</div>
           <button data-v="dashboard"><span class="ico">📊</span><span class="lbl">Tổng quan</span></button>
