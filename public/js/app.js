@@ -72,8 +72,8 @@ async function renderLogin() {
       <div class="auth-left">
         <div class="auth-brand"><span class="auth-logo">🏠</span> KTX TNH</div>
         <div class="auth-hero">
-          <h1>Ở an tâm, rèn nề nếp —<br>sẵn sàng sang Nhật.</h1>
-          <p>Ký túc xá là mái nhà thứ hai của học viên: sống quy củ, rèn tính kỷ luật và làm quen nếp sống Nhật ngay từ hôm nay, cho hành trình phía trước.</p>
+          <h1>Ở an tâm,<br>quen dần nếp Nhật.</h1>
+          <p>Một chỗ ở yên tâm, sinh hoạt ngăn nắp — để nếp sống và sự kỷ luật của người Nhật dần thành thói quen, trước ngày lên đường.</p>
           <div class="auth-stats">
             <div><b id="st_rooms">–</b><span>phòng</span></div>
             <div><b>2</b><span>khu (E2·S2)</span></div>
