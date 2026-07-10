@@ -13,7 +13,7 @@ function initials(name) { const p = (name || '?').trim().split(/\s+/); return ((
 function toast(msg, type = 'ok') {
   const t = el('toast');
   t.className = 'toast show ' + type;
-  t.innerHTML = (type === 'err' ? '⚠️ ' : '✅ ') + esc(msg);
+  t.innerHTML = (type === 'err' ? IC.alert+' ' : IC.checkCircle+' ') + esc(msg);
   clearTimeout(t._t);
   t._t = setTimeout(() => (t.className = 'toast'), 2800);
 }
