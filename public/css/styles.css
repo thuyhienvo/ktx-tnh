@@ -94,7 +94,7 @@ a:hover{text-decoration:underline;text-underline-offset:2px}
 .top{background:rgba(248,244,236,.82);backdrop-filter:saturate(170%) blur(10px);border-bottom:1px solid var(--line);padding:18px 34px;display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;z-index:5;flex-wrap:wrap}
 .top h1{font-family:var(--serif);margin:0;font-size:26px;font-weight:600;letter-spacing:.005em;line-height:1.1}
 .top .sub{color:var(--muted);font-size:13px;margin-top:3px}
-.content{padding:30px 34px;max-width:1240px;width:100%}
+.content{padding:24px 26px;max-width:1280px;width:100%}
 
 /* ---------- Thẻ / lưới ---------- */
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:16px;margin-bottom:24px}
@@ -110,9 +110,11 @@ a:hover{text-decoration:underline;text-underline-offset:2px}
 
 /* ---------- Bảng ---------- */
 .table-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:14.5px}
-th,td{padding:15px 22px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
-th{background:var(--bg2);font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;white-space:nowrap}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+th{background:var(--bg2);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+/* Chữ phụ (mã, lớp, ghi chú, mô tả) vẫn được xuống dòng bình thường */
+td .sub2,td.muted,td .muted,td small,td p,td .rowbtns{white-space:normal}
 tbody tr{transition:background .13s}
 tbody tr:hover{background:#faf6ee}
 tbody tr:last-child td{border-bottom:none}
