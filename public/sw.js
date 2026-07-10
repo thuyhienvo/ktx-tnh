@@ -1,9 +1,9 @@
 // Service worker: ưu tiên MẠNG cho giao diện (luôn có bản mới nhất khi online),
 // dùng cache làm dự phòng khi offline. API luôn lấy trực tiếp từ mạng.
-const CACHE = 'ktx-shell-v5';
+const CACHE = 'ktx-shell-v6';
 const SHELL = [
-  '/', '/index.html', '/css/styles.css',
-  '/js/icons.js', '/js/api.js', '/js/ui.js', '/js/app.js',
+  '/', '/index.html', '/css/styles.css?v=6',
+  '/js/icons.js?v=6', '/js/api.js?v=6', '/js/ui.js?v=6', '/js/app.js?v=6',
   '/manifest.webmanifest', '/icons/icon.svg',
 ];
 
