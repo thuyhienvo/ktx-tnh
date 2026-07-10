@@ -84,7 +84,7 @@ router.post('/', requireRole('admin'), async (req, res, next) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
       [...f, status, checkOut, takeDeposit ? depositFee : 0, takeDeposit ? 'held' : 'none', takeDeposit ? checkIn : null,
        b.cccd_front || null, b.cccd_back || null,
-       (checkOut && ['urgent_visa', 'departure'].includes(b.checkout_reason)) ? b.checkout_reason : (checkOut ? 'normal' : null)]
+       (checkOut && ['departure', 'personal', 'facility', 'other'].includes(b.checkout_reason)) ? b.checkout_reason : (checkOut ? 'other' : null)]
     );
     const student = rows[0];
 
@@ -162,7 +162,7 @@ router.post('/:id/checkout', requireRole('admin'), async (req, res, next) => {
   try {
     const { date, notice_date, reason, note } = req.body;
     const d = date || new Date().toISOString().slice(0, 10);
-    const rs = ['urgent_visa', 'departure'].includes(reason) ? reason : 'normal';
+    const rs = ['departure', 'personal', 'facility', 'other'].includes(reason) ? reason : 'other';
     const cur = await query('SELECT room_id FROM students WHERE id=$1', [req.params.id]);
     if (!cur.rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
     const elig = depositRefundEligible({ noticeDate: notice_date || null, checkoutDate: d, reason: rs });

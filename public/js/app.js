@@ -153,6 +153,8 @@ const HANGS = ['A', 'B', 'C', 'D'];
 const RENTAL_LABEL = { ghep: 'Thuê ghép', phong: 'Thuê nguyên phòng' };
 const CONTRACT_LABEL = { done: 'Đã hoàn tất', scanned: 'Đã scan HĐ', unsigned: 'Chưa ký HĐ', none: 'Không ký HĐ' };
 const CONTRACT_BADGE = { done: 'green', scanned: 'blue', unsigned: 'amber', none: 'gray' };
+const CHECKOUT_REASONS = [['departure', '🛫 Xuất cảnh (đi Nhật)'], ['personal', 'Cá nhân'], ['facility', 'Cơ sở vật chất'], ['other', 'Khác']];
+const REASON_LABEL = { departure: 'Xuất cảnh', personal: 'Cá nhân', facility: 'Cơ sở vật chất', other: 'Khác', normal: 'Khác', urgent_visa: 'Xuất cảnh' };
 
 // Trạng thái tự tính theo ngày
 function liveStatus(s) {
@@ -946,7 +948,7 @@ async function viewRequests() {
         <td>${fmtDate(String(c.created_at).slice(0, 10))}</td>
         <td>${esc(c.student_name || '—')}</td><td>${esc(c.room_name || '—')}</td>
         <td>${fmtDate(c.desired_date)}</td>
-        <td>${c.reason === 'urgent_visa' ? 'Xuất cảnh đột xuất' : 'Bình thường'}${c.note ? `<div class="muted" style="font-size:12px">${esc(c.note)}</div>` : ''}</td>
+        <td>${REASON_LABEL[c.reason] || 'Khác'}${c.note ? `<div class="muted" style="font-size:12px">${esc(c.note)}</div>` : ''}</td>
         <td>${c.status === 'done' ? '<span class="badge green">Đã trả phòng</span>' : c.status === 'rejected' ? '<span class="badge gray">Từ chối</span>' : '<span class="badge amber">Chờ duyệt</span>'}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${c.status === 'pending' ? `<button class="btn sm danger" onclick="confirmCout(${c.id})">Xác nhận trả phòng</button><button class="btn sm" onclick="rejectCout(${c.id})">Từ chối</button>` : ''}
@@ -1041,10 +1043,8 @@ function checkOutForm(id) {
         <div class="field"><label>Ngày báo trả phòng</label><input id="c_notice" type="date" value="${today()}"></div>
         <div class="field"><label>Ngày rời thực tế</label><input id="c_date" type="date" value="${today()}"></div>
       </div>
-      <div class="field"><label>Lý do</label><select id="c_reason">
-        <option value="departure">🛫 Xuất cảnh đi Nhật (đã lên đường) — hoàn cọc</option>
-        <option value="urgent_visa">Xuất cảnh đột xuất — vẫn hoàn cọc</option>
-        <option value="normal">Trả phòng khác (cần báo trước 1 tháng để hoàn cọc)</option>
+      <div class="field"><label>Lý do trả phòng</label><select id="c_reason">
+        ${CHECKOUT_REASONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
       </select></div>
       <div class="field"><label>Ghi chú</label><input id="c_note" placeholder="VD: hết hạn ở, chuyển đi..."></div>
       <div class="hint">ℹ️ App sẽ tự xét điều kiện hoàn cọc dựa trên ngày báo và lý do.</div>
@@ -1583,8 +1583,7 @@ function checkoutReqForm() {
     <div class="mb">
       <div class="field"><label>Ngày dự kiến trả phòng</label><input id="co_date" type="date" value="${today()}"></div>
       <div class="field"><label>Lý do</label><select id="co_reason">
-        <option value="normal">Trả phòng bình thường</option>
-        <option value="urgent_visa">Xuất cảnh đột xuất</option>
+        ${CHECKOUT_REASONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
       </select></div>
       <div class="field"><label>Ghi chú</label><textarea id="co_note" rows="2"></textarea></div>
       <div class="hint">ℹ️ Đơn sẽ được gửi tới quản lý để duyệt. Cần báo trước 1 tháng để được hoàn cọc.</div>

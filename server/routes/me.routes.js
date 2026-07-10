@@ -66,7 +66,7 @@ router.post('/checkout-request', async (req, res, next) => {
     if (pending.rows.length) return res.status(400).json({ error: 'Bạn đã có đơn trả phòng đang chờ duyệt' });
     const { rows } = await query(
       `INSERT INTO checkout_requests (student_id, desired_date, reason, note) VALUES ($1,$2,$3,$4) RETURNING *`,
-      [req.user.student_id, desired_date || null, reason === 'urgent_visa' ? 'urgent_visa' : 'normal', note || '']
+      [req.user.student_id, desired_date || null, ['departure', 'personal', 'facility', 'other'].includes(reason) ? reason : 'other', note || '']
     );
     res.status(201).json(rows[0]);
   } catch (e) { next(e); }
