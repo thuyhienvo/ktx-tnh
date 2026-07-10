@@ -90,6 +90,7 @@ function computeInvoice({ student, room, month, fees, occupants, kwh, vehicleCou
 // Xét điều kiện hoàn cọc khi trả phòng
 // eligible nếu: xuất cảnh đột xuất, HOẶC báo trước >= 30 ngày
 function depositRefundEligible({ noticeDate, checkoutDate, reason }) {
+  if (reason === 'departure') return { eligible: true, reason: 'Xuất cảnh đi Nhật — hoàn cọc' };
   if (reason === 'urgent_visa') return { eligible: true, reason: 'Xuất cảnh đột xuất — hoàn cọc bình thường' };
   if (!noticeDate || !checkoutDate) return { eligible: false, reason: 'Chưa có ngày báo trả phòng' };
   const noticeDays = Math.round((new Date(checkoutDate) - new Date(noticeDate)) / 86400000);

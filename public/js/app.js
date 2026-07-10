@@ -240,6 +240,9 @@ async function viewDashboard() {
   const fullRooms = ST.rooms.filter(r => r.occupancy >= r.capacity && r.capacity > 0).length;
   const emptyRooms = ST.rooms.filter(r => r.occupancy === 0).length;
   const leftThisMonth = ST.students.filter(s => s.check_out_date && s.check_out_date.slice(0, 7) === curMonth()).length;
+  const isDeparture = s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason);
+  const depMonth = ST.students.filter(s => isDeparture(s) && s.check_out_date.slice(0, 7) === curMonth()).length;
+  const depYear = ST.students.filter(s => isDeparture(s) && s.check_out_date.slice(0, 4) === curMonth().slice(0, 4)).length;
   const noResidency = occ.filter(s => s.residency_status !== 'registered').length;
   const noContract = occ.filter(s => ['unsigned', 'none'].includes(s.contract_status)).length;
   const totalVehicles = occ.reduce((a, s) => a + (+s.vehicle_count || 0), 0);
@@ -266,6 +269,7 @@ async function viewDashboard() {
     <div class="kpis">
       ${kpi('ic-green', '🟢', inCount, 'Học viên đang ở')}
       ${kpi('ic-blue', '🛏️', `${beds}<span class="muted" style="font-size:15px;font-weight:600"> / ${capacity}</span>`, 'Giường còn trống')}
+      ${kpi('ic-brand', '🛫', `${depMonth}<span class="muted" style="font-size:15px;font-weight:600"> · năm ${depYear}</span>`, 'Xuất cảnh tháng này')}
       ${kpi('ic-brand', '💵', money(paidThisMonth), 'Đã thu tháng này')}
       ${kpi('ic-red', '💰', money(unpaid), 'Còn nợ tiền phòng')}
     </div>
@@ -874,6 +878,13 @@ async function viewRevenue() {
         <tr style="background:#faf6f2"><td colspan="3"><strong>TỔNG DOANH THU</strong></td><td class="num"><strong>${money(grand)}</strong></td></tr>
       </tbody></table></div>
       <div class="pad muted" style="font-size:12.5px">💡 Mã sản phẩm Bravo chỉnh trong <a href="#" onclick="adminGo('settings');return false">Cài đặt</a>. Doanh thu = tổng tiền đã lập hóa đơn (chưa gồm cọc).</div>
+    </div>
+
+    <div class="panel"><div class="hd"><h2>🛫 Học viên xuất cảnh đi Nhật — năm ${revYear}</h2><span class="muted" style="font-size:12px">gồm xuất cảnh theo kế hoạch + đột xuất</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Tháng</th><th class="num">Số HV xuất cảnh</th></tr></thead><tbody>
+        ${Array.from({ length: 12 }, (_, i) => { const mm = String(i + 1).padStart(2, '0'); const c = ST.students.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason) && String(s.check_out_date).slice(0, 7) === revYear + '-' + mm).length; return `<tr><td>Tháng ${i + 1}/${revYear}</td><td class="num">${c ? '<strong>' + c + '</strong>' : '<span class="muted">—</span>'}</td></tr>`; }).join('')}
+        <tr style="background:#faf6f2"><td><strong>Tổng cả năm ${revYear}</strong></td><td class="num"><strong>${ST.students.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason) && String(s.check_out_date).slice(0, 4) === revYear).length}</strong></td></tr>
+      </tbody></table></div>
     </div>`;
   const ry = el('ry'); if (ry) ry.onchange = e => { revYear = e.target.value; viewRevenue(); };
 }
@@ -1031,8 +1042,9 @@ function checkOutForm(id) {
         <div class="field"><label>Ngày rời thực tế</label><input id="c_date" type="date" value="${today()}"></div>
       </div>
       <div class="field"><label>Lý do</label><select id="c_reason">
-        <option value="normal">Trả phòng bình thường (cần báo trước 1 tháng để hoàn cọc)</option>
-        <option value="urgent_visa">Xuất cảnh đột xuất (vẫn hoàn cọc)</option>
+        <option value="departure">🛫 Xuất cảnh đi Nhật (đã lên đường) — hoàn cọc</option>
+        <option value="urgent_visa">Xuất cảnh đột xuất — vẫn hoàn cọc</option>
+        <option value="normal">Trả phòng khác (cần báo trước 1 tháng để hoàn cọc)</option>
       </select></div>
       <div class="field"><label>Ghi chú</label><input id="c_note" placeholder="VD: hết hạn ở, chuyển đi..."></div>
       <div class="hint">ℹ️ App sẽ tự xét điều kiện hoàn cọc dựa trên ngày báo và lý do.</div>
