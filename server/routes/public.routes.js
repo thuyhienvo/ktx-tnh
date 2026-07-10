@@ -7,8 +7,17 @@ const router = express.Router(); // KHÔNG yêu cầu đăng nhập
 router.get('/info', async (req, res, next) => {
   try {
     const s = await getSettings();
+    const fac = (await query('SELECT name, address FROM facilities ORDER BY id LIMIT 1')).rows[0] || {};
+    const rooms = (await query('SELECT COUNT(*)::int c FROM rooms')).rows[0].c;
+    const occupancy = (await query(
+      `SELECT COUNT(*)::int c FROM students s
+       WHERE s.check_in_date <= CURRENT_DATE AND (s.check_out_date IS NULL OR s.check_out_date > CURRENT_DATE)`)).rows[0].c;
+    const beds = (await query('SELECT COALESCE(SUM(capacity),0)::int c FROM rooms')).rows[0].c;
     res.json({
-      dorm_name: s.dorm_name, room_fee: s.room_fee, deposit_fee: s.deposit_fee,
+      dorm_name: s.dorm_name, hotline: s.hotline,
+      address: fac.address || '', facility_name: fac.name || '',
+      room_count: rooms, bed_count: beds, occupancy, bed_free: Math.max(0, beds - occupancy),
+      room_fee: s.room_fee, deposit_fee: s.deposit_fee,
       electric_unit: s.electric_unit, water_fee: s.water_fee, service_fee: s.service_fee,
       washing_fee: s.washing_fee, parking_fee: s.parking_fee,
     });

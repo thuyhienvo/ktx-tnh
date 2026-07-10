@@ -208,6 +208,34 @@ CREATE TABLE IF NOT EXISTS checkout_requests (
   handled_at   TIMESTAMPTZ
 );
 
+-- Danh mục loại vi phạm / nhắc nhở (sửa trong Cài đặt)
+CREATE TABLE IF NOT EXISTS violation_types (
+  id         SERIAL PRIMARY KEY,
+  name       TEXT NOT NULL,
+  severity   TEXT NOT NULL DEFAULT 'minor',   -- 'minor'|'major'|'severe'
+  sort       INTEGER DEFAULT 0,
+  active      BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Vi phạm / nhắc nhở theo từng học viên
+CREATE TABLE IF NOT EXISTS violations (
+  id              SERIAL PRIMARY KEY,
+  student_id      INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  type_id         INTEGER REFERENCES violation_types(id) ON DELETE SET NULL,
+  type_name       TEXT DEFAULT '',
+  severity        TEXT DEFAULT 'minor',
+  level           INTEGER NOT NULL DEFAULT 1,       -- lần vi phạm thứ mấy của học viên
+  date            DATE NOT NULL,
+  note            TEXT DEFAULT '',
+  admin_note      TEXT DEFAULT '',
+  status          TEXT NOT NULL DEFAULT 'open',     -- 'open'|'resolved'
+  notified_school BOOLEAN NOT NULL DEFAULT false,   -- đã gửi mail nhà trường
+  notified_at     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_violations_student ON violations(student_id);
+
 CREATE INDEX IF NOT EXISTS idx_students_status ON students(status);
 CREATE INDEX IF NOT EXISTS idx_invoices_month  ON invoices(month);
 CREATE INDEX IF NOT EXISTS idx_logs_student    ON logs(student_id);

@@ -86,6 +86,11 @@ async function init() {
     bravo_fee_type: 'T0704',
     bravo_room: 'GP00180', bravo_water: 'GP00181', bravo_service: 'GP00183',
     bravo_electric: 'GP00184', bravo_parking: 'GP00182', bravo_washing: '', bravo_other: '',
+    // Nhà trường + email (vi phạm lần 3 sẽ gửi mail)
+    school_name: 'Nhà trường', school_email: '', violation_mail_threshold: '3',
+    // Cấu hình SMTP (admin điền sau để bật gửi mail tự động)
+    smtp_host: '', smtp_port: '587', smtp_secure: 'false',
+    smtp_user: '', smtp_pass: '', smtp_from: '',
   };
   for (const [key, value] of Object.entries(defaults)) {
     await pool.query(`INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`, [key, value]);
@@ -112,6 +117,27 @@ async function init() {
         [name, unit, category, quantity, fee, i]);
     }
     console.log('🪑 Đã tạo danh mục tài sản mặc định');
+  }
+
+  // Danh mục loại vi phạm mặc định (sửa được trong Cài đặt)
+  const vtCount = await pool.query('SELECT COUNT(*)::int c FROM violation_types');
+  if (vtCount.rows[0].c === 0) {
+    const vt = [
+      ['Về ký túc xá trễ giờ quy định', 'minor'],
+      ['Gây ồn ào, mất trật tự', 'minor'],
+      ['Không giữ vệ sinh chung', 'minor'],
+      ['Không tham gia sinh hoạt / điểm danh', 'minor'],
+      ['Hút thuốc / uống rượu bia trong KTX', 'major'],
+      ['Tự ý cho người lạ vào ở lại', 'major'],
+      ['Nấu ăn / dùng thiết bị gây cháy nổ', 'major'],
+      ['Đánh nhau, gây gổ', 'severe'],
+      ['Trộm cắp tài sản', 'severe'],
+      ['Vi phạm nghiêm trọng khác', 'severe'],
+    ];
+    for (let i = 0; i < vt.length; i++) {
+      await pool.query('INSERT INTO violation_types (name, severity, sort) VALUES ($1,$2,$3)', [vt[i][0], vt[i][1], i]);
+    }
+    console.log('⚠️  Đã tạo danh mục loại vi phạm mặc định');
   }
 
   // Cơ sở mặc định

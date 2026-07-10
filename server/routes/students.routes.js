@@ -18,7 +18,8 @@ const LIST_SELECT = `
     r.name AS room_name, r.floor AS room_floor, r.gender AS room_gender, r.hang AS room_hang,
     u.username AS login_username,
     (SELECT COUNT(*) FROM vehicles v WHERE v.student_id=s.id)::int AS vehicle_count,
-    (SELECT COALESCE(SUM(i.total),0)::int FROM invoices i WHERE i.student_id=s.id AND i.status<>'paid') AS debt
+    (SELECT COUNT(*) FROM violations vi WHERE vi.student_id=s.id)::int AS violation_count,
+    (SELECT COALESCE(SUM(i.total),0)::int FROM invoices i WHERE i.status<>'paid' AND i.student_id=s.id) AS debt
   FROM students s
   LEFT JOIN rooms r ON r.id = s.room_id
   LEFT JOIN users u ON u.student_id = s.id`;
@@ -48,6 +49,8 @@ router.get('/:id', requireRole('admin'), async (req, res, next) => {
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
     const veh = await query('SELECT * FROM vehicles WHERE student_id=$1 ORDER BY id', [req.params.id]);
     rows[0].vehicles = veh.rows;
+    const vio = await query('SELECT * FROM violations WHERE student_id=$1 ORDER BY date DESC, id DESC', [req.params.id]);
+    rows[0].violations = vio.rows;
     res.json(rows[0]);
   } catch (e) { next(e); }
 });
@@ -84,7 +87,7 @@ router.post('/', requireRole('admin'), async (req, res, next) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
       [...f, status, checkOut, takeDeposit ? depositFee : 0, takeDeposit ? 'held' : 'none', takeDeposit ? checkIn : null,
        b.cccd_front || null, b.cccd_back || null,
-       (checkOut && ['departure', 'personal', 'facility', 'other'].includes(b.checkout_reason)) ? b.checkout_reason : (checkOut ? 'other' : null)]
+       (checkOut && ['departure', 'personal', 'facility', 'dropout', 'reserve', 'other'].includes(b.checkout_reason)) ? b.checkout_reason : (checkOut ? 'other' : null)]
     );
     const student = rows[0];
 
@@ -162,7 +165,7 @@ router.post('/:id/checkout', requireRole('admin'), async (req, res, next) => {
   try {
     const { date, notice_date, reason, note } = req.body;
     const d = date || new Date().toISOString().slice(0, 10);
-    const rs = ['departure', 'personal', 'facility', 'other'].includes(reason) ? reason : 'other';
+    const rs = ['departure', 'personal', 'facility', 'dropout', 'reserve', 'other'].includes(reason) ? reason : 'other';
     const cur = await query('SELECT room_id FROM students WHERE id=$1', [req.params.id]);
     if (!cur.rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
     const elig = depositRefundEligible({ noticeDate: notice_date || null, checkoutDate: d, reason: rs });

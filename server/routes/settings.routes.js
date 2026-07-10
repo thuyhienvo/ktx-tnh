@@ -16,7 +16,9 @@ router.put('/', requireAuth, requireRole('admin'), async (req, res, next) => {
       'washing_fee', 'parking_fee', 'deposit_fee', 'partial_half_min', 'partial_full_min',
       'legal_female', 'legal_male', 'due_day_from', 'due_day_to',
       'room_price_A', 'room_price_B', 'room_price_C', 'room_price_D',
-      'bravo_fee_type', 'bravo_room', 'bravo_water', 'bravo_service', 'bravo_electric', 'bravo_parking', 'bravo_washing', 'bravo_other'];
+      'bravo_fee_type', 'bravo_room', 'bravo_water', 'bravo_service', 'bravo_electric', 'bravo_parking', 'bravo_washing', 'bravo_other',
+      'school_name', 'school_email', 'violation_mail_threshold',
+      'smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_pass', 'smtp_from'];
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
         await query(
