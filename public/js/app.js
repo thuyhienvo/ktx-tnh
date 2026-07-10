@@ -1026,7 +1026,7 @@ async function viewRequests() {
         <td><strong>${esc(a.name)}</strong>${a.class_name ? `<div class="muted" style="font-size:11px">${esc(a.class_name)}</div>` : ''}</td>
         <td>${esc(a.phone)}</td><td>${genderLabel(a.gender)}</td>
         <td class="muted" style="font-size:12px">${RENTAL_LABEL[a.rental_type] || 'Thuê ghép'}</td>
-        <td class="muted" style="font-size:12px">${esc(a.pref || '')}${a.wants_washing ? '<div>${IC.washer} Máy giặt</div>' : ''}${a.wants_parking || a.plate ? `<div>${IC.bike} Gửi xe${a.plate ? ' · ' + esc(a.plate) : ''}</div>` : ''}${a.note ? `<div>${esc(a.note)}</div>` : ''}</td>
+        <td class="muted" style="font-size:12px">${esc(a.pref || '')}${a.wants_washing ? `<div>${IC.washer} Máy giặt</div>` : ''}${a.wants_parking || a.plate ? `<div>${IC.bike} Gửi xe${a.plate ? ' · ' + esc(a.plate) : ''}</div>` : ''}${a.note ? `<div>${esc(a.note)}</div>` : ''}</td>
         <td>${a.status === 'pending' ? '<span class="badge amber">Chờ duyệt</span>' : a.status === 'approved' ? '<span class="badge green">Đã thêm</span>' : '<span class="badge gray">Từ chối</span>'}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${a.status === 'pending' ? `<button class="btn sm green" onclick='approveForm(${JSON.stringify(a).replace(/'/g, "&#39;")})'>${IC.plus} Thêm vào phòng</button><button class="btn sm" onclick="rejectApp(${a.id})">Từ chối</button>` : ''}
