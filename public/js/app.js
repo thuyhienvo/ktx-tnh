@@ -281,12 +281,16 @@ function renderAdmin() {
           <button onclick="Auth.logout()">${IC.undo} Đăng xuất</button>
         </div>
       </aside>
+      <div class="side-backdrop" id="sideBackdrop" onclick="toggleSide()"></div>
       <div class="main">
-        <div class="top"><div><h1 id="pgTitle">Tổng quan</h1><div class="sub" id="pgSub"></div></div>
-          <div class="flex" style="gap:12px">
+        <div class="top">
+          <button class="hamburger" onclick="toggleSide()" aria-label="Menu">${IC.menu}</button>
+          <div style="flex:1;min-width:0"><h1 id="pgTitle">Tổng quan</h1><div class="sub" id="pgSub"></div></div>
+          <div class="flex" style="gap:10px">
             <button class="notif-bell" id="notifBell" title="Thông báo" onclick="toggleNotif(event)">${IC.bell}<span class="notif-dot" id="notifDot" style="display:none"></span></button>
             <div class="toolbar" id="topActions"></div>
-          </div></div>
+          </div>
+        </div>
         <div class="content" id="content"><div class="spinner"></div></div>
       </div>
     </div>`;
@@ -350,8 +354,18 @@ function _notifOutside(e) {
   const p = el('notifPanel');
   if (p && !p.contains(e.target) && !e.target.closest('#notifBell')) { p.remove(); document.removeEventListener('mousedown', _notifOutside, true); }
 }
+/* ---- Menu trượt trên mobile ---- */
+function toggleSide() {
+  const s = document.querySelector('.side'), b = el('sideBackdrop');
+  const open = s && s.classList.toggle('open');
+  if (b) b.classList.toggle('show', !!open);
+}
+function closeSide() {
+  const s = document.querySelector('.side'), b = el('sideBackdrop');
+  if (s) s.classList.remove('open'); if (b) b.classList.remove('show');
+}
 function adminGo(view) {
-  ST.view = view;
+  ST.view = view; closeSide();
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.v === view));
   el('pgTitle').textContent = AdminTitles[view][0];
   el('pgSub').textContent = AdminTitles[view][1];
