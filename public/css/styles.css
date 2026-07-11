@@ -177,11 +177,15 @@ td.num,th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-n
 .receipt .rc-total{background:#fbf4e8}
 .receipt .rc-total td{font-weight:800;font-size:15px;color:var(--brand-d)}
 .receipt .rc-note{font-size:12.5px;color:#6a6055;margin-top:14px;border-top:1px dashed #d8cdbd;padding-top:10px}
+.print-only{display:none}
 @media print{
   body{background:#fff}
   body *{visibility:hidden}
-  #receiptArea,#receiptArea *{visibility:visible}
+  #receiptArea,#receiptArea *,#printArea,#printArea *{visibility:visible}
   #receiptArea{position:absolute;inset:0;padding:24px;max-width:100%;box-shadow:none;border:none}
+  #printArea{position:absolute;left:0;top:0;width:100%;padding:0}
+  .print-only{display:block!important}
+  .panel{break-inside:avoid;box-shadow:none}
   .rc-noprint{display:none!important}
 }
 

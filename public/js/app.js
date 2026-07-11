@@ -232,6 +232,7 @@ function loginTab(t) {
 /* ==============          GIAO DIỆN QUẢN LÝ          =============== */
 /* ================================================================= */
 const AdminTitles = {
+  exec: ['Điều hành', 'Báo cáo lãnh đạo — KPI & biểu đồ'],
   dashboard: ['Tổng quan', 'Bảng điều khiển ký túc xá'],
   students: ['Học viên', 'Hồ sơ, hợp đồng, tạm trú'],
   rooms: ['Phòng', 'Danh sách phòng theo tầng / hạng / giới tính'],
@@ -301,6 +302,7 @@ function renderAdmin() {
         <div class="logo">${IC.home} <span>Nội trú Esuhai</span></div>
         <nav id="nav">
           <div class="grp">Quản lý</div>
+          <button data-v="exec"><span class="ico">${IC.gauge}</span><span class="lbl">Điều hành</span></button>
           <button data-v="dashboard"><span class="ico">${IC.dashboard}</span><span class="lbl">Tổng quan</span></button>
           <button data-v="students"><span class="ico">${IC.users}</span><span class="lbl">Học viên</span></button>
           <button data-v="rooms"><span class="ico">${IC.doorOpen}</span><span class="lbl">Phòng</span></button>
@@ -337,7 +339,7 @@ function renderAdmin() {
   startTableResize();
   const qp = new URLSearchParams(location.search);
   const startView = qp.get('view'); if (qp.get('tab')) reqTab = qp.get('tab');
-  const views = ['dashboard', 'students', 'rooms', 'vehicles', 'checkin', 'invoices', 'revenue', 'requests', 'settings'];
+  const views = ['exec', 'dashboard', 'students', 'rooms', 'vehicles', 'checkin', 'invoices', 'revenue', 'requests', 'settings'];
   refreshCache().then(() => adminGo(views.includes(startView) ? startView : 'dashboard')).catch(e => toast(e.message, 'err'));
 }
 
@@ -409,11 +411,98 @@ function adminGo(view) {
   el('pgTitle').textContent = AdminTitles[view][0];
   el('pgSub').textContent = AdminTitles[view][1];
   el('topActions').innerHTML = '';
-  ({ dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, vehicles: viewVehicles, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, requests: viewRequests, settings: viewSettings }[view])();
+  ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, vehicles: viewVehicles, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, requests: viewRequests, settings: viewSettings }[view])();
 }
 const roomById = id => ST.rooms.find(r => r.id === id);
 const studentById = id => ST.students.find(s => s.id === id);
 const facilityName = id => { const f = ST.facilities.find(x => x.id === id); return f ? f.name : '—'; };
+
+/* ---------- ĐIỀU HÀNH (DASHBOARD LÃNH ĐẠO) ---------- */
+// Biểu đồ cột: tổng (xám) + đã thu (vàng) chồng lên
+function svgBars(rows) {
+  const W = 720, H = 240, pt = 16, pb = 30, pl = 6, pr = 6;
+  const n = rows.length || 1;
+  const max = Math.max(1, ...rows.map(r => r.total));
+  const cw = (W - pl - pr) / n, bw = Math.min(34, cw * 0.5), ch = H - pt - pb;
+  const yOf = v => pt + ch - (v / max) * ch;
+  const g = rows.map((r, i) => {
+    const x = pl + cw * i + (cw - bw) / 2, yt = yOf(r.total), yp = yOf(r.paid);
+    return `<g><rect x="${x}" y="${yt}" width="${bw}" height="${(pt + ch - yt).toFixed(1)}" rx="3" fill="var(--line2)"><title>${monthLabel(r.month)} · Tổng ${money(r.total)}</title></rect>` +
+      `<rect x="${x}" y="${yp}" width="${bw}" height="${(pt + ch - yp).toFixed(1)}" rx="3" fill="var(--brand)"><title>${monthLabel(r.month)} · Đã thu ${money(r.paid)}</title></rect>` +
+      `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${r.label}</text></g>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:var(--sans)">${g}</svg>`;
+}
+// Biểu đồ tròn (donut)
+function svgDonut(segs) {
+  const total = segs.reduce((a, s) => a + s.value, 0) || 1;
+  const R = 78, r = 48, cx = 90, cy = 90;
+  let a0 = -Math.PI / 2;
+  const p = (ang, rad) => `${(cx + rad * Math.cos(ang)).toFixed(2)} ${(cy + rad * Math.sin(ang)).toFixed(2)}`;
+  const arcs = segs.filter(s => s.value > 0).map(s => {
+    const a1 = a0 + (s.value / total) * Math.PI * 2, large = (a1 - a0) > Math.PI ? 1 : 0;
+    const d = `M${p(a0, R)} A${R} ${R} 0 ${large} 1 ${p(a1, R)} L${p(a1, r)} A${r} ${r} 0 ${large} 0 ${p(a0, r)} Z`;
+    a0 = a1;
+    return `<path d="${d}" fill="${s.color}"><title>${s.label}: ${money(s.value)} · ${Math.round(s.value / total * 100)}%</title></path>`;
+  }).join('');
+  return `<svg viewBox="0 0 180 180" width="164" height="164">${arcs}</svg>`;
+}
+async function viewExec() {
+  el('topActions').innerHTML = `<button class="btn" onclick="window.print()">${IC.printer} In / Lưu PDF</button>`;
+  el('content').innerHTML = '<div class="spinner"></div>';
+  const year = curMonth().slice(0, 4);
+  const [rev, revPrev] = await Promise.all([guard(() => API.revenue(year)), API.revenue(String(+year - 1)).catch(() => [])]);
+  const sum = (arr, k) => arr.reduce((a, m) => a + (+m[k] || 0), 0);
+  const totalYear = sum(rev, 'total'), paidYear = sum(rev, 'paid'), prevYear = sum(revPrev, 'total');
+  const collection = totalYear ? Math.round(paidYear / totalYear * 100) : 0;
+  // Chỉ so cùng kỳ khi năm trước có dữ liệu đủ ý nghĩa (>=5% năm nay), tránh % ảo
+  const yoy = (prevYear > totalYear * 0.05) ? Math.round((totalYear - prevYear) / prevYear * 100) : null;
+  const occ = ST.students.filter(isOccupying).length;
+  const capacity = ST.rooms.reduce((a, r) => a + (+r.capacity || 0), 0);
+  const occRate = capacity ? Math.round(occ / capacity * 100) : 0;
+  const outstanding = totalYear - paidYear;
+  const dep = ST.students.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason) && String(s.check_out_date).slice(0, 4) === year).length;
+  const svcs = [
+    ['Tiền phòng', sum(rev, 'room'), 'var(--brand)'], ['Điện', sum(rev, 'electric'), '#5f7ea3'],
+    ['Nước', sum(rev, 'water'), '#4f8f63'], ['Dịch vụ', sum(rev, 'service'), '#b5822f'],
+    ['Máy giặt', sum(rev, 'washing'), '#9a7bb0'], ['Gửi xe', sum(rev, 'parking'), '#c25545'], ['Khác', sum(rev, 'other'), '#8a8172'],
+  ].filter(x => x[1] > 0);
+  const svcTotal = svcs.reduce((a, s) => a + s[1], 0) || 1;
+  const chartRows = rev.map(m => ({ month: m.month, label: m.month.slice(5), total: +m.total || 0, paid: +m.paid || 0 }));
+  const female = ST.students.filter(s => isOccupying(s) && s.gender === 'female').length;
+  const male = occ - female;
+  const kpi = (ic, cls, val, label, sub) => `<div class="kpi"><span class="ic ${cls}">${ic}</span><div><div class="v">${val}</div><div class="l">${label}${sub ? ` · ${sub}` : ''}</div></div></div>`;
+
+  el('content').innerHTML = `<div id="printArea">
+    <div class="print-only" style="margin-bottom:14px"><h2 style="font-family:var(--serif);margin:0">${esc(ST.settings.dorm_name || 'Ký túc xá')} — Báo cáo điều hành ${year}</h2><div class="muted">Xuất ngày ${fmtDate(today())}</div></div>
+    <div class="kpis">
+      ${kpi(IC.userCheck, 'ic-green', occRate + '%', 'Tỉ lệ lấp đầy', occ + '/' + capacity + ' giường')}
+      ${kpi(IC.percent, 'ic-brand', collection + '%', 'Tỉ lệ thu năm ' + year)}
+      ${kpi(IC.banknote, 'ic-brand', money(totalYear), 'Doanh thu năm', yoy != null ? (yoy >= 0 ? '▲' : '▼') + Math.abs(yoy) + '% vs ' + (+year - 1) : '')}
+      ${kpi(IC.wallet, 'ic-red', money(outstanding), 'Còn phải thu')}
+      ${kpi(IC.planeTakeoff, 'ic-gray', dep, 'Xuất cảnh năm ' + year)}
+    </div>
+    <div class="panel"><div class="hd"><h2>${IC.trendingUp} Doanh thu theo tháng — ${year}</h2>
+      <div class="flex" style="gap:14px;font-size:12px"><span class="flex" style="gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:var(--brand);display:inline-block"></span>Đã thu</span><span class="flex" style="gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:var(--line2);display:inline-block"></span>Chưa thu</span></div>
+    </div><div class="pad">${chartRows.some(r => r.total) ? svgBars(chartRows) : '<div class="empty">Chưa có dữ liệu doanh thu năm này.</div>'}</div></div>
+    <div class="grid2" style="align-items:start">
+      <div class="panel" style="margin:0"><div class="hd"><h2>${IC.pie} Cơ cấu doanh thu</h2></div><div class="pad" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+        ${svcs.length ? svgDonut(svcs.map(s => ({ label: s[0], value: s[1], color: s[2] }))) : '<div class="empty">Chưa có dữ liệu.</div>'}
+        <div style="flex:1;min-width:170px">${svcs.map(s => `<div class="flex" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><span class="flex" style="gap:8px"><span style="width:11px;height:11px;border-radius:3px;background:${s[2]};display:inline-block"></span>${s[0]}</span><strong>${Math.round(s[1] / svcTotal * 100)}%</strong></div>`).join('')}</div>
+      </div></div>
+      <div class="panel" style="margin:0"><div class="hd"><h2>${IC.users} Lấp đầy &amp; cơ cấu học viên</h2></div><div class="pad">
+        <div style="font-size:40px;font-weight:800;font-variant-numeric:tabular-nums">${occRate}%<span class="muted" style="font-size:15px;font-weight:600"> lấp đầy</span></div>
+        <div style="height:12px;border-radius:99px;background:var(--bg2);overflow:hidden;margin:10px 0 18px"><div style="height:100%;width:${occRate}%;background:var(--brand)"></div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div><div class="muted" style="font-size:12.5px">Đang ở</div><div style="font-size:22px;font-weight:800">${occ}</div></div>
+          <div><div class="muted" style="font-size:12.5px">Giường trống</div><div style="font-size:22px;font-weight:800">${Math.max(0, capacity - occ)}</div></div>
+          <div><div class="muted" style="font-size:12.5px">Nữ · ${legalEntity('female')}</div><div style="font-size:19px;font-weight:700">${female}</div></div>
+          <div><div class="muted" style="font-size:12.5px">Nam · ${legalEntity('male')}</div><div style="font-size:19px;font-weight:700">${male}</div></div>
+        </div>
+      </div></div>
+    </div>
+  </div>`;
+}
 
 /* ---------- TỔNG QUAN ---------- */
 async function viewDashboard() {
