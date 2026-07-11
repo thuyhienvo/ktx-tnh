@@ -105,7 +105,7 @@ async function renderPublicRegister() {
       ${info.facilities && info.facilities.length ? `<div class="field"><label>Cơ sở đăng ký *</label><select id="a_facility">${info.facilities.map(f => `<option value="${f.id}">${esc(f.name)}${f.address ? ' — ' + esc(f.address) : ''}</option>`).join('')}</select></div>` : ''}
       <div class="grid2">
         <div class="field"><label>Giới tính *</label><select id="a_gender"><option value="female">Nữ</option><option value="male">Nam</option></select></div>
-        <div class="field"><label>Ngày sinh</label><input id="a_birth" type="date"></div>
+        <div class="field"><label>Ngày sinh</label><input id="a_birth"></div>
       </div>
       <div class="grid2">
         <div class="field"><label>Mã học viên</label><input id="a_code"></div>
@@ -128,12 +128,13 @@ async function renderPublicRegister() {
       <div class="field"><label>Ghi chú</label><textarea id="a_note" rows="2"></textarea></div>
       <button class="btn pri lg" type="submit">Gửi đăng ký</button>
     </form>`;
+  attachDate(el('a_birth'), '');
   el('applyForm').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter; btn.disabled = true; btn.textContent = 'Đang gửi...';
     const body = {
       name: el('a_name').value.trim(), phone: el('a_phone').value.trim(), gender: el('a_gender').value,
-      birth_date: el('a_birth').value || null, code: el('a_code').value.trim(), class_name: el('a_class').value.trim(),
+      birth_date: el('a_birth').dataset.iso || null, code: el('a_code').value.trim(), class_name: el('a_class').value.trim(),
       rental_type: el('a_rental').value, note: el('a_note').value.trim(),
       facility_id: el('a_facility') ? +el('a_facility').value : null,
       wants_washing: el('a_wash').checked, wants_parking: el('a_park').checked, plate: el('a_plate').value.trim(),
@@ -483,7 +484,18 @@ async function saveRoom(id) {
 async function delRoom(id) { if (!confirm('Xóa phòng này?')) return; await guard(() => API.deleteRoom(id)); await refreshCache(); toast('Đã xóa phòng'); viewRooms(); }
 
 /* ---------- HỌC VIÊN ---------- */
-let stuSearch = '', stuFilter = 'all';
+let stuSearch = '', stuFilter = 'all', stuSort = { key: '', dir: 1 };
+function stuSortVal(s) {
+  switch (stuSort.key) {
+    case 'name': return (s.name || '').toLowerCase();
+    case 'room': return (s.room_name || '').toLowerCase();
+    case 'contract': return ['done', 'scanned', 'unsigned', 'none'].indexOf(s.contract_status);
+    case 'deposit': return ['held', 'refunded', 'forfeited', 'none'].indexOf(s.deposit_status);
+    case 'debt': return +s.debt || 0;
+    case 'status': return ['upcoming', 'staying', 'leaving', 'left'].indexOf(liveStatus(s));
+    default: return 0;
+  }
+}
 function viewStudents() {
   el('topActions').innerHTML = `<button class="btn pri" onclick="studentForm()">${IC.plus} Thêm học viên</button>`;
   let list = ST.students.slice();
@@ -497,6 +509,8 @@ function viewStudents() {
   // Tìm kiếm áp dụng bằng ẩn/hiện hàng (attachRowSearch) — không lọc dựng lại ở đây
   const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
   const cnt = f => ST.students.filter(f).length;
+  if (stuSort.key) list = list.slice().sort((a, b) => { const x = stuSortVal(a), y = stuSortVal(b); return (x < y ? -1 : x > y ? 1 : 0) * stuSort.dir; });
+  const sTh = (key, label, cls) => `<th class="sortable${cls ? ' ' + cls : ''}${stuSort.key === key ? (stuSort.dir === 1 ? ' asc' : ' desc') : ''}" data-sort="${key}">${label}<span class="sort-ar">${stuSort.key === key ? (stuSort.dir === 1 ? '▲' : '▼') : ''}</span></th>`;
   el('content').innerHTML = `
     <div class="pill-row">
       <button class="btn sm ${stuFilter === 'all' ? 'pri' : ''}" onclick="stuFilter='all';viewStudents()">Tất cả (${ST.students.length})</button>
@@ -511,7 +525,7 @@ function viewStudents() {
     <div class="panel"><div class="hd"><h2>Học viên (<span id="stuCount">${list.length}</span>)</h2>
       <div class="search"><span class="i">${IC.search}</span><input id="ss" placeholder="Tìm tên, mã, lớp, SĐT, số phòng..." value="${esc(stuSearch)}"></div>
     </div><div class="table-wrap">
-      ${list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th>Hợp đồng</th><th>Cọc</th><th class="num">Còn nợ</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+      ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}${sTh('debt', 'Còn nợ', 'num')}${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
       ${list.map(s => {
         const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.alert}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
         const ds = esc((s.name + ' ' + (s.code || '') + ' ' + (s.phone || '') + ' ' + (s.class_name || '') + ' ' + (s.room_name || '')).toLowerCase());
@@ -533,6 +547,14 @@ function viewStudents() {
       </tbody></table>` : `<div class="empty">Không có học viên phù hợp.</div>`}
     </div></div>`;
   const ss = el('ss'); if (ss) { ss.addEventListener('input', () => stuSearch = ss.value); attachRowSearch(ss, 'stuCount'); }
+  document.querySelectorAll('#content th.sortable').forEach(th => {
+    th.onclick = e => {
+      if (e.target.classList.contains('rz-handle')) return; // đang kéo giãn cột
+      const k = th.dataset.sort;
+      if (stuSort.key === k) stuSort.dir *= -1; else { stuSort.key = k; stuSort.dir = 1; }
+      viewStudents();
+    };
+  });
 }
 function depositBadge(s) {
   if (s.deposit_status === 'held') return '<span class="badge amber">Đang giữ</span>';
@@ -568,7 +590,7 @@ async function studentForm(id) {
       </div>
       <div class="grid2">
         <div class="field"><label>Lớp</label><input id="f_class" value="${esc(s.class_name || '')}" placeholder="Esu684"></div>
-        <div class="field"><label>Ngày sinh</label><input id="f_birth" type="date" value="${esc((s.birth_date || '').slice(0, 10))}"></div>
+        <div class="field"><label>Ngày sinh</label><input id="f_birth"></div>
       </div>
       <div class="grid2">
         <div class="field"><label>Giới tính</label><select id="f_gender" onchange="el('f_room').innerHTML=roomOptions('', this.value)">
@@ -616,12 +638,13 @@ async function studentForm(id) {
       </div>` : ''}
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveStudent(${id || 0})">Lưu</button></div>`, true);
+  attachDate(el('f_birth'), s.birth_date);
   setTimeout(() => el('f_name').focus(), 50);
 }
 async function saveStudent(id) {
   const body = {
     name: el('f_name').value.trim(), code: el('f_code').value.trim(), class_name: el('f_class').value.trim(),
-    birth_date: el('f_birth').value || null, gender: el('f_gender').value, phone: el('f_phone').value.trim(),
+    birth_date: el('f_birth').dataset.iso || null, gender: el('f_gender').value, phone: el('f_phone').value.trim(),
     room_id: el('f_room').value || null, rental_type: el('f_rental').value, check_in_date: el('f_in').value,
     residency_status: el('f_residency').value, contract_no: el('f_cno').value.trim(),
     contract_date: el('f_cdate').value || null, contract_status: el('f_cstatus').value,
@@ -1930,6 +1953,70 @@ function checkoutReqForm() {
 async function submitCheckoutReq() {
   await guard(() => API.createMeCheckoutReq({ desired_date: el('co_date').value, reason: el('co_reason').value, note: el('co_note').value.trim() }));
   closeModal(); toast('Đã gửi đơn trả phòng'); loadStudentPortal();
+}
+
+/* ================= LỊCH CHỌN NGÀY (tiếng Việt, chỉ chọn) ================= */
+const VN_DOW = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+function fmtDMY(iso) { if (!iso) return ''; const p = iso.split('-'); return `${p[2]}/${p[1]}/${p[0]}`; }
+// Gắn bộ chọn ngày cho 1 ô input: readonly, giá trị ISO lưu ở dataset.iso, hiển thị dd/mm/yyyy
+function attachDate(input, iso) {
+  if (!input) return;
+  input.readOnly = true;
+  input.dataset.iso = (iso || '').slice(0, 10);
+  input.value = fmtDMY(input.dataset.iso);
+  input.placeholder = 'Chọn ngày';
+  input.classList.add('date-in');
+  input.onclick = () => openCalendar(input);
+  input.onfocus = () => openCalendar(input);
+}
+let _calEl = null;
+function closeCalendar() { if (_calEl) { _calEl.remove(); _calEl = null; document.removeEventListener('mousedown', _calOutside, true); } }
+function _calOutside(e) { if (_calEl && !_calEl.contains(e.target) && e.target !== _calEl._input) closeCalendar(); }
+function openCalendar(input) {
+  closeCalendar();
+  const base = input.dataset.iso ? new Date(input.dataset.iso + 'T00:00:00') : new Date();
+  let view = new Date(base.getFullYear(), base.getMonth(), 1);
+  const cal = document.createElement('div'); cal.className = 'cal-pop'; cal._input = input;
+  const pick = ds => { input.dataset.iso = ds; input.value = fmtDMY(ds); closeCalendar(); input.dispatchEvent(new Event('change')); };
+  const render = () => {
+    const y = view.getFullYear(), m = view.getMonth();
+    const start = (new Date(y, m, 1).getDay() + 6) % 7; // Thứ 2 = 0
+    const days = new Date(y, m + 1, 0).getDate();
+    const sel = input.dataset.iso;
+    const nowY = new Date().getFullYear();
+    let cells = '';
+    for (let i = 0; i < start; i++) cells += '<span class="cal-d empty"></span>';
+    for (let d = 1; d <= days; d++) {
+      const ds = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      cells += `<span class="cal-d${ds === sel ? ' sel' : ''}" data-d="${ds}">${d}</span>`;
+    }
+    cal.innerHTML = `
+      <div class="cal-hd">
+        <button type="button" class="cal-nav" data-nav="-1">‹</button>
+        <div class="cal-title">
+          <select class="cal-m">${Array.from({ length: 12 }, (_, i) => `<option value="${i}" ${i === m ? 'selected' : ''}>Tháng ${i + 1}</option>`).join('')}</select>
+          <select class="cal-y">${Array.from({ length: 100 }, (_, i) => { const yy = nowY + 5 - i; return `<option value="${yy}" ${yy === y ? 'selected' : ''}>${yy}</option>`; }).join('')}</select>
+        </div>
+        <button type="button" class="cal-nav" data-nav="1">›</button>
+      </div>
+      <div class="cal-dow">${VN_DOW.map(w => `<span>${w}</span>`).join('')}</div>
+      <div class="cal-grid">${cells}</div>
+      <div class="cal-ft"><button type="button" class="btn sm" data-today>Hôm nay</button><button type="button" class="btn sm ghost" data-clear>Xóa</button></div>`;
+    cal.querySelectorAll('[data-d]').forEach(e => e.onclick = () => pick(e.dataset.d));
+    cal.querySelector('[data-nav="-1"]').onclick = () => { view = new Date(y, m - 1, 1); render(); };
+    cal.querySelector('[data-nav="1"]').onclick = () => { view = new Date(y, m + 1, 1); render(); };
+    cal.querySelector('.cal-m').onchange = e => { view = new Date(y, +e.target.value, 1); render(); };
+    cal.querySelector('.cal-y').onchange = e => { view = new Date(+e.target.value, m, 1); render(); };
+    cal.querySelector('[data-today]').onclick = () => { const t = new Date(); pick(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`); };
+    cal.querySelector('[data-clear]').onclick = () => pick('');
+  };
+  document.body.appendChild(cal);
+  const r = input.getBoundingClientRect();
+  cal.style.left = Math.min(r.left, window.innerWidth - 300) + 'px';
+  cal.style.top = (r.bottom + 6) + 'px';
+  render();
+  _calEl = cal;
+  setTimeout(() => document.addEventListener('mousedown', _calOutside, true), 0);
 }
 
 /* ================= KÉO GIÃN CỘT BẢNG ================= */

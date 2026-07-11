@@ -339,6 +339,27 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);b
 .media-empty .ic-svg{width:26px;height:26px;opacity:.5}
 .media-info{margin-bottom:10px;font-size:13px}
 .media-slot label.btn{cursor:pointer}
+/* Lịch chọn ngày tiếng Việt */
+.date-in{cursor:pointer}
+.cal-pop{position:fixed;z-index:60;background:var(--card);border:1px solid var(--line2);border-radius:14px;box-shadow:var(--shadow-lg);padding:12px;width:288px;font-size:14px;animation:pop .14s ease}
+.cal-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.cal-title{flex:1;display:flex;gap:6px;justify-content:center}
+.cal-title select{width:auto;padding:5px 6px;border-radius:8px;font-size:13px;font-weight:600}
+.cal-nav{border:1px solid var(--line2);background:var(--card);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:18px;color:var(--ink);line-height:1;flex-shrink:0}
+.cal-nav:hover{background:var(--brand-soft);border-color:var(--brand)}
+.cal-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px}
+.cal-dow span{text-align:center;font-size:11px;font-weight:700;color:var(--muted);padding:4px 0}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-d{text-align:center;padding:7px 0;border-radius:8px;cursor:pointer;font-variant-numeric:tabular-nums;transition:background .1s,color .1s}
+.cal-d:hover:not(.empty){background:var(--brand-soft);color:var(--brand-d)}
+.cal-d.sel{background:var(--ink);color:#f7f2e8;font-weight:700}
+.cal-d.empty{cursor:default}
+.cal-ft{display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+/* Cột bảng có thể click để sắp xếp */
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--ink)}
+th.sortable .sort-ar{opacity:.4;margin-left:3px;font-size:10px}
+th.sortable.asc .sort-ar,th.sortable.desc .sort-ar{opacity:1;color:var(--brand-d)}
 @media(max-width:920px){
   .amen-grid{grid-template-columns:repeat(2,1fr)}
 }
