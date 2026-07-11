@@ -1,7 +1,13 @@
 # Ảnh trang giới thiệu khu nội trú
 
-Đặt ảnh thật vào thư mục này **đúng tên file** bên dưới. Trang giới thiệu (`/dang-ky`)
-sẽ tự hiển thị. Nếu thiếu file nào, chỗ đó hiện ô placeholder (không lỗi) cho tới khi bạn thêm ảnh.
+## Cách 1 (khuyến nghị): Upload ngay trong app
+Đăng nhập quản lý → **Cài đặt** → mục **"Ảnh khu nội trú (trang giới thiệu)"** →
+bấm **Chọn ảnh** cho từng vị trí. Ảnh lưu trong CSDL, **bền vững qua deploy**, không cần sửa code.
+
+## Cách 2: Đặt file vào thư mục này
+Đặt ảnh **đúng tên file** bên dưới. Trang giới thiệu (`/dang-ky`) sẽ tự hiển thị.
+Nếu thiếu file nào, chỗ đó hiện ô placeholder (không lỗi). Lưu ý: trên Render, file đặt tay
+có thể **mất khi deploy lại** — nên ưu tiên Cách 1.
 
 | Tên file | Vị trí hiển thị | Kích thước khuyên dùng |
 |---|---|---|

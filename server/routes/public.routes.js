@@ -1,7 +1,32 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const { query, getSettings } = require('../db');
 
 const router = express.Router(); // KHÔNG yêu cầu đăng nhập
+
+// Danh sách khóa ảnh hợp lệ của trang giới thiệu
+const MEDIA_KEYS = ['hero', 'khuon-vien-1', 'khuon-vien-2', 'khuon-vien-3', 'phong-1', 'phong-2', 'phong-3'];
+
+// Phục vụ ảnh khu nội trú: ưu tiên ảnh upload (CSDL) -> file trong /public/images -> 404
+router.get('/image/:key', async (req, res, next) => {
+  try {
+    const key = req.params.key;
+    if (!MEDIA_KEYS.includes(key)) return res.status(404).end();
+    const row = (await query('SELECT data FROM media WHERE key=$1', [key])).rows[0];
+    if (row && row.data) {
+      const m = /^data:(image\/[\w.+-]+);base64,(.+)$/s.exec(row.data);
+      if (m) {
+        res.set('Content-Type', m[1]);
+        res.set('Cache-Control', 'no-cache');
+        return res.send(Buffer.from(m[2], 'base64'));
+      }
+    }
+    const file = path.join(__dirname, '..', '..', 'public', 'images', key + '.jpg');
+    if (fs.existsSync(file)) return res.sendFile(file);
+    return res.status(404).end();
+  } catch (e) { next(e); }
+});
 
 // Thông tin KTX + đơn giá (để hiển thị trên trang đăng ký)
 router.get('/info', async (req, res, next) => {

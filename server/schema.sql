@@ -236,6 +236,13 @@ CREATE TABLE IF NOT EXISTS violations (
 );
 CREATE INDEX IF NOT EXISTS idx_violations_student ON violations(student_id);
 
+-- Ảnh trang giới thiệu (upload trong Cài đặt, lưu base64 — bền vững qua deploy)
+CREATE TABLE IF NOT EXISTS media (
+  key        TEXT PRIMARY KEY,
+  data       TEXT,             -- data URL: data:image/...;base64,...
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_students_status ON students(status);
 CREATE INDEX IF NOT EXISTS idx_invoices_month  ON invoices(month);
 CREATE INDEX IF NOT EXISTS idx_logs_student    ON logs(student_id);

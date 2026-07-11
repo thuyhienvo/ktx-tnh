@@ -20,7 +20,7 @@ async function renderPublicRegister() {
   el('app').innerHTML = `
   <div class="intro">
     <header class="intro-hero">
-      <figure class="intro-hero-bg ph-img"><img src="/images/hero.jpg" alt="" onerror="this.remove()"><span class="ph-ico">${IC.building}</span></figure>
+      <figure class="intro-hero-bg ph-img"><img src="/api/public/image/hero" alt="" onerror="this.remove()"><span class="ph-ico">${IC.building}</span></figure>
       <div class="intro-hero-in">
         <div class="intro-brand">${IC.home} <span>${dorm}</span></div>
         <h1>Không gian nội trú<br>an tâm &amp; nề nếp</h1>
@@ -41,9 +41,9 @@ async function renderPublicRegister() {
       <div class="intro-head"><span class="eyebrow">Về khu nội trú</span><h2>Khuôn viên ngăn nắp, an ninh, gần trường</h2>
         <p>Khu nội trú bố trí gọn gàng với khu tự học, sinh hoạt chung và bảo vệ 24/7 — nơi học viên rèn nếp sống kỷ luật kiểu Nhật.</p></div>
       <div class="intro-gallery">
-        ${imgCard('/images/khuon-vien-1.jpg', 'Khuôn viên')}
-        ${imgCard('/images/khuon-vien-2.jpg', 'Sảnh sinh hoạt chung')}
-        ${imgCard('/images/khuon-vien-3.jpg', 'Khu tự học')}
+        ${imgCard('/api/public/image/khuon-vien-1', 'Khuôn viên')}
+        ${imgCard('/api/public/image/khuon-vien-2', 'Sảnh sinh hoạt chung')}
+        ${imgCard('/api/public/image/khuon-vien-3', 'Khu tự học')}
       </div>
     </section>
 
@@ -51,9 +51,9 @@ async function renderPublicRegister() {
       <div class="intro-head"><span class="eyebrow">Phòng ở</span><h2>Phòng ở tiện nghi, sạch sẽ</h2>
         <p>Phòng ghép đầy đủ nội thất: giường tầng, tủ locker riêng, máy lạnh, kệ đồ — vệ sinh định kỳ.</p></div>
       <div class="intro-gallery">
-        ${imgCard('/images/phong-1.jpg', 'Phòng ghép')}
-        ${imgCard('/images/phong-2.jpg', 'Nội thất phòng')}
-        ${imgCard('/images/phong-3.jpg', 'Khu vệ sinh')}
+        ${imgCard('/api/public/image/phong-1', 'Phòng ghép')}
+        ${imgCard('/api/public/image/phong-2', 'Nội thất phòng')}
+        ${imgCard('/api/public/image/phong-3', 'Khu vệ sinh')}
       </div>
     </section>
 
@@ -232,6 +232,15 @@ const CONTRACT_BADGE = { done: 'green', scanned: 'blue', unsigned: 'amber', none
 const CHECKOUT_REASONS = [['departure', 'Xuất cảnh (đi Nhật)'], ['personal', 'Cá nhân'], ['facility', 'Cơ sở vật chất'], ['dropout', 'Nghỉ học'], ['reserve', 'Bảo lưu'], ['other', 'Khác']];
 const REASON_LABEL = { departure: 'Xuất cảnh', personal: 'Cá nhân', facility: 'Cơ sở vật chất', dropout: 'Nghỉ học', reserve: 'Bảo lưu', other: 'Khác', normal: 'Khác', urgent_visa: 'Xuất cảnh' };
 const VIO_SEV = { minor: ['Nhẹ', 'gray'], major: ['Nặng', 'amber'], severe: ['Nghiêm trọng', 'red'] };
+const INTRO_MEDIA = [
+  ['hero', 'Ảnh nền đầu trang (toàn cảnh)'],
+  ['khuon-vien-1', 'Khuôn viên'],
+  ['khuon-vien-2', 'Sảnh sinh hoạt chung'],
+  ['khuon-vien-3', 'Khu tự học'],
+  ['phong-1', 'Phòng ghép'],
+  ['phong-2', 'Nội thất phòng'],
+  ['phong-3', 'Khu vệ sinh'],
+];
 const vioSevBadge = sev => { const [l, c] = VIO_SEV[sev] || VIO_SEV.minor; return `<span class="badge ${c}">${l}</span>`; };
 
 // Trạng thái tự tính theo ngày
@@ -1650,6 +1659,20 @@ function viewSettings() {
       <div class="pad muted" style="font-size:12.5px">${IC.bulb} Phí bồi hoàn dùng để khấu trừ vào cọc khi học viên trả phòng (nếu tài sản hư/mất/không vệ sinh).</div>
     </div>
 
+    <div class="panel"><div class="hd"><h2>${IC.building} Ảnh khu nội trú (trang giới thiệu)</h2><a class="btn sm" href="/dang-ky" target="_blank">Xem trang</a></div><div class="pad">
+      <div class="hint">${IC.info} Ảnh hiển thị ở <strong>trang đăng ký công khai</strong> cho học viên xem. Chọn ảnh từ máy — lưu ngay, <strong>không cần sửa code</strong>. Nên dùng ảnh ngang, dung lượng < 1MB để tải nhanh.</div>
+      <div class="media-grid">
+        ${INTRO_MEDIA.map(([key, label]) => `<div class="media-slot">
+          <div class="media-thumb"><img src="/api/public/image/${key}?t=${Date.now()}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="media-empty" style="display:none">${IC.building}<span>Chưa có ảnh</span></div></div>
+          <div class="media-info"><strong>${label}</strong></div>
+          <div class="rowbtns">
+            <label class="btn sm">${IC.download} Chọn ảnh<input type="file" accept="image/*" style="display:none" onchange="uploadIntroMedia('${key}', this)"></label>
+            <button class="btn sm ghost" title="Xóa ảnh" onclick="removeIntroMedia('${key}')">${IC.trash}</button>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div></div>
+
     <div class="panel"><div class="hd"><h2>${IC.alert} Loại vi phạm / nhắc nhở</h2><button class="btn sm" onclick="vtypeForm()">${IC.plus} Thêm loại</button></div>
       <div class="table-wrap"><table><thead><tr><th>Tên loại vi phạm</th><th>Mức độ</th><th></th></tr></thead><tbody>
         ${(ST.vtypes || []).map(t => `<tr>
@@ -1686,6 +1709,23 @@ function viewSettings() {
     <div class="panel"><div class="hd"><h2>${IC.shield} Tài khoản</h2></div><div class="pad">
       <button class="btn" onclick="changePwd()">${IC.key} Đổi mật khẩu quản trị</button>
     </div></div>`;
+}
+/* Ảnh trang giới thiệu (upload trong Cài đặt) */
+function uploadIntroMedia(key, input) {
+  const f = input.files[0]; if (!f) return;
+  if (f.size > 6 * 1024 * 1024) { input.value = ''; return toast('Ảnh quá lớn (tối đa 6MB)', 'err'); }
+  const r = new FileReader();
+  r.onload = async () => {
+    try {
+      await guard(() => API.uploadMedia(key, r.result));
+      toast('Đã cập nhật ảnh'); viewSettings();
+    } catch (e) { input.value = ''; }
+  };
+  r.readAsDataURL(f);
+}
+async function removeIntroMedia(key) {
+  if (!confirm('Xóa ảnh này? Trang giới thiệu sẽ hiện ô mẫu.')) return;
+  await guard(() => API.deleteMedia(key)); toast('Đã xóa ảnh'); viewSettings();
 }
 function vtypeForm(id) {
   const t = id ? (ST.vtypes || []).find(x => x.id === id) : { name: '', severity: 'minor', active: true };

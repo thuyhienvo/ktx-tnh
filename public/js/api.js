@@ -99,6 +99,11 @@ const API = {
   meCheckoutReq: () => api('/me/checkout-request'),
   createMeCheckoutReq: b => api('/me/checkout-request', { method: 'POST', body: b }),
 
+  // Ảnh trang giới thiệu (upload trong Cài đặt)
+  mediaList: () => api('/media'),
+  uploadMedia: (key, data) => api('/media/' + key, { method: 'POST', body: { data } }),
+  deleteMedia: key => api('/media/' + key, { method: 'DELETE' }),
+
   // Công khai (không cần đăng nhập)
   publicInfo: () => api('/public/info'),
   publicStats: () => api('/public/stats'),
