@@ -282,7 +282,11 @@ function renderAdmin() {
         </div>
       </aside>
       <div class="main">
-        <div class="top"><div><h1 id="pgTitle">Tổng quan</h1><div class="sub" id="pgSub"></div></div><div class="toolbar" id="topActions"></div></div>
+        <div class="top"><div><h1 id="pgTitle">Tổng quan</h1><div class="sub" id="pgSub"></div></div>
+          <div class="flex" style="gap:12px">
+            <button class="notif-bell" id="notifBell" title="Thông báo" onclick="toggleNotif(event)">${IC.bell}<span class="notif-dot" id="notifDot" style="display:none"></span></button>
+            <div class="toolbar" id="topActions"></div>
+          </div></div>
         <div class="content" id="content"><div class="spinner"></div></div>
       </div>
     </div>`;
@@ -309,6 +313,42 @@ function updateNavBadges() {
     + ST.couts.filter(c => c.status === 'pending').length
     + (ST.vstats && ST.vstats.needMail || 0);
   const b = el('navReq'); if (b) { b.textContent = n; b.style.display = n ? '' : 'none'; }
+  updateNotif();
+}
+/* ---- Trung tâm thông báo (chuông) ---- */
+function notifItems() {
+  const items = [];
+  const pApps = ST.applications.filter(a => a.status === 'pending').length;
+  const pDmg = ST.damage.filter(d => d.status !== 'done').length;
+  const pCout = ST.couts.filter(c => c.status === 'pending').length;
+  const needMail = (ST.vstats && ST.vstats.needMail) || 0;
+  const refund = ST.students.filter(s => liveStatus(s) === 'left' && s.deposit_status === 'held').length;
+  if (pApps) items.push({ n: pApps, ic: IC.filePen, tx: `${pApps} đơn đăng ký chờ duyệt`, act: `reqTab='apps';adminGo('requests')` });
+  if (pDmg) items.push({ n: pDmg, ic: IC.wrench, tx: `${pDmg} báo hư hỏng chưa xử lý`, act: `reqTab='reports';adminGo('requests')` });
+  if (pCout) items.push({ n: pCout, ic: IC.logOut, tx: `${pCout} đơn xin trả phòng`, act: `reqTab='cout';adminGo('requests')` });
+  if (needMail) items.push({ n: needMail, ic: IC.alert, tx: `${needMail} học viên vi phạm cần báo nhà trường`, act: `reqTab='reports';adminGo('requests')` });
+  if (refund) items.push({ n: refund, ic: IC.handCoins, tx: `${refund} khoản cọc chờ hoàn (đã trả phòng)`, act: `quyCoc()` });
+  return items;
+}
+function updateNotif() {
+  const total = notifItems().reduce((a, i) => a + i.n, 0);
+  const d = el('notifDot'); if (d) { d.textContent = total > 99 ? '99+' : total; d.style.display = total ? '' : 'none'; }
+}
+function toggleNotif(e) {
+  if (e) e.stopPropagation();
+  const old = el('notifPanel'); if (old) { old.remove(); document.removeEventListener('mousedown', _notifOutside, true); return; }
+  const items = notifItems();
+  const p = document.createElement('div'); p.className = 'notif-panel'; p.id = 'notifPanel';
+  p.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" onclick="el('notifPanel').remove();${i.act}">${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
+  document.body.appendChild(p);
+  const r = el('notifBell').getBoundingClientRect();
+  p.style.top = (r.bottom + 8) + 'px';
+  p.style.right = Math.max(10, window.innerWidth - r.right) + 'px';
+  setTimeout(() => document.addEventListener('mousedown', _notifOutside, true), 0);
+}
+function _notifOutside(e) {
+  const p = el('notifPanel');
+  if (p && !p.contains(e.target) && !e.target.closest('#notifBell')) { p.remove(); document.removeEventListener('mousedown', _notifOutside, true); }
 }
 function adminGo(view) {
   ST.view = view;
@@ -421,27 +461,33 @@ function logsTable(logs) {
 }
 
 /* ---------- PHÒNG ---------- */
-let roomSearch = '';
-function viewRooms() {
-  el('topActions').innerHTML = `<button class="btn pri" onclick="roomForm()">${IC.plus} Thêm phòng</button>`;
-  const list = ST.rooms;
+let roomSearch = '', roomShowDeleted = false;
+async function viewRooms() {
+  el('topActions').innerHTML = roomShowDeleted
+    ? `<button class="btn" onclick="roomShowDeleted=false;viewRooms()">← Danh sách phòng</button>`
+    : `<button class="btn pri" onclick="roomForm()">${IC.plus} Thêm phòng</button>`;
+  const list = roomShowDeleted ? await guard(() => API.rooms(true)) : ST.rooms;
+  const del = roomShowDeleted;
   el('content').innerHTML = `
     <div class="panel"><div class="hd">
-      <h2>Danh sách phòng (<span id="roomCount">${list.length}</span>)</h2>
-      <div class="search"><span class="i">${IC.search}</span><input id="rs" placeholder="Tìm phòng, tầng, giới tính..." value="${esc(roomSearch)}"></div>
+      <h2>${del ? 'Phòng đã xóa' : 'Danh sách phòng'} (<span id="roomCount">${list.length}</span>)</h2>
+      <div class="toolbar">
+        <div class="search"><span class="i">${IC.search}</span><input id="rs" placeholder="Tìm phòng, tầng, giới tính..." value="${esc(roomSearch)}"></div>
+        ${del ? '' : `<button class="btn sm" onclick="roomShowDeleted=true;viewRooms()">${IC.trash} Đã xóa</button>`}
+      </div>
     </div><div class="table-wrap">
       ${list.length ? `<table><thead><tr><th>Phòng</th><th>Loại</th><th class="num">Đang ở</th><th class="num">Giá thuê</th><th></th></tr></thead><tbody>
       ${list.map(r => { const full = r.occupancy >= r.capacity && r.capacity > 0; return `<tr data-s="${esc((r.name + ' ' + genderLabel(r.gender) + ' tầng' + r.floor + ' hạng' + (r.hang || 'b')).toLowerCase())}">
-        <td><strong>${esc(r.name)}</strong>${r.upcoming ? ` <span class="badge blue" title="Sắp vào">+${r.upcoming}</span>` : ''}<div class="sub2">Tầng ${r.floor || '—'} · ${esc(legalEntity(r.gender))}</div></td>
+        <td><strong>${esc(r.name)}</strong>${r.upcoming ? ` <span class="badge blue" title="Sắp vào">+${r.upcoming}</span>` : ''}<div class="sub2">Tầng ${r.floor || '—'} · ${esc(legalEntity(r.gender))}</div>${r.note ? `<div class="sub2" style="white-space:pre-wrap;margin-top:3px">${esc(r.note)}</div>` : ''}</td>
         <td>${r.gender === 'female' ? '<span class="badge red">Nữ</span>' : '<span class="badge blue">Nam</span>'} <span class="badge gray">Hạng ${esc(r.hang || 'B')}</span></td>
         <td class="num"><span class="badge ${full ? 'red' : r.occupancy ? 'green' : 'gray'}">${r.occupancy}/${r.capacity || 0}</span></td>
         <td class="num">${money(r.monthly_fee)}<span class="muted">/người</span><div class="sub2">Nguyên phòng: ${money(ST.settings['room_price_' + (r.hang || 'B')])}</div></td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
-          <button class="btn sm" onclick="roomForm(${r.id})">Sửa</button>
-          <button class="btn sm ghost" onclick="delRoom(${r.id})">${IC.trash}</button>
+          ${del ? `<button class="btn sm green" onclick="restoreRoom(${r.id})">${IC.undo} Khôi phục</button>`
+                : `<button class="btn sm" onclick="roomForm(${r.id})">Sửa</button><button class="btn sm ghost" onclick="delRoom(${r.id})">${IC.trash}</button>`}
         </div></td></tr>`; }).join('')}
       <tr class="no-result" style="display:none"><td colspan="5"><div class="empty">Không tìm thấy phòng phù hợp.</div></td></tr>
-      </tbody></table>` : `<div class="empty">Chưa có phòng nào. Bấm <strong>${IC.plus} Thêm phòng</strong>.</div>`}
+      </tbody></table>` : `<div class="empty">${del ? 'Không có phòng đã xóa.' : `Chưa có phòng nào. Bấm <strong>${IC.plus} Thêm phòng</strong>.`}</div>`}
     </div></div>`;
   const rs = el('rs'); if (rs) { rs.addEventListener('input', () => roomSearch = rs.value); attachRowSearch(rs, 'roomCount'); }
 }
@@ -454,11 +500,11 @@ function roomForm(id) {
     <div class="mh"><h3>${id ? 'Sửa phòng' : 'Thêm phòng'}</h3><button class="x" onclick="closeModal()">×</button></div>
     <div class="mb">
       <div class="grid2">
-        <div class="field"><label>Tên / số phòng *</label><input id="f_name" value="${esc(r.name)}" placeholder="VD: 101"></div>
+        <div class="field"><label>Tên / số phòng *</label><input id="f_name" value="${esc(r.name)}" placeholder="VD: 104" oninput="el('f_floor_disp').value='Tầng '+roomFloorOf(this.value)"></div>
         <div class="field"><label>Cơ sở</label><select id="f_fac">${facilityOptions(r.facility_id)}</select></div>
       </div>
       <div class="grid2">
-        <div class="field"><label>Tầng</label><input id="f_floor" type="number" min="1" value="${esc(r.floor)}"></div>
+        <div class="field"><label>Tầng <span class="opt">(tự tính từ số phòng)</span></label><input id="f_floor_disp" readonly value="Tầng ${roomFloorOf(r.name)}" style="background:var(--bg2);color:var(--muted)"></div>
         <div class="field"><label>Giới tính (pháp nhân tự gán)</label><select id="f_gender" onchange="el('lgHint').textContent='Pháp nhân: '+(this.value==='female'?(ST.settings.legal_female||'E2'):(ST.settings.legal_male||'S2'))">
           <option value="female" ${r.gender === 'female' ? 'selected' : ''}>Nữ (tầng 1–2)</option>
           <option value="male" ${r.gender === 'male' ? 'selected' : ''}>Nam (tầng 3–4)</option>
@@ -469,19 +515,21 @@ function roomForm(id) {
         <div class="field"><label>Sức chứa (giường)</label><input id="f_cap" type="number" min="0" value="${esc(r.capacity)}"></div>
       </div>
       <div class="field"><label>Giá thuê ghép / người / tháng <span class="opt">(đồng)</span></label><input id="f_mfee" type="number" min="0" value="${esc(r.monthly_fee)}"></div>
-      <div class="field"><label>Ghi chú</label><input id="f_note" value="${esc(r.note || '')}"></div>
+      <div class="field"><label>Ghi chú <span class="opt">(mỗi dòng một ghi chú)</span></label><textarea id="f_note" rows="3">${esc(r.note || '')}</textarea></div>
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveRoom(${id || 0})">Lưu</button></div>`);
   setTimeout(() => el('f_name').focus(), 50);
 }
 async function saveRoom(id) {
-  const body = { name: el('f_name').value.trim(), facility_id: +el('f_fac').value || null, floor: +el('f_floor').value || 1,
+  const body = { name: el('f_name').value.trim(), facility_id: +el('f_fac').value || null,
     gender: el('f_gender').value, hang: el('f_hang').value, capacity: +el('f_cap').value || 0, monthly_fee: +el('f_mfee').value || 0, note: el('f_note').value.trim() };
   if (!body.name) return toast('Nhập tên phòng', 'err');
   await guard(() => id ? API.updateRoom(id, body) : API.createRoom(body));
   await refreshCache(); closeModal(); toast('Đã lưu phòng'); viewRooms();
 }
-async function delRoom(id) { if (!confirm('Xóa phòng này?')) return; await guard(() => API.deleteRoom(id)); await refreshCache(); toast('Đã xóa phòng'); viewRooms(); }
+async function delRoom(id) { if (!confirm('Xóa phòng này? (Có thể khôi phục lại trong mục "Đã xóa")')) return; await guard(() => API.deleteRoom(id)); await refreshCache(); toast('Đã xóa phòng'); viewRooms(); }
+async function restoreRoom(id) { await guard(() => API.restoreRoom(id)); await refreshCache(); toast('Đã khôi phục phòng'); viewRooms(); }
+const roomFloorOf = n => { const m = String(n || '').match(/\d/); return m ? m[0] : '—'; };
 
 /* ---------- HỌC VIÊN ---------- */
 let stuSearch = '', stuFilter = 'all', stuSort = { key: '', dir: 1 };
@@ -1057,10 +1105,11 @@ async function viewRequests() {
         <td><strong>${esc(a.name)}</strong>${a.class_name ? `<div class="muted" style="font-size:11px">${esc(a.class_name)}</div>` : ''}${a.facility_name ? `<div class="sub2">${IC.building} ${esc(a.facility_name)}</div>` : ''}</td>
         <td>${esc(a.phone)}</td><td>${genderLabel(a.gender)}</td>
         <td class="muted" style="font-size:12px">${RENTAL_LABEL[a.rental_type] || 'Thuê ghép'}</td>
-        <td class="muted" style="font-size:12px">${esc(a.pref || '')}${a.wants_washing ? `<div>${IC.washer} Máy giặt</div>` : ''}${a.wants_parking || a.plate ? `<div>${IC.bike} Gửi xe${a.plate ? ' · ' + esc(a.plate) : ''}</div>` : ''}${a.note ? `<div>${esc(a.note)}</div>` : ''}</td>
+        <td class="muted" style="font-size:12px">${esc(a.pref || '')}${a.wants_washing ? `<div>${IC.washer} Máy giặt</div>` : ''}${a.wants_parking || a.plate ? `<div>${IC.bike} Gửi xe${a.plate ? ' · ' + esc(a.plate) : ''}</div>` : ''}${a.note ? `<div>${esc(a.note)}</div>` : ''}${noteLine(a.admin_note)}</td>
         <td>${a.status === 'pending' ? '<span class="badge amber">Chờ duyệt</span>' : a.status === 'approved' ? '<span class="badge green">Đã thêm</span>' : '<span class="badge gray">Từ chối</span>'}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${a.status === 'pending' ? `<button class="btn sm green" onclick='approveForm(${JSON.stringify(a).replace(/'/g, "&#39;")})'>${IC.plus} Thêm vào phòng</button><button class="btn sm" onclick="rejectApp(${a.id})">Từ chối</button>` : ''}
+          <button class="btn sm ghost" title="Ghi chú" onclick="noteForm('app', ${a.id})">${IC.filePen}</button>
           <button class="btn sm ghost" onclick="delApp(${a.id})">${IC.trash}</button>
         </div></td></tr>`).join('')}
     </tbody></table></div>` : '<div class="empty">Chưa có đơn đăng ký nào.</div>';
@@ -1069,11 +1118,12 @@ async function viewRequests() {
       ${damage.map(d => `<tr>
         <td>${fmtDate(String(d.created_at).slice(0, 10))}</td>
         <td>${esc(d.student_name || '—')}</td><td>${esc(d.room_name || '—')}</td>
-        <td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}</td>
+        <td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}${noteLine(d.admin_note)}</td>
         <td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>' : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${d.status !== 'processing' ? `<button class="btn sm" onclick="setDamage(${d.id},'processing')">Đang xử lý</button>` : ''}
           ${d.status !== 'done' ? `<button class="btn sm green" onclick="setDamage(${d.id},'done')">${IC.check} Xong</button>` : `<button class="btn sm" onclick="setDamage(${d.id},'new')">Mở lại</button>`}
+          <button class="btn sm ghost" title="Ghi chú" onclick="noteForm('damage', ${d.id})">${IC.filePen}</button>
         </div></td></tr>`).join('')}
     </tbody></table></div>` : '<div class="empty">Chưa có báo cáo hư hỏng.</div>';
     const vioRows = vios.map(v => `<tr>
@@ -1097,16 +1147,32 @@ async function viewRequests() {
         ${vios.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày</th><th>Học viên</th><th>Loại vi phạm</th><th>Mức độ</th><th class="num">Lần</th><th>Nhà trường</th><th></th></tr></thead><tbody>${vioRows}</tbody></table></div>` : '<div class="empty">Chưa ghi nhận vi phạm nào. Bấm <strong>Ghi nhận vi phạm</strong> hoặc mở chi tiết học viên.</div>'}
       </div>
       <div class="panel"><div class="hd"><h2>${IC.wrench} Báo cáo hư hỏng</h2></div>${dmgTable}</div>`;
+  } else if (reqTab === 'history') {
+    const hist = [];
+    apps.filter(a => a.status !== 'pending').forEach(a => hist.push({ date: (a.reviewed_at || a.created_at), type: 'Đăng ký nội trú', who: a.name, detail: a.status === 'approved' ? 'Đã thêm vào phòng' : 'Từ chối', ok: a.status === 'approved', note: a.admin_note }));
+    damage.filter(d => d.status === 'done').forEach(d => hist.push({ date: (d.resolved_at || d.created_at), type: 'Hư hỏng', who: d.student_name, detail: (d.title || '') + ' — đã xử lý', ok: true, note: d.admin_note }));
+    couts.filter(c => c.status !== 'pending').forEach(c => hist.push({ date: (c.handled_at || c.created_at), type: 'Trả phòng', who: c.student_name, detail: c.status === 'done' ? 'Đã trả phòng' : 'Từ chối', ok: c.status === 'done', note: c.admin_note }));
+    hist.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    body = hist.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày xử lý</th><th>Loại</th><th>Học viên</th><th>Kết quả</th><th>Ghi chú</th></tr></thead><tbody>
+      ${hist.map(h => `<tr>
+        <td>${fmtDate(String(h.date).slice(0, 10))}</td>
+        <td>${esc(h.type)}</td>
+        <td>${esc(h.who || '—')}</td>
+        <td><span class="badge ${h.ok ? 'green' : 'gray'}">${esc(h.detail)}</span></td>
+        <td class="muted" style="white-space:pre-wrap">${esc(h.note || '—')}</td>
+      </tr>`).join('')}
+    </tbody></table></div>` : '<div class="empty">Chưa có lịch sử xử lý.</div>';
   } else {
     body = couts.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày gửi</th><th>Học viên</th><th>Phòng</th><th>Ngày muốn trả</th><th>Lý do</th><th>Trạng thái</th><th></th></tr></thead><tbody>
       ${couts.map(c => `<tr>
         <td>${fmtDate(String(c.created_at).slice(0, 10))}</td>
         <td>${esc(c.student_name || '—')}</td><td>${esc(c.room_name || '—')}</td>
         <td>${fmtDate(c.desired_date)}</td>
-        <td>${REASON_LABEL[c.reason] || 'Khác'}${c.note ? `<div class="muted" style="font-size:12px">${esc(c.note)}</div>` : ''}</td>
+        <td>${REASON_LABEL[c.reason] || 'Khác'}${c.note ? `<div class="muted" style="font-size:12px">${esc(c.note)}</div>` : ''}${noteLine(c.admin_note)}</td>
         <td>${c.status === 'done' ? '<span class="badge green">Đã trả phòng</span>' : c.status === 'rejected' ? '<span class="badge gray">Từ chối</span>' : '<span class="badge amber">Chờ duyệt</span>'}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${c.status === 'pending' ? `<button class="btn sm danger" onclick="confirmCout(${c.id})">Xác nhận trả phòng</button><button class="btn sm" onclick="rejectCout(${c.id})">Từ chối</button>` : ''}
+          <button class="btn sm ghost" title="Ghi chú" onclick="noteForm('cout', ${c.id})">${IC.filePen}</button>
         </div></td></tr>`).join('')}
     </tbody></table></div>` : '<div class="empty">Chưa có đơn trả phòng.</div>';
   }
@@ -1115,9 +1181,30 @@ async function viewRequests() {
       ${tabBtn('apps', IC.filePen, 'Đăng ký ở nội trú', pApps)}
       ${tabBtn('reports', IC.wrench, 'Báo cáo hư hỏng / vi phạm', nRep)}
       ${tabBtn('cout', IC.logOut, 'Đăng ký trả phòng', pCout)}
+      ${tabBtn('history', IC.history, 'Lịch sử xử lý', 0)}
     </div>
     ${reqTab === 'reports' ? body : `<div class="panel">${body}</div>`}`;
 }
+/* ---- Ghi chú xử lý cho đơn hỗ trợ ---- */
+function noteForm(type, id) {
+  const cur = (type === 'app' ? (ST.applications.find(a => a.id === id) || {}).admin_note
+    : type === 'cout' ? (ST.couts.find(c => c.id === id) || {}).admin_note
+      : (ST.damage.find(d => d.id === id) || {}).admin_note) || '';
+  openModal(`
+    <div class="mh"><h3>${IC.filePen} Ghi chú xử lý</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb"><div class="field"><label>Ghi chú nội bộ <span class="opt">(chỉ quản lý thấy)</span></label><textarea id="nf_note" rows="4" placeholder="VD: đã gọi điện, hẹn xử lý...">${esc(cur || '')}</textarea></div></div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveNote('${type}', ${id})">Lưu ghi chú</button></div>`);
+  setTimeout(() => el('nf_note').focus(), 50);
+}
+async function saveNote(type, id) {
+  const note = el('nf_note').value.trim();
+  if (type === 'app') await guard(() => API.setAppNote(id, note));
+  else if (type === 'cout') await guard(() => API.setCoutNote(id, note));
+  else { const d = ST.damage.find(x => x.id === id) || {}; await guard(() => API.updateDamage(id, { status: d.status || 'new', admin_note: note })); }
+  await refreshCache(); closeModal(); toast('Đã lưu ghi chú'); viewRequests();
+}
+const noteLine = n => n ? `<div class="sub2" style="color:var(--brand-d);white-space:pre-wrap;margin-top:3px">${IC.filePen} ${esc(n)}</div>` : '';
+
 /* ---- Vi phạm / nhắc nhở ---- */
 function violationForm(studentId) {
   const students = ST.students.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'));
@@ -1333,12 +1420,41 @@ function invStatusBadge(st) {
   if (st === 'sent') return '<span class="badge blue">Đã gửi QR</span>';
   return '<span class="badge amber">Chưa gửi</span>';
 }
+// Biểu đồ cột mini (sparkline) tiêu thụ điện
+function sparkBars(series) {
+  const max = Math.max(1, ...series.map(s => s.kwh));
+  const w = 9, gap = 3, h = 28;
+  const bars = series.map((s, i) => {
+    const bh = s.kwh > 0 ? Math.max(2, Math.round(s.kwh / max * h)) : 0;
+    const last = i === series.length - 1;
+    return `<rect x="${i * (w + gap)}" y="${h - bh}" width="${w}" height="${bh}" rx="1.5" fill="${last ? 'var(--brand)' : 'var(--line2)'}"><title>${monthLabel(s.month)}: ${s.kwh} kWh</title></rect>`;
+  }).join('');
+  return `<svg width="${series.length * (w + gap)}" height="${h}" style="vertical-align:middle;display:block">${bars}</svg>`;
+}
+function deltaTag(cur, prev) {
+  const d = cur - prev;
+  if (!prev && !cur) return '<span class="muted">—</span>';
+  if (d === 0) return '<span class="muted">= tháng trước</span>';
+  const up = d > 0;
+  return `<span style="color:${up ? 'var(--red-ink)' : 'var(--green-ink)'};font-weight:600">${up ? '▲' : '▼'} ${Math.abs(d)} kWh</span>`;
+}
 async function viewInvoices() {
   el('topActions').innerHTML = `<button class="btn" onclick="electricForm()">${IC.zap} Chỉ số điện</button><button class="btn" onclick="oneInvoiceForm()">${IC.plus} HĐ cho 1 HV</button><button class="btn pri" onclick="generateForm()">${IC.receipt} Tạo hóa đơn theo tháng</button>`;
   el('content').innerHTML = '<div class="spinner"></div>';
   const months = await guard(() => API.invoiceMonths());
   if (months.length && !months.includes(invMonth)) invMonth = months[0];
   const all = await guard(() => API.invoices(invMonth));
+  let ehist = { months: [], rooms: [] };
+  try { ehist = await API.electricHistory(invMonth, 6); } catch {}
+  const elecPanel = ehist.rooms.length ? `<div class="panel"><div class="hd"><h2>${IC.zap} Tiêu thụ điện theo phòng — so với tháng trước</h2><span class="muted" style="font-size:12px">${ehist.months.length} tháng gần nhất · cột cam = tháng này</span></div>
+    <div class="table-wrap"><table><thead><tr><th>Phòng</th><th>Xu hướng</th><th class="num">Tháng này</th><th>Chênh lệch</th></tr></thead><tbody>
+      ${ehist.rooms.map(r => { const cur = r.series[r.series.length - 1].kwh; const prev = r.series.length > 1 ? r.series[r.series.length - 2].kwh : 0; return `<tr>
+        <td><strong>${esc(r.room_name)}</strong></td>
+        <td>${sparkBars(r.series)}</td>
+        <td class="num"><strong>${cur}</strong> kWh</td>
+        <td>${deltaTag(cur, prev)}</td>
+      </tr>`; }).join('')}
+    </tbody></table></div></div>` : '';
   let list = all.slice();
   if (invFilter === 'paid') list = list.filter(i => i.status === 'paid');
   if (invFilter === 'unpaid') list = list.filter(i => i.status !== 'paid');
@@ -1388,7 +1504,8 @@ async function viewInvoices() {
           </div></td></tr>`).join('')}
         <tr class="no-result" style="display:none"><td colspan="12"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có hóa đơn ${invFilter === 'paid' ? 'đã đóng' : 'chưa đóng'} trong kỳ này.</div>`}
-    </div></div>`;
+    </div></div>
+    ${elecPanel}`;
   const im = el('im'); if (im) im.onchange = e => { invMonth = e.target.value; viewInvoices(); };
   const iv = el('invs'); if (iv) { iv.addEventListener('input', () => invSearch = iv.value); attachRowSearch(iv, 'invCount'); }
 }

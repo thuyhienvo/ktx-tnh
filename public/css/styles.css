@@ -355,6 +355,20 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);b
 .cal-d.sel{background:var(--ink);color:#f7f2e8;font-weight:700}
 .cal-d.empty{cursor:default}
 .cal-ft{display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+/* Trung tâm thông báo (chuông) */
+.notif-bell{position:relative;border:1px solid var(--line2);background:var(--card);border-radius:11px;width:40px;height:40px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:var(--ink);flex-shrink:0;transition:.16s}
+.notif-bell:hover{border-color:var(--brand);background:#f6f1e8}
+.notif-bell .ic-svg{width:19px;height:19px}
+.notif-dot{position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;font-size:10px;font-weight:700;min-width:17px;height:17px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1}
+.notif-panel{position:fixed;z-index:60;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);width:330px;max-width:92vw;overflow:hidden;animation:pop .14s ease}
+.notif-hd{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--line);font-family:var(--serif);font-size:16px;font-weight:600}
+.notif-hd .ic-svg{width:17px;height:17px;color:var(--brand)}
+.notif-item{display:flex;align-items:center;gap:11px;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--line);padding:13px 16px;cursor:pointer;font-size:13.5px;color:var(--ink);font-family:var(--sans)}
+.notif-item:hover{background:#f6f1e8}
+.notif-item .ic-svg{width:18px;height:18px;color:var(--brand-d);flex-shrink:0}
+.notif-item:last-child{border-bottom:none}
+.notif-empty{display:flex;align-items:center;justify-content:center;gap:8px;padding:26px 16px;text-align:center;color:var(--green-ink);font-size:13.5px}
+.notif-empty .ic-svg{width:17px;height:17px}
 /* Cột bảng có thể click để sắp xếp */
 th.sortable{cursor:pointer;user-select:none}
 th.sortable:hover{color:var(--ink)}

@@ -30,10 +30,11 @@ const API = {
   updateFacility: (id, b) => api('/facilities/' + id, { method: 'PUT', body: b }),
   deleteFacility: id => api('/facilities/' + id, { method: 'DELETE' }),
 
-  rooms: () => api('/rooms'),
+  rooms: deleted => api('/rooms' + (deleted ? '?deleted=1' : '')),
   createRoom: b => api('/rooms', { method: 'POST', body: b }),
   updateRoom: (id, b) => api('/rooms/' + id, { method: 'PUT', body: b }),
   deleteRoom: id => api('/rooms/' + id, { method: 'DELETE' }),
+  restoreRoom: id => api('/rooms/' + id + '/restore', { method: 'POST' }),
 
   students: () => api('/students'),
   student: id => api('/students/' + id),
@@ -60,6 +61,7 @@ const API = {
   logs: type => api('/logs' + (type ? '?type=' + type : '')),
 
   electric: month => api('/electric?month=' + month),
+  electricHistory: (month, n) => api('/electric/history?month=' + month + (n ? '&n=' + n : '')),
   saveElectric: b => api('/electric/bulk', { method: 'POST', body: b }),
 
   invoices: month => api('/invoices' + (month ? '?month=' + month : '')),
@@ -114,6 +116,8 @@ const API = {
   applications: () => api('/applications'),
   approveApplication: (id, b) => api('/applications/' + id + '/approve', { method: 'POST', body: b }),
   rejectApplication: id => api('/applications/' + id + '/reject', { method: 'POST' }),
+  setAppNote: (id, note) => api('/applications/' + id + '/note', { method: 'PUT', body: { note } }),
+  setCoutNote: (id, note) => api('/requests/checkout/' + id + '/note', { method: 'PUT', body: { note } }),
   deleteApplication: id => api('/applications/' + id, { method: 'DELETE' }),
   damageAll: () => api('/requests/damage'),
   updateDamage: (id, b) => api('/requests/damage/' + id, { method: 'PUT', body: b }),

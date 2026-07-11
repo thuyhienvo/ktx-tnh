@@ -23,6 +23,7 @@ ALTER TABLE rooms ADD COLUMN IF NOT EXISTS facility_id INTEGER;
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS floor INTEGER DEFAULT 1;
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT 'male';
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS hang TEXT DEFAULT 'B';   -- hạng phòng A/B/C/D
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;  -- xóa mềm (khôi phục được)
 
 CREATE TABLE IF NOT EXISTS students (
   id                  SERIAL PRIMARY KEY,
@@ -170,6 +171,7 @@ ALTER TABLE applications ADD COLUMN IF NOT EXISTS wants_washing BOOLEAN DEFAULT 
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS cccd_front TEXT;   -- ảnh CCCD mặt trước
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS cccd_back TEXT;    -- ảnh CCCD mặt sau
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS facility_id INTEGER;  -- cơ sở đăng ký
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS admin_note TEXT DEFAULT '';  -- ghi chú của quản lý
 
 -- Báo cáo hư hỏng (học viên gửi)
 CREATE TABLE IF NOT EXISTS damage_reports (
@@ -208,6 +210,7 @@ CREATE TABLE IF NOT EXISTS checkout_requests (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   handled_at   TIMESTAMPTZ
 );
+ALTER TABLE checkout_requests ADD COLUMN IF NOT EXISTS admin_note TEXT DEFAULT '';  -- ghi chú của quản lý
 
 -- Danh mục loại vi phạm / nhắc nhở (sửa trong Cài đặt)
 CREATE TABLE IF NOT EXISTS violation_types (

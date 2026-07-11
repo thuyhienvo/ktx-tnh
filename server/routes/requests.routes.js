@@ -62,6 +62,14 @@ router.post('/checkout/:id/confirm', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.put('/checkout/:id/note', async (req, res, next) => {
+  try {
+    const { rows } = await query('UPDATE checkout_requests SET admin_note=$1 WHERE id=$2 RETURNING id', [req.body.note || '', req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy đơn' });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 router.post('/checkout/:id/reject', async (req, res, next) => {
   try {
     await query(`UPDATE checkout_requests SET status='rejected', handled_at=now() WHERE id=$1`, [req.params.id]);

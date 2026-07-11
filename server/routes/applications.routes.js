@@ -15,6 +15,15 @@ router.get('/', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Ghi chú của quản lý cho đơn đăng ký
+router.put('/:id/note', async (req, res, next) => {
+  try {
+    const { rows } = await query('UPDATE applications SET admin_note=$1 WHERE id=$2 RETURNING id', [req.body.note || '', req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy đơn' });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 // Duyệt đơn: tạo học viên từ đơn + xếp phòng + (tùy chọn) tạo tài khoản
 router.post('/:id/approve', async (req, res, next) => {
   const client = await pool.connect();

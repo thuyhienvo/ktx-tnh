@@ -27,8 +27,34 @@ router.get('/', async (req, res, next) => {
       FROM rooms r
       LEFT JOIN electric_readings e ON e.room_id=r.id AND e.month=$1
       LEFT JOIN electric_readings prev ON prev.room_id=r.id AND prev.month=$2
+      WHERE r.deleted_at IS NULL
       ORDER BY r.floor, r.name`, [month, pm]);
     res.json(rows);
+  } catch (e) { next(e); }
+});
+
+// Lịch sử tiêu thụ điện theo phòng (n tháng gần nhất) — để so sánh + vẽ biểu đồ
+router.get('/history', async (req, res, next) => {
+  try {
+    const month = req.query.month || new Date().toISOString().slice(0, 7);
+    const n = Math.min(12, Math.max(2, +req.query.n || 6));
+    const [y, m] = month.split('-').map(Number);
+    const months = [];
+    for (let i = n - 1; i >= 0; i--) { const d = new Date(y, m - 1 - i, 1); months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); }
+    const { rows } = await query(
+      `SELECT er.room_id, er.month, er.kwh, r.name AS room_name, r.floor
+       FROM electric_readings er JOIN rooms r ON r.id=er.room_id
+       WHERE er.month = ANY($1) AND r.deleted_at IS NULL
+       ORDER BY r.floor, r.name`, [months]);
+    const byRoom = {};
+    rows.forEach(x => {
+      const b = byRoom[x.room_id] || (byRoom[x.room_id] = { room_id: x.room_id, room_name: x.room_name, floor: x.floor, kwh: {} });
+      b.kwh[x.month] = Number(x.kwh);
+    });
+    const roomsOut = Object.values(byRoom)
+      .map(r => ({ room_id: r.room_id, room_name: r.room_name, series: months.map(mo => ({ month: mo, kwh: r.kwh[mo] || 0 })) }))
+      .filter(r => r.series.some(s => s.kwh > 0));
+    res.json({ months, rooms: roomsOut });
   } catch (e) { next(e); }
 });
 
