@@ -169,6 +169,7 @@ ALTER TABLE applications ADD COLUMN IF NOT EXISTS plate TEXT DEFAULT '';
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS wants_washing BOOLEAN DEFAULT false;
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS cccd_front TEXT;   -- ảnh CCCD mặt trước
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS cccd_back TEXT;    -- ảnh CCCD mặt sau
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS facility_id INTEGER;  -- cơ sở đăng ký
 
 -- Báo cáo hư hỏng (học viên gửi)
 CREATE TABLE IF NOT EXISTS damage_reports (

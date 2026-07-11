@@ -102,6 +102,7 @@ async function renderPublicRegister() {
         <div class="field"><label>Họ tên *</label><input id="a_name" required></div>
         <div class="field"><label>Số điện thoại *</label><input id="a_phone" required></div>
       </div>
+      ${info.facilities && info.facilities.length ? `<div class="field"><label>Cơ sở đăng ký *</label><select id="a_facility">${info.facilities.map(f => `<option value="${f.id}">${esc(f.name)}${f.address ? ' — ' + esc(f.address) : ''}</option>`).join('')}</select></div>` : ''}
       <div class="grid2">
         <div class="field"><label>Giới tính *</label><select id="a_gender"><option value="female">Nữ</option><option value="male">Nam</option></select></div>
         <div class="field"><label>Ngày sinh</label><input id="a_birth" type="date"></div>
@@ -134,6 +135,7 @@ async function renderPublicRegister() {
       name: el('a_name').value.trim(), phone: el('a_phone').value.trim(), gender: el('a_gender').value,
       birth_date: el('a_birth').value || null, code: el('a_code').value.trim(), class_name: el('a_class').value.trim(),
       rental_type: el('a_rental').value, note: el('a_note').value.trim(),
+      facility_id: el('a_facility') ? +el('a_facility').value : null,
       wants_washing: el('a_wash').checked, wants_parking: el('a_park').checked, plate: el('a_plate').value.trim(),
       cccd_front: window._pubCccd.front || null, cccd_back: window._pubCccd.back || null,
     };
@@ -164,36 +166,31 @@ async function renderLogin() {
           <span class="auth-logo">${IC.home}</span>
           <div>
             <div class="ab-title">KHU NỘI TRÚ ESUHAI</div>
-            <div class="ab-sub">Cơ sở Thoại Ngọc Hầu</div>
+            <div class="ab-sub">Hệ thống quản lý nội trú</div>
           </div>
         </div>
         <div class="auth-hero">
           <h1>Ở an tâm,<br>quen dần nếp Nhật.</h1>
           <p>Một chỗ ở yên tâm, sinh hoạt ngăn nắp — để nếp sống và sự kỷ luật của người Nhật dần thành thói quen.</p>
-          <div class="auth-amen">
-            <span>${IC.bed} 29 phòng</span>
-            <span>${IC.mapPin} Q. Tân Phú, TP.HCM</span>
-            <span>${IC.users} Nam · Nữ riêng tầng</span>
-            <span>${IC.washer} Máy giặt · ${IC.bike} Giữ xe</span>
-          </div>
+          <a class="auth-hero-link" href="/dang-ky">${IC.building} Xem giới thiệu khu nội trú →</a>
         </div>
       </div>
       <div class="auth-right">
-        <form class="auth-form" id="loginForm">
+        <div class="auth-form">
           <h2>Đăng nhập</h2>
-          <p class="sub">Đăng nhập dành cho Ban quản lý.</p>
-          <div class="auth-chip">${IC.wrench} Ban quản lý</div>
-          <div class="field"><label>Tài khoản</label><input id="lg_user" autocomplete="username" placeholder="admin" autofocus></div>
-          <div class="field"><label>Mật khẩu</label><input id="lg_pass" type="password" autocomplete="current-password"></div>
-          <button class="btn pri lg auth-btn" type="submit">Vào hệ thống →</button>
-          <div class="auth-or"><span>hoặc</span></div>
+          <p class="sub">Dành cho Ban quản lý &amp; Học viên đã có tài khoản.</p>
+          <form id="loginForm">
+            <div class="field"><label>Tài khoản</label><input id="lg_user" autocomplete="username" placeholder="Tên đăng nhập" autofocus></div>
+            <div class="field"><label>Mật khẩu</label><input id="lg_pass" type="password" autocomplete="current-password" placeholder="Mật khẩu"></div>
+            <button class="btn pri lg auth-btn" type="submit">Đăng nhập →</button>
+          </form>
+          <div class="auth-or"><span>Học viên mới?</span></div>
           <a class="auth-card" href="/dang-ky">
             <span class="ac-ico">${IC.graduation}</span>
-            <div><b>Học viên — Giới thiệu &amp; đăng ký nội trú</b><small>Xem khu nội trú, phòng ở, tiện ích, bảng giá &amp; đăng ký — không cần tài khoản</small></div>
+            <div><b>Xem giới thiệu &amp; đăng ký nội trú</b><small>Xem phòng ở, tiện ích, bảng giá và đăng ký — không cần tài khoản</small></div>
             <span class="ac-arrow">→</span>
           </a>
-          <div class="auth-foot">Bản demo · dữ liệu mẫu từ file Excel của bạn</div>
-        </form>
+        </div>
       </div>
     </div>`;
   el('loginForm').addEventListener('submit', async e => {
@@ -202,7 +199,7 @@ async function renderLogin() {
     try {
       const r = await API.login(el('lg_user').value.trim(), el('lg_pass').value);
       Auth.token = r.token; Auth.user = r.user; boot();
-    } catch (err) { toast(err.message, 'err'); btn.disabled = false; btn.textContent = 'Vào hệ thống →'; }
+    } catch (err) { toast(err.message, 'err'); btn.disabled = false; btn.textContent = 'Đăng nhập →'; }
   });
 }
 
@@ -1034,7 +1031,7 @@ async function viewRequests() {
     body = apps.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày gửi</th><th>Họ tên</th><th>SĐT</th><th>GT</th><th>Hình thức</th><th>Nguyện vọng</th><th>Trạng thái</th><th></th></tr></thead><tbody>
       ${apps.map(a => `<tr>
         <td>${fmtDate(String(a.created_at).slice(0, 10))}</td>
-        <td><strong>${esc(a.name)}</strong>${a.class_name ? `<div class="muted" style="font-size:11px">${esc(a.class_name)}</div>` : ''}</td>
+        <td><strong>${esc(a.name)}</strong>${a.class_name ? `<div class="muted" style="font-size:11px">${esc(a.class_name)}</div>` : ''}${a.facility_name ? `<div class="sub2">${IC.building} ${esc(a.facility_name)}</div>` : ''}</td>
         <td>${esc(a.phone)}</td><td>${genderLabel(a.gender)}</td>
         <td class="muted" style="font-size:12px">${RENTAL_LABEL[a.rental_type] || 'Thuê ghép'}</td>
         <td class="muted" style="font-size:12px">${esc(a.pref || '')}${a.wants_washing ? `<div>${IC.washer} Máy giặt</div>` : ''}${a.wants_parking || a.plate ? `<div>${IC.bike} Gửi xe${a.plate ? ' · ' + esc(a.plate) : ''}</div>` : ''}${a.note ? `<div>${esc(a.note)}</div>` : ''}</td>

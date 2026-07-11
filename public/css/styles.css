@@ -1,7 +1,7 @@
 :root{
   /* Nền & chữ — giấy ấm, editorial, nhiều khoảng thở */
   --bg:#f4efe6; --bg2:#efe8dc; --card:#ffffff; --line:#e7e0d1; --line2:#dbd2c1;
-  --ink:#23262f; --ink2:#4c505b; --muted:#948c7d;
+  --ink:#23262f; --ink2:#494d57; --muted:#867d6e;
   /* Thương hiệu — vàng đồng cổ điển (điểm nhấn), than chì (hành động) */
   --brand:#b58a34; --brand-d:#8a6414; --brand-soft:#f3e9d2;
   --gold:#b58a34; --gold-line:#d8c290;
@@ -39,7 +39,10 @@ a:hover{text-decoration:underline;text-underline-offset:2px}
 .auth-brand{display:flex;align-items:center;gap:14px;z-index:1}
 .auth-logo{width:46px;height:46px;border-radius:13px;background:rgba(216,194,144,.14);border:1px solid rgba(216,194,144,.34);display:inline-flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
 .ab-title{font-size:15px;font-weight:700;letter-spacing:.14em;line-height:1.2;color:#f6f1e7}
-.ab-sub{font-size:11px;opacity:.72;letter-spacing:.18em;margin-top:4px;text-transform:uppercase;color:var(--gold-line)}
+.ab-sub{font-size:11px;opacity:.92;letter-spacing:.16em;margin-top:4px;text-transform:uppercase;color:var(--gold-line)}
+.auth-hero-link{display:inline-flex;align-items:center;gap:9px;margin-top:28px;color:#f2e9d5;font-size:14px;font-weight:600;border:1px solid rgba(216,194,144,.4);padding:11px 20px;border-radius:999px;transition:.18s;letter-spacing:.01em}
+.auth-hero-link:hover{background:rgba(216,194,144,.13);border-color:var(--gold-line);text-decoration:none;transform:translateY(-1px)}
+.auth-hero-link .ic-svg{width:16px;height:16px;color:var(--gold-line)}
 .auth-hero{margin-top:auto;z-index:1}
 .auth-hero h1{font-family:var(--serif);font-size:clamp(34px,4vw,46px);line-height:1.12;margin:0 0 18px;font-weight:600;letter-spacing:.002em;max-width:15ch;color:#f7f2e8}
 .auth-hero p{font-size:15.5px;line-height:1.7;opacity:.86;max-width:40ch;margin:0;color:#e7e2d6}

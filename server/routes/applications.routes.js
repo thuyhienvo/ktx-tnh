@@ -8,7 +8,9 @@ router.use(requireAuth, requireRole('admin'));
 
 router.get('/', async (req, res, next) => {
   try {
-    const { rows } = await query('SELECT * FROM applications ORDER BY (status=\'pending\') DESC, created_at DESC');
+    const { rows } = await query(`SELECT a.*, f.name AS facility_name FROM applications a
+      LEFT JOIN facilities f ON f.id = a.facility_id
+      ORDER BY (a.status='pending') DESC, a.created_at DESC`);
     res.json(rows);
   } catch (e) { next(e); }
 });
