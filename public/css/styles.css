@@ -115,10 +115,11 @@ th,td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line);vert
 th{background:var(--bg2);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;position:relative}
 /* Chữ phụ (mã, lớp, ghi chú, mô tả) vẫn được xuống dòng bình thường */
 td .sub2,td.muted,td .muted,td small,td p,td .rowbtns{white-space:normal}
-/* Bảng cho phép kéo giãn cột: ô xuống dòng theo độ rộng cột (kéo hẹp -> rớt dòng, kéo rộng -> 1 dòng) */
-table.rz{min-width:100%}
-table.rz td,table.rz th{overflow:hidden}
-table.rz td:not(.num),table.rz th:not(.num){white-space:normal}
+/* Kéo giãn cột: mặc định giữ 1 dòng (nowrap). Chỉ bảng ĐÃ được kéo (.rz-fixed) mới cho ô
+   xuống dòng theo độ rộng cột — kéo hẹp thì rớt dòng, kéo rộng thì 1 dòng. */
+table.rz-fixed{min-width:100%;table-layout:fixed}
+table.rz-fixed td,table.rz-fixed th{overflow:hidden}
+table.rz-fixed td:not(.num),table.rz-fixed th:not(.num){white-space:normal}
 .rz-handle{position:absolute;top:0;right:-5px;width:11px;height:100%;cursor:col-resize;z-index:3;touch-action:none}
 .rz-handle::after{content:"";position:absolute;top:22%;bottom:22%;right:5px;width:2px;border-radius:2px;background:transparent;transition:background .14s}
 .rz-handle:hover::after{background:var(--brand)}

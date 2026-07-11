@@ -33,3 +33,31 @@ async function guard(fn) {
   try { return await fn(); }
   catch (e) { toast(e.message || 'Có lỗi xảy ra', 'err'); throw e; }
 }
+
+// Trì hoãn gọi hàm cho tới khi ngừng gõ
+function debounce(fn, ms = 180) {
+  let t;
+  return function (...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
+}
+
+// Tìm kiếm tức thì: chỉ ẩn/hiện các hàng <tr data-s="..."> — KHÔNG dựng lại cả bảng
+// (mượt, không chớp, không mất con trỏ). countId: id ô hiển thị số kết quả.
+function attachRowSearch(input, countId) {
+  if (!input) return;
+  const panel = input.closest('.panel') || document;
+  const run = () => {
+    const q = input.value.trim().toLowerCase();
+    const rows = panel.querySelectorAll('tbody tr[data-s]');
+    let n = 0;
+    for (const tr of rows) {
+      const show = !q || tr.dataset.s.indexOf(q) !== -1;
+      tr.style.display = show ? '' : 'none';
+      if (show) n++;
+    }
+    if (countId) { const c = el(countId); if (c) c.textContent = n; }
+    const er = panel.querySelector('.no-result');
+    if (er) er.style.display = n === 0 ? '' : 'none';
+  };
+  input.addEventListener('input', run);
+  if (input.value) run();
+}

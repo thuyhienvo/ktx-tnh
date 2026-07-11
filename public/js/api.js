@@ -65,6 +65,7 @@ const API = {
   invoices: month => api('/invoices' + (month ? '?month=' + month : '')),
   invoiceMonths: () => api('/invoices/months'),
   generateInvoices: b => api('/invoices/generate', { method: 'POST', body: b }),
+  generateOneInvoice: b => api('/invoices/generate-one', { method: 'POST', body: b }),
   createInvoice: b => api('/invoices', { method: 'POST', body: b }),
   updateInvoice: (id, b) => api('/invoices/' + id, { method: 'PUT', body: b }),
   setInvoiceStatus: (id, status) => api('/invoices/' + id + '/status', { method: 'POST', body: { status } }),

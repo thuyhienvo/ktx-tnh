@@ -417,15 +417,14 @@ function logsTable(logs) {
 let roomSearch = '';
 function viewRooms() {
   el('topActions').innerHTML = `<button class="btn pri" onclick="roomForm()">${IC.plus} Thêm phòng</button>`;
-  const q = roomSearch.toLowerCase();
-  const list = ST.rooms.filter(r => !q || (r.name + ' ' + genderLabel(r.gender) + ' tầng' + r.floor).toLowerCase().includes(q));
+  const list = ST.rooms;
   el('content').innerHTML = `
     <div class="panel"><div class="hd">
-      <h2>Danh sách phòng (${ST.rooms.length})</h2>
+      <h2>Danh sách phòng (<span id="roomCount">${list.length}</span>)</h2>
       <div class="search"><span class="i">${IC.search}</span><input id="rs" placeholder="Tìm phòng, tầng, giới tính..." value="${esc(roomSearch)}"></div>
     </div><div class="table-wrap">
       ${list.length ? `<table><thead><tr><th>Phòng</th><th>Loại</th><th class="num">Đang ở</th><th class="num">Giá thuê</th><th></th></tr></thead><tbody>
-      ${list.map(r => { const full = r.occupancy >= r.capacity && r.capacity > 0; return `<tr>
+      ${list.map(r => { const full = r.occupancy >= r.capacity && r.capacity > 0; return `<tr data-s="${esc((r.name + ' ' + genderLabel(r.gender) + ' tầng' + r.floor + ' hạng' + (r.hang || 'b')).toLowerCase())}">
         <td><strong>${esc(r.name)}</strong>${r.upcoming ? ` <span class="badge blue" title="Sắp vào">+${r.upcoming}</span>` : ''}<div class="sub2">Tầng ${r.floor || '—'} · ${esc(legalEntity(r.gender))}</div></td>
         <td>${r.gender === 'female' ? '<span class="badge red">Nữ</span>' : '<span class="badge blue">Nam</span>'} <span class="badge gray">Hạng ${esc(r.hang || 'B')}</span></td>
         <td class="num"><span class="badge ${full ? 'red' : r.occupancy ? 'green' : 'gray'}">${r.occupancy}/${r.capacity || 0}</span></td>
@@ -434,9 +433,10 @@ function viewRooms() {
           <button class="btn sm" onclick="roomForm(${r.id})">Sửa</button>
           <button class="btn sm ghost" onclick="delRoom(${r.id})">${IC.trash}</button>
         </div></td></tr>`; }).join('')}
+      <tr class="no-result" style="display:none"><td colspan="5"><div class="empty">Không tìm thấy phòng phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Chưa có phòng nào. Bấm <strong>${IC.plus} Thêm phòng</strong>.</div>`}
     </div></div>`;
-  const rs = el('rs'); if (rs) rs.oninput = e => { roomSearch = e.target.value; const p = rs.selectionStart; viewRooms(); const n = el('rs'); n.focus(); n.setSelectionRange(p, p); };
+  const rs = el('rs'); if (rs) { rs.addEventListener('input', () => roomSearch = rs.value); attachRowSearch(rs, 'roomCount'); }
 }
 function facilityOptions(sel) {
   return ST.facilities.map(f => `<option value="${f.id}" ${sel === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('');
@@ -488,8 +488,8 @@ function viewStudents() {
   if (stuFilter === 'nocontract') list = list.filter(s => isOccupying(s) && ['unsigned', 'none'].includes(s.contract_status));
   if (stuFilter === 'washing') list = list.filter(s => isOccupying(s) && s.uses_washing);
   if (stuFilter === 'nodeposit') list = list.filter(s => isOccupying(s) && s.deposit_status === 'none');
-  if (stuSearch) { const q = stuSearch.toLowerCase(); list = list.filter(s => (s.name + ' ' + (s.code || '') + ' ' + (s.phone || '') + ' ' + (s.class_name || '') + ' ' + (s.room_name || '')).toLowerCase().includes(q)); }
-
+  // Tìm kiếm áp dụng bằng ẩn/hiện hàng (attachRowSearch) — không lọc dựng lại ở đây
+  const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
   const cnt = f => ST.students.filter(f).length;
   el('content').innerHTML = `
     <div class="pill-row">
@@ -502,14 +502,14 @@ function viewStudents() {
       <button class="btn sm ${stuFilter === 'washing' ? 'pri' : ''}" onclick="stuFilter='washing';viewStudents()">${IC.washer} Máy giặt (${cnt(s => isOccupying(s) && s.uses_washing)})</button>
       <button class="btn sm ${stuFilter === 'nodeposit' ? 'pri' : ''}" onclick="stuFilter='nodeposit';viewStudents()">${IC.lock} Chưa đóng cọc (${cnt(s => isOccupying(s) && s.deposit_status === 'none')})</button>
     </div>
-    <div class="panel"><div class="hd"><h2>Học viên (${list.length})</h2>
+    <div class="panel"><div class="hd"><h2>Học viên (<span id="stuCount">${list.length}</span>)</h2>
       <div class="search"><span class="i">${IC.search}</span><input id="ss" placeholder="Tìm tên, mã, lớp, SĐT, số phòng..." value="${esc(stuSearch)}"></div>
     </div><div class="table-wrap">
       ${list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th>Hợp đồng</th><th>Cọc</th><th class="num">Còn nợ</th><th>Trạng thái</th><th></th></tr></thead><tbody>
       ${list.map(s => {
-        const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
         const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.alert}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
-        return `<tr>
+        const ds = esc((s.name + ' ' + (s.code || '') + ' ' + (s.phone || '') + ' ' + (s.class_name || '') + ' ' + (s.room_name || '')).toLowerCase());
+        return `<tr data-s="${ds}">
         <td><div class="flex"><span class="avatar">${esc(initials(s.name))}</span><div>
           <strong>${esc(s.name)}</strong> <span class="badge ${s.gender === 'female' ? 'red' : 'blue'}" style="font-size:10px">${genderLabel(s.gender)}</span>${s.login_username ? ` <span title="Có tài khoản">${IC.key}</span>` : ''}
           <div class="sub2">${esc(s.code || '—')}${s.class_name ? ' · ' + esc(s.class_name) : ''}${flags}</div>
@@ -523,9 +523,10 @@ function viewStudents() {
           ${isOccupying(s) ? `<button class="btn sm danger" onclick="checkOutForm(${s.id})">Check-out</button>` : `<button class="btn sm green" onclick="checkInForm(${s.id})">Check-in</button>`}
           <button class="btn sm pri" onclick="studentDetail(${s.id})">Chi tiết</button>
         </div></td></tr>`; }).join('')}
+      <tr class="no-result" style="display:none"><td colspan="7"><div class="empty">Không tìm thấy học viên phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có học viên phù hợp.</div>`}
     </div></div>`;
-  const ss = el('ss'); if (ss) ss.oninput = e => { stuSearch = e.target.value; const p = ss.selectionStart; viewStudents(); const n = el('ss'); n.focus(); n.setSelectionRange(p, p); };
+  const ss = el('ss'); if (ss) { ss.addEventListener('input', () => stuSearch = ss.value); attachRowSearch(ss, 'stuCount'); }
 }
 function depositBadge(s) {
   if (s.deposit_status === 'held') return '<span class="badge amber">Đang giữ</span>';
@@ -898,18 +899,17 @@ async function viewVehicles() {
   el('content').innerHTML = '<div class="spinner"></div>';
   const all = await guard(() => API.vehicles());
   const active = all.filter(v => v.student_status === 'in');
-  let list = all;
-  if (vehSearch) { const q = vehSearch.toLowerCase(); list = list.filter(v => (v.plate + ' ' + (v.vehicle_type || '') + ' ' + (v.student_name || '') + ' ' + (v.room_name || '') + ' ' + (v.sticker || '')).toLowerCase().includes(q)); }
+  const list = all;
   el('content').innerHTML = `
     <div class="cards">
       <div class="stat"><div class="l">${IC.bike} Tổng xe</div><div class="v">${all.length}</div></div>
       <div class="stat"><div class="l">${IC.checkCircle} Xe HV đang ở</div><div class="v">${active.length}</div></div>
     </div>
-    <div class="panel"><div class="hd"><h2>Danh sách xe</h2>
+    <div class="panel"><div class="hd"><h2>Danh sách xe (<span id="vehCount">${list.length}</span>)</h2>
       <div class="search"><span class="i">${IC.search}</span><input id="vs" placeholder="Tìm biển số, loại, chủ xe, phòng..." value="${esc(vehSearch)}"></div>
     </div><div class="table-wrap">
       ${list.length ? `<table><thead><tr><th>Biển số</th><th>Loại xe</th><th>Mã dán</th><th>Chủ xe</th><th>Phòng</th><th>Trạng thái HV</th></tr></thead><tbody>
-        ${list.map(v => `<tr>
+        ${list.map(v => `<tr data-s="${esc((v.plate + ' ' + (v.vehicle_type || '') + ' ' + (v.student_name || '') + ' ' + (v.room_name || '') + ' ' + (v.sticker || '')).toLowerCase())}">
           <td><strong>${esc(v.plate || '—')}</strong></td>
           <td>${esc(v.vehicle_type || '—')}</td>
           <td>${esc(v.sticker || '—')}</td>
@@ -917,9 +917,10 @@ async function viewVehicles() {
           <td>${esc(v.room_name || '—')}</td>
           <td>${v.student_status === 'in' ? '<span class="badge green">Đang ở</span>' : '<span class="badge gray">Đã rời</span>'}</td>
         </tr>`).join('')}
+        <tr class="no-result" style="display:none"><td colspan="6"><div class="empty">Không tìm thấy xe phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Chưa có xe nào. Thêm xe trong <strong>Chi tiết học viên</strong>.</div>`}
     </div></div>`;
-  const vs = el('vs'); if (vs) vs.oninput = e => { vehSearch = e.target.value; const p = vs.selectionStart; viewVehicles().then(() => { const n = el('vs'); if (n) { n.focus(); n.setSelectionRange(p, p); } }); };
+  const vs = el('vs'); if (vs) { vs.addEventListener('input', () => vehSearch = vs.value); attachRowSearch(vs, 'vehCount'); }
 }
 
 /* ---------- BÁO CÁO DOANH THU ---------- */
@@ -1304,7 +1305,7 @@ function invStatusBadge(st) {
   return '<span class="badge amber">Chưa gửi</span>';
 }
 async function viewInvoices() {
-  el('topActions').innerHTML = `<button class="btn" onclick="electricForm()">${IC.zap} Chỉ số điện</button><button class="btn pri" onclick="generateForm()">${IC.receipt} Tạo hóa đơn theo tháng</button>`;
+  el('topActions').innerHTML = `<button class="btn" onclick="electricForm()">${IC.zap} Chỉ số điện</button><button class="btn" onclick="oneInvoiceForm()">${IC.plus} HĐ cho 1 HV</button><button class="btn pri" onclick="generateForm()">${IC.receipt} Tạo hóa đơn theo tháng</button>`;
   el('content').innerHTML = '<div class="spinner"></div>';
   const months = await guard(() => API.invoiceMonths());
   if (months.length && !months.includes(invMonth)) invMonth = months[0];
@@ -1312,7 +1313,7 @@ async function viewInvoices() {
   let list = all.slice();
   if (invFilter === 'paid') list = list.filter(i => i.status === 'paid');
   if (invFilter === 'unpaid') list = list.filter(i => i.status !== 'paid');
-  if (invSearch) { const q = invSearch.toLowerCase(); list = list.filter(i => ((i.student_name || '') + ' ' + (i.student_code || '') + ' ' + (i.room_name || '')).toLowerCase().includes(q)); }
+  // Tìm kiếm áp dụng bằng ẩn/hiện hàng (attachRowSearch)
 
   const total = all.reduce((a, i) => a + (+i.total || 0), 0);
   const paid = all.filter(i => i.status === 'paid').reduce((a, i) => a + (+i.total || 0), 0);
@@ -1329,7 +1330,7 @@ async function viewInvoices() {
       <button class="btn sm ${invFilter === 'unpaid' ? 'pri' : ''}" onclick="invFilter='unpaid';viewInvoices()">Chưa đóng (${all.filter(i => i.status !== 'paid').length})</button>
       <button class="btn sm ${invFilter === 'paid' ? 'pri' : ''}" onclick="invFilter='paid';viewInvoices()">Đã đóng (${all.filter(i => i.status === 'paid').length})</button>
     </div>
-    <div class="panel"><div class="hd"><h2>Hóa đơn ${monthLabel(invMonth)} (${list.length})</h2>
+    <div class="panel"><div class="hd"><h2>Hóa đơn ${monthLabel(invMonth)} (<span id="invCount">${list.length}</span>)</h2>
       <div class="toolbar">
         <div class="search"><span class="i">${IC.search}</span><input id="invs" placeholder="Tìm tên HV / số phòng..." value="${esc(invSearch)}"></div>
         ${all.filter(i => i.status !== 'paid').length ? `<button class="btn sm green" onclick="markMonthPaid()">${IC.check} Đánh dấu cả tháng đã thu</button>` : ''}
@@ -1337,7 +1338,7 @@ async function viewInvoices() {
       <div class="table-wrap">
       ${all.length === 0 ? `<div class="empty">Chưa có hóa đơn nào cho kỳ này.<br><br><button class="btn pri" onclick="generateForm()">${IC.receipt} Tạo hóa đơn</button></div>` :
       list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Tổng</th><th>Trạng thái</th><th></th></tr></thead><tbody>
-        ${list.map(i => `<tr>
+        ${list.map(i => `<tr data-s="${esc(((i.student_name || '') + ' ' + (i.student_code || '') + ' ' + (i.room_name || '')).toLowerCase())}">
           <td><strong>${esc(i.student_name)}</strong>${i.student_code ? `<div class="muted" style="font-size:11px">${esc(i.student_code)}</div>` : ''}</td>
           <td>${esc(i.room_name || '—')}</td>
           <td class="num">${i.days_stayed}</td>
@@ -1356,10 +1357,11 @@ async function viewInvoices() {
             <button class="btn sm ghost" onclick='invoiceForm(${i.id}, ${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.pencil}</button>
             <button class="btn sm ghost" onclick="delInvoice(${i.id})">${IC.trash}</button>
           </div></td></tr>`).join('')}
+        <tr class="no-result" style="display:none"><td colspan="12"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có hóa đơn ${invFilter === 'paid' ? 'đã đóng' : 'chưa đóng'} trong kỳ này.</div>`}
     </div></div>`;
   const im = el('im'); if (im) im.onchange = e => { invMonth = e.target.value; viewInvoices(); };
-  const iv = el('invs'); if (iv) iv.oninput = e => { invSearch = e.target.value; const p = iv.selectionStart; viewInvoices(); const n = el('invs'); if (n) { n.focus(); n.setSelectionRange(p, p); } };
+  const iv = el('invs'); if (iv) { iv.addEventListener('input', () => invSearch = iv.value); attachRowSearch(iv, 'invCount'); }
 }
 function invActions(i) {
   if (i.status === 'pending') return `<button class="btn sm" onclick="setInvStatus(${i.id},'sent')">Đã gửi QR</button><button class="btn sm green" onclick="setInvStatus(${i.id},'paid')">${IC.check} Đóng</button>`;
@@ -1375,6 +1377,31 @@ async function markMonthPaid() {
 }
 async function delInvoice(id) { if (!confirm('Xóa hóa đơn này?')) return; await guard(() => API.deleteInvoice(id)); await refreshCache(); toast('Đã xóa'); viewInvoices(); }
 
+/* Tạo hóa đơn tự tính cho 1 học viên (VD học viên mới vào giữa tháng) */
+function oneInvoiceForm() {
+  const opts = ST.students.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'))
+    .map(s => `<option value="${s.id}">${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}${s.room_name ? ' · ' + esc(s.room_name) : ''}</option>`).join('');
+  openModal(`
+    <div class="mh"><h3>${IC.plus} Tạo hóa đơn cho 1 học viên</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <div class="hint">${IC.info} Dùng khi có học viên mới vào giữa tháng. Hệ thống <strong>tự tính</strong> theo phòng, số ngày ở và chỉ số điện đã lưu — không ảnh hưởng hóa đơn người khác (người đã đóng sẽ bị khóa).</div>
+      <div class="grid2">
+        <div class="field"><label>Học viên *</label><select id="oi_stu">${opts}</select></div>
+        <div class="field"><label>Kỳ (tháng)</label><input id="oi_month" type="month" value="${invMonth}"></div>
+      </div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveOneInvoice()">Tạo &amp; xem phiếu báo</button></div>`);
+}
+async function saveOneInvoice() {
+  const student_id = +el('oi_stu').value, month = el('oi_month').value;
+  if (!student_id) return toast('Chọn học viên', 'err');
+  if (!month) return toast('Chọn kỳ', 'err');
+  const r = await guard(() => API.generateOneInvoice({ student_id, month }));
+  await refreshCache(); closeModal(); invMonth = month; invFilter = 'all';
+  toast(r.created ? 'Đã tạo hóa đơn cho học viên' : 'Đã cập nhật hóa đơn');
+  viewInvoices();
+  if (r.invoice) { r.invoice.room_name = (roomById(r.invoice.room_id) || {}).name || ''; setTimeout(() => phieuBao(r.invoice), 150); }
+}
 async function generateForm() {
   el('overlay').classList.add('show');
   el('modal').className = 'modal wide';
@@ -1873,12 +1900,20 @@ function _rzKey(table) {
   const heads = [...table.querySelectorAll('thead th')].map(th => (th.dataset.h || th.textContent).trim()).join('|');
   return 'rzw:' + (ST.view || location.pathname) + ':' + heads.slice(0, 140);
 }
+function _rzFreeze(table) {
+  // Đóng băng độ rộng cột hiện tại -> chuyển sang table-layout:fixed (chỉ khi bắt đầu kéo)
+  if (table.classList.contains('rz-fixed')) return;
+  const ths = [...table.tHead.rows[0].cells];
+  const widths = ths.map(th => th.getBoundingClientRect().width);
+  ths.forEach((th, i) => { th.style.width = Math.max(56, Math.round(widths[i])) + 'px'; });
+  table.classList.add('rz-fixed');
+}
 function _rzApplySaved(table) {
   let saved; try { saved = JSON.parse(localStorage.getItem(_rzKey(table)) || 'null'); } catch {}
   const ths = table.querySelectorAll('thead th');
   if (!saved || saved.length !== ths.length) return false;
-  table.style.tableLayout = 'fixed'; table.style.width = 'auto';
   ths.forEach((th, i) => { th.style.width = saved[i] + 'px'; });
+  table.classList.add('rz-fixed');
   return true;
 }
 function _rzSave(table) {
@@ -1891,18 +1926,14 @@ function setupResizable(table) {
   if (ths.length < 2) return;
   table.dataset.rz = '1'; table.classList.add('rz');
   ths.forEach(th => { if (!th.dataset.h) th.dataset.h = (th.textContent.trim() || th.className || 'c'); });
-  if (!_rzApplySaved(table)) {
-    // "Đóng băng" độ rộng tự nhiên hiện tại để kéo cho mượt
-    const widths = ths.map(th => th.getBoundingClientRect().width);
-    table.style.tableLayout = 'fixed'; table.style.width = 'auto';
-    ths.forEach((th, i) => { th.style.width = Math.max(56, Math.round(widths[i])) + 'px'; });
-  }
+  _rzApplySaved(table); // Áp độ rộng đã lưu (nếu có); nếu chưa thì giữ mặc định 1 dòng
   ths.forEach((th, i) => {
     if (i === ths.length - 1) return; // cột cuối không cần tay cầm
     const h = document.createElement('span');
-    h.className = 'rz-handle'; h.title = 'Kéo để chỉnh độ rộng cột';
+    h.className = 'rz-handle'; h.title = 'Kéo để chỉnh độ rộng cột · nhấp đúp để reset';
     h.addEventListener('mousedown', e => {
       e.preventDefault(); e.stopPropagation();
+      _rzFreeze(table); // chỉ đóng băng khi bắt đầu kéo
       const startX = e.pageX, startW = th.getBoundingClientRect().width;
       document.body.classList.add('rz-active');
       const move = ev => { th.style.width = Math.max(56, startW + (ev.pageX - startX)) + 'px'; };
@@ -1914,10 +1945,12 @@ function setupResizable(table) {
       document.addEventListener('mousemove', move);
       document.addEventListener('mouseup', up);
     });
-    // Double-click: bỏ độ rộng cố định của cột (trở về tự động)
+    // Nhấp đúp: xóa độ rộng đã lưu, trở về mặc định (1 dòng)
     h.addEventListener('dblclick', e => {
       e.preventDefault(); e.stopPropagation();
-      th.style.width = ''; _rzSave(table);
+      table.querySelectorAll('thead th').forEach(t => t.style.width = '');
+      table.classList.remove('rz-fixed');
+      try { localStorage.removeItem(_rzKey(table)); } catch {}
     });
     th.appendChild(h);
   });

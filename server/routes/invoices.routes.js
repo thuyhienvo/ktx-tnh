@@ -138,6 +138,50 @@ router.post('/generate', async (req, res, next) => {
   }
 });
 
+// Tạo/cập nhật hóa đơn TỰ TÍNH cho 1 học viên (vd HV mới vào giữa tháng)
+router.post('/generate-one', async (req, res, next) => {
+  try {
+    const { student_id, month } = req.body;
+    if (!student_id || !month) return res.status(400).json({ error: 'Thiếu học viên hoặc kỳ' });
+    const fees = await getSettings();
+    const s = (await query('SELECT * FROM students WHERE id=$1', [student_id])).rows[0];
+    if (!s) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    const dup = (await query('SELECT id, status, other_charge FROM invoices WHERE student_id=$1 AND month=$2', [student_id, month])).rows[0];
+    if (dup && dup.status === 'paid') return res.status(400).json({ error: 'Hóa đơn kỳ này đã đóng — không sửa' });
+
+    const room = s.room_id ? (await query('SELECT * FROM rooms WHERE id=$1', [s.room_id])).rows[0] : null;
+    const mStart = billing.firstDay(month), mEnd = billing.lastDay(month);
+    let occupants = 1;
+    if (s.room_id) {
+      occupants = (await query(
+        `SELECT COUNT(*)::int c FROM students WHERE room_id=$1 AND check_in_date IS NOT NULL AND check_in_date <= $2 AND (check_out_date IS NULL OR check_out_date >= $3)`,
+        [s.room_id, mEnd, mStart])).rows[0].c || 1;
+    }
+    const kwhRow = s.room_id ? (await query('SELECT kwh FROM electric_readings WHERE room_id=$1 AND month=$2', [s.room_id, month])).rows[0] : null;
+    const vehicleCount = (await query('SELECT COUNT(*)::int c FROM vehicles WHERE student_id=$1', [student_id])).rows[0].c;
+
+    const inv = billing.computeInvoice({ student: s, room, month, fees, occupants, kwh: kwhRow ? Number(kwhRow.kwh) : 0, vehicleCount });
+    let row;
+    if (dup) {
+      const other = Number(dup.other_charge) || 0;
+      const total = inv.room_charge + inv.electric_charge + inv.water_charge + inv.service_charge + inv.washing_charge + inv.parking_charge + other;
+      row = (await query(
+        `UPDATE invoices SET days_stayed=$1, room_charge=$2, electric_kwh=$3, electric_charge=$4, water_charge=$5,
+           service_charge=$6, washing_charge=$7, parking_charge=$8, total=$9 WHERE id=$10 RETURNING *`,
+        [inv.days_stayed, inv.room_charge, inv.electric_kwh, inv.electric_charge, inv.water_charge,
+         inv.service_charge, inv.washing_charge, inv.parking_charge, total, dup.id])).rows[0];
+    } else {
+      row = (await query(
+        `INSERT INTO invoices (student_id, room_id, month, days_stayed, room_charge, electric_kwh, electric_charge,
+           water_charge, service_charge, washing_charge, parking_charge, other_charge, total, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending') RETURNING *`,
+        [student_id, s.room_id, month, inv.days_stayed, inv.room_charge, inv.electric_kwh, inv.electric_charge,
+         inv.water_charge, inv.service_charge, inv.washing_charge, inv.parking_charge, inv.other_charge, inv.total])).rows[0];
+    }
+    res.json({ ok: true, invoice: row, created: !dup });
+  } catch (e) { next(e); }
+});
+
 // Hóa đơn lẻ (nhập tay từng khoản)
 router.post('/', async (req, res, next) => {
   try {
