@@ -14,7 +14,7 @@ async function renderPublicRegister() {
   try { info = await API.publicInfo(); } catch (e) {}
   window._pubCccd = {};
   const dorm = esc(info.dorm_name || 'Ký túc xá Học viên');
-  const imgCard = (src, label) => `<figure class="ph-img"><img src="${src}" alt="${esc(label)}" loading="lazy" onerror="this.remove()"><span class="ph-ico">${IC.building}</span><figcaption>${esc(label)}</figcaption></figure>`;
+  const imgCard = (key, def) => { const label = esc(info['imgcap_' + key] || def); return `<figure class="ph-img"><img src="/api/public/image/${key}" alt="${label}" loading="lazy" onerror="this.remove()"><span class="ph-ico">${IC.building}</span><figcaption>${label}</figcaption></figure>`; };
   const amen = (ico, label) => `<div class="amen-item"><span class="amen-ic">${ico}</span><span>${label}</span></div>`;
   const priceRow = (label, val, unit) => `<tr><td>${label}</td><td class="num"><strong>${money(val)}</strong><span class="muted">${unit}</span></td></tr>`;
   const T = (k, def) => esc(info[k] || def); // nội dung trang giới thiệu (admin chỉnh trong Cài đặt)
@@ -41,9 +41,9 @@ async function renderPublicRegister() {
       <div class="intro-head"><span class="eyebrow">${T('intro_about_eyebrow', 'Về khu nội trú')}</span><h2>${T('intro_about_title', 'Khuôn viên ngăn nắp, an ninh, gần trường')}</h2>
         <p>${T('intro_about_desc', 'Khu nội trú bố trí gọn gàng với khu tự học, sinh hoạt chung và bảo vệ 24/7 — nơi học viên rèn nếp sống kỷ luật kiểu Nhật.')}</p></div>
       <div class="intro-gallery">
-        ${imgCard('/api/public/image/khuon-vien-1', 'Khuôn viên')}
-        ${imgCard('/api/public/image/khuon-vien-2', 'Sảnh sinh hoạt chung')}
-        ${imgCard('/api/public/image/khuon-vien-3', 'Khu tự học')}
+        ${imgCard('khuon-vien-1', 'Khuôn viên')}
+        ${imgCard('khuon-vien-2', 'Sảnh sinh hoạt chung')}
+        ${imgCard('khuon-vien-3', 'Khu tự học')}
       </div>
     </section>
 
@@ -51,9 +51,9 @@ async function renderPublicRegister() {
       <div class="intro-head"><span class="eyebrow">${T('intro_rooms_eyebrow', 'Phòng ở')}</span><h2>${T('intro_rooms_title', 'Phòng ở tiện nghi, sạch sẽ')}</h2>
         <p>${T('intro_rooms_desc', 'Phòng ghép đầy đủ nội thất: giường tầng, tủ locker riêng, máy lạnh, kệ đồ — vệ sinh định kỳ.')}</p></div>
       <div class="intro-gallery">
-        ${imgCard('/api/public/image/phong-1', 'Phòng ghép')}
-        ${imgCard('/api/public/image/phong-2', 'Nội thất phòng')}
-        ${imgCard('/api/public/image/phong-3', 'Khu vệ sinh')}
+        ${imgCard('phong-1', 'Phòng ghép')}
+        ${imgCard('phong-2', 'Nội thất phòng')}
+        ${imgCard('phong-3', 'Khu vệ sinh')}
       </div>
     </section>
 
@@ -1860,13 +1860,14 @@ function viewSettings() {
       <div class="media-grid">
         ${INTRO_MEDIA.map(([key, label]) => `<div class="media-slot">
           <div class="media-thumb"><img src="/api/public/image/${key}?t=${Date.now()}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="media-empty" style="display:none">${IC.building}<span>Chưa có ảnh</span></div></div>
-          <div class="media-info"><strong>${label}</strong></div>
+          <div class="media-info">${key === 'hero' ? `<strong>${label}</strong><div class="muted" style="font-size:11px">Ảnh nền — không có nhãn</div>` : `<label style="font-size:11px;color:var(--muted);font-weight:600">Nhãn hiển thị</label><input id="set_imgcap_${key}" value="${esc(s['imgcap_' + key] || label)}" placeholder="VD: ${esc(label)}">`}</div>
           <div class="rowbtns">
             <label class="btn sm">${IC.download} Chọn ảnh<input type="file" accept="image/*" style="display:none" onchange="uploadIntroMedia('${key}', this)"></label>
             <button class="btn sm ghost" title="Xóa ảnh" onclick="removeIntroMedia('${key}')">${IC.trash}</button>
           </div>
         </div>`).join('')}
       </div>
+      <button class="btn pri" style="margin-top:14px" onclick="saveImgCaptions()">Lưu nhãn ảnh</button>
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.alert} Loại vi phạm / nhắc nhở</h2><button class="btn sm" onclick="vtypeForm()">${IC.plus} Thêm loại</button></div>
@@ -1928,6 +1929,12 @@ async function saveIntro() {
   INTRO_FIELDS.forEach(([k]) => body[k] = el('set_' + k).value);
   await guard(() => API.updateSettings(body));
   await refreshCache(); toast('Đã lưu nội dung trang giới thiệu'); viewSettings();
+}
+async function saveImgCaptions() {
+  const body = {};
+  INTRO_MEDIA.forEach(([key]) => { const inp = el('set_imgcap_' + key); if (inp) body['imgcap_' + key] = inp.value; });
+  await guard(() => API.updateSettings(body));
+  await refreshCache(); toast('Đã lưu nhãn ảnh'); viewSettings();
 }
 function vtypeForm(id) {
   const t = id ? (ST.vtypes || []).find(x => x.id === id) : { name: '', severity: 'minor', active: true };

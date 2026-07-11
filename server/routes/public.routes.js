@@ -53,6 +53,8 @@ router.get('/info', async (req, res, next) => {
       intro_amenities_title: s.intro_amenities_title,
       intro_price_title: s.intro_price_title, intro_price_desc: s.intro_price_desc,
       intro_contact_title: s.intro_contact_title, intro_contact_desc: s.intro_contact_desc,
+      'imgcap_khuon-vien-1': s['imgcap_khuon-vien-1'], 'imgcap_khuon-vien-2': s['imgcap_khuon-vien-2'], 'imgcap_khuon-vien-3': s['imgcap_khuon-vien-3'],
+      'imgcap_phong-1': s['imgcap_phong-1'], 'imgcap_phong-2': s['imgcap_phong-2'], 'imgcap_phong-3': s['imgcap_phong-3'],
     });
   } catch (e) { next(e); }
 });

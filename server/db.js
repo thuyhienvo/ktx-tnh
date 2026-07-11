@@ -100,6 +100,9 @@ async function init() {
     intro_price_desc: 'Minh bạch theo từng khoản. Tiền điện tính theo công-tơ, chia đều số người ở phòng.',
     intro_contact_title: 'Liên hệ & đường đến',
     intro_contact_desc: 'Ghé thăm hoặc gọi cho ban quản lý để được tư vấn xếp phòng.',
+    // Nhãn hiển thị của từng ảnh giới thiệu
+    'imgcap_khuon-vien-1': 'Khuôn viên', 'imgcap_khuon-vien-2': 'Sảnh sinh hoạt chung', 'imgcap_khuon-vien-3': 'Khu tự học',
+    'imgcap_phong-1': 'Phòng ghép', 'imgcap_phong-2': 'Nội thất phòng', 'imgcap_phong-3': 'Khu vệ sinh',
     // Nhà trường + email (vi phạm lần 3 sẽ gửi mail)
     school_name: 'Nhà trường', school_email: '', violation_mail_threshold: '3',
     // Cấu hình SMTP (admin điền sau để bật gửi mail tự động)
