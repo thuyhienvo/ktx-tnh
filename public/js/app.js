@@ -280,6 +280,7 @@ function renderAdmin() {
       </div>
     </div>`;
   document.querySelectorAll('#nav button').forEach(b => b.addEventListener('click', () => adminGo(b.dataset.v)));
+  startTableResize();
   const qp = new URLSearchParams(location.search);
   const startView = qp.get('view'); if (qp.get('tab')) reqTab = qp.get('tab');
   const views = ['dashboard', 'students', 'rooms', 'vehicles', 'checkin', 'invoices', 'revenue', 'requests', 'settings'];
@@ -942,7 +943,7 @@ async function viewRevenue() {
 
   // Bảng theo tháng
   const monthRows = data.map(m => `<tr>
-    <td><strong>${monthLabel(m.month)}</strong></td>
+    <td><strong>${m.month.slice(5)}/${m.month.slice(0, 4)}</strong></td>
     ${REV_SERVICES.filter(x => x[0] !== 'other' || sum('other')).map(([k]) => `<td class="num">${+m[k] ? money(m[k]) : '<span class="muted">—</span>'}</td>`).join('')}
     <td class="num"><strong>${money(m.total)}</strong></td>
     <td class="num" style="color:var(--green)">${money(m.paid)}</td>
@@ -983,7 +984,7 @@ async function viewRevenue() {
 
     <div class="panel"><div class="hd"><h2>${IC.planeTakeoff} Học viên xuất cảnh đi Nhật — năm ${revYear}</h2><span class="muted" style="font-size:12px">gồm xuất cảnh theo kế hoạch + đột xuất</span></div>
       <div class="table-wrap"><table><thead><tr><th>Tháng</th><th class="num">Số HV xuất cảnh</th></tr></thead><tbody>
-        ${Array.from({ length: 12 }, (_, i) => { const mm = String(i + 1).padStart(2, '0'); const c = ST.students.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason) && String(s.check_out_date).slice(0, 7) === revYear + '-' + mm).length; return `<tr><td>Tháng ${i + 1}/${revYear}</td><td class="num">${c ? '<strong>' + c + '</strong>' : '<span class="muted">—</span>'}</td></tr>`; }).join('')}
+        ${Array.from({ length: 12 }, (_, i) => { const mm = String(i + 1).padStart(2, '0'); const c = ST.students.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason) && String(s.check_out_date).slice(0, 7) === revYear + '-' + mm).length; return `<tr><td>${mm}/${revYear}</td><td class="num">${c ? '<strong>' + c + '</strong>' : '<span class="muted">—</span>'}</td></tr>`; }).join('')}
         <tr style="background:#faf6f2"><td><strong>Tổng cả năm ${revYear}</strong></td><td class="num"><strong>${ST.students.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason) && String(s.check_out_date).slice(0, 4) === revYear).length}</strong></td></tr>
       </tbody></table></div>
     </div>`;
@@ -1783,6 +1784,7 @@ async function renderStudent() {
       </div>
       <div class="content" id="content"><div class="spinner"></div></div>
     </div></div>`;
+  startTableResize();
   loadStudentPortal();
 }
 async function loadStudentPortal() {
@@ -1864,6 +1866,72 @@ function checkoutReqForm() {
 async function submitCheckoutReq() {
   await guard(() => API.createMeCheckoutReq({ desired_date: el('co_date').value, reason: el('co_reason').value, note: el('co_note').value.trim() }));
   closeModal(); toast('Đã gửi đơn trả phòng'); loadStudentPortal();
+}
+
+/* ================= KÉO GIÃN CỘT BẢNG ================= */
+function _rzKey(table) {
+  const heads = [...table.querySelectorAll('thead th')].map(th => (th.dataset.h || th.textContent).trim()).join('|');
+  return 'rzw:' + (ST.view || location.pathname) + ':' + heads.slice(0, 140);
+}
+function _rzApplySaved(table) {
+  let saved; try { saved = JSON.parse(localStorage.getItem(_rzKey(table)) || 'null'); } catch {}
+  const ths = table.querySelectorAll('thead th');
+  if (!saved || saved.length !== ths.length) return false;
+  table.style.tableLayout = 'fixed'; table.style.width = 'auto';
+  ths.forEach((th, i) => { th.style.width = saved[i] + 'px'; });
+  return true;
+}
+function _rzSave(table) {
+  const w = [...table.querySelectorAll('thead th')].map(th => Math.round(th.getBoundingClientRect().width));
+  try { localStorage.setItem(_rzKey(table), JSON.stringify(w)); } catch {}
+}
+function setupResizable(table) {
+  if (table.dataset.rz || !table.tHead || !table.tHead.rows.length) return;
+  const ths = [...table.tHead.rows[0].cells];
+  if (ths.length < 2) return;
+  table.dataset.rz = '1'; table.classList.add('rz');
+  ths.forEach(th => { if (!th.dataset.h) th.dataset.h = (th.textContent.trim() || th.className || 'c'); });
+  if (!_rzApplySaved(table)) {
+    // "Đóng băng" độ rộng tự nhiên hiện tại để kéo cho mượt
+    const widths = ths.map(th => th.getBoundingClientRect().width);
+    table.style.tableLayout = 'fixed'; table.style.width = 'auto';
+    ths.forEach((th, i) => { th.style.width = Math.max(56, Math.round(widths[i])) + 'px'; });
+  }
+  ths.forEach((th, i) => {
+    if (i === ths.length - 1) return; // cột cuối không cần tay cầm
+    const h = document.createElement('span');
+    h.className = 'rz-handle'; h.title = 'Kéo để chỉnh độ rộng cột';
+    h.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      const startX = e.pageX, startW = th.getBoundingClientRect().width;
+      document.body.classList.add('rz-active');
+      const move = ev => { th.style.width = Math.max(56, startW + (ev.pageX - startX)) + 'px'; };
+      const up = () => {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+        document.body.classList.remove('rz-active'); _rzSave(table);
+      };
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    });
+    // Double-click: bỏ độ rộng cố định của cột (trở về tự động)
+    h.addEventListener('dblclick', e => {
+      e.preventDefault(); e.stopPropagation();
+      th.style.width = ''; _rzSave(table);
+    });
+    th.appendChild(h);
+  });
+}
+let _rzObs;
+function startTableResize() {
+  const scan = r => { if (r && r.querySelectorAll) r.querySelectorAll('.table-wrap table').forEach(setupResizable); };
+  if (!_rzObs) {
+    _rzObs = new MutationObserver(muts => muts.forEach(m => m.addedNodes.forEach(n => {
+      if (n.nodeType !== 1) return;
+      if (n.tagName === 'TABLE' && n.closest('.table-wrap')) setupResizable(n); else scan(n);
+    })));
+  } else _rzObs.disconnect();
+  ['content', 'modal'].forEach(id => { const e = el(id); if (e) { _rzObs.observe(e, { childList: true, subtree: true }); scan(e); } });
 }
 
 /* ================= KHỞI ĐỘNG ================= */
