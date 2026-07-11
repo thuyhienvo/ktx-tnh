@@ -94,6 +94,19 @@ async function renderPublicRegister() {
       <div class="intro-form"><div id="pubBody"><div class="spinner"></div></div></div>
     </section>
 
+    <section class="intro-sec alt">
+      <div class="intro-head"><span class="eyebrow">Liên hệ</span><h2>Liên hệ &amp; đường đến</h2>
+        <p>Ghé thăm hoặc gọi cho ban quản lý để được tư vấn xếp phòng.</p></div>
+      <div class="intro-contact">
+        <div class="contact-info">
+          ${info.address ? `<div class="ci-row">${IC.mapPin}<div><b>Địa chỉ</b><span>${esc(info.address)}</span></div></div>` : ''}
+          ${info.hotline ? `<a class="ci-row" href="tel:${esc(String(info.hotline).replace(/\s/g, ''))}">${IC.phone}<div><b>Hotline</b><span>${esc(info.hotline)}</span></div></a>` : ''}
+          <div class="ci-row">${IC.home}<div><b>${dorm}</b><span>Ban quản lý khu nội trú</span></div></div>
+        </div>
+        ${info.address ? `<div class="contact-map"><iframe title="Bản đồ" src="https://www.google.com/maps?q=${encodeURIComponent(info.address)}&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>` : ''}
+      </div>
+    </section>
+
     <footer class="intro-foot">${dorm}${info.hotline ? ` · Hotline: ${esc(info.hotline)}` : ''}${info.address ? ` · ${esc(info.address)}` : ''}</footer>
   </div>`;
   el('pubBody').innerHTML = `
@@ -178,19 +191,25 @@ async function renderLogin() {
       </div>
       <div class="auth-right">
         <div class="auth-form">
+          <div class="auth-tabs">
+            <button class="auth-tab active" data-t="admin" onclick="loginTab('admin')">${IC.shield} Ban quản lý</button>
+            <button class="auth-tab" data-t="student" onclick="loginTab('student')">${IC.graduation} Học viên</button>
+          </div>
           <h2>Đăng nhập</h2>
-          <p class="sub">Dành cho Ban quản lý &amp; Học viên đã có tài khoản.</p>
+          <p class="sub" id="lgSub">Đăng nhập hệ thống quản lý ký túc xá.</p>
           <form id="loginForm">
             <div class="field"><label>Tài khoản</label><input id="lg_user" autocomplete="username" placeholder="Tên đăng nhập" autofocus></div>
             <div class="field"><label>Mật khẩu</label><input id="lg_pass" type="password" autocomplete="current-password" placeholder="Mật khẩu"></div>
             <button class="btn pri lg auth-btn" type="submit">Đăng nhập →</button>
           </form>
-          <div class="auth-or"><span>Học viên mới?</span></div>
-          <a class="auth-card" href="/dang-ky">
-            <span class="ac-ico">${IC.graduation}</span>
-            <div><b>Xem giới thiệu &amp; đăng ký nội trú</b><small>Xem phòng ở, tiện ích, bảng giá và đăng ký — không cần tài khoản</small></div>
-            <span class="ac-arrow">→</span>
-          </a>
+          <div id="lgStudentExtra" style="display:none">
+            <div class="auth-or"><span>Chưa có tài khoản?</span></div>
+            <a class="auth-card" href="/dang-ky">
+              <span class="ac-ico">${IC.graduation}</span>
+              <div><b>Xem giới thiệu &amp; đăng ký nội trú</b><small>Xem phòng ở, tiện ích, bảng giá và đăng ký — không cần tài khoản</small></div>
+              <span class="ac-arrow">→</span>
+            </a>
+          </div>
         </div>
       </div>
     </div>`;
@@ -202,6 +221,11 @@ async function renderLogin() {
       Auth.token = r.token; Auth.user = r.user; boot();
     } catch (err) { toast(err.message, 'err'); btn.disabled = false; btn.textContent = 'Đăng nhập →'; }
   });
+}
+function loginTab(t) {
+  document.querySelectorAll('.auth-tab').forEach(b => b.classList.toggle('active', b.dataset.t === t));
+  el('lgSub').textContent = t === 'student' ? 'Đăng nhập tài khoản học viên (do quản lý cấp).' : 'Đăng nhập hệ thống quản lý ký túc xá.';
+  el('lgStudentExtra').style.display = t === 'student' ? '' : 'none';
 }
 
 /* ================================================================= */

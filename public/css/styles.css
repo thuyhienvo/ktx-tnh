@@ -52,6 +52,11 @@ a:hover{text-decoration:underline;text-underline-offset:2px}
 .auth-form{width:100%;max-width:392px}
 .auth-form h2{font-family:var(--serif);font-size:32px;margin:0 0 4px;font-weight:600;letter-spacing:.005em}
 .auth-form .sub{color:var(--muted);font-size:14px;margin:0}
+.auth-tabs{display:flex;gap:5px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:22px}
+.auth-tab{flex:1;border:none;background:none;padding:10px 8px;border-radius:9px;cursor:pointer;font-size:13.5px;font-weight:600;color:var(--ink2);display:inline-flex;align-items:center;justify-content:center;gap:7px;transition:.15s;font-family:var(--sans);white-space:nowrap}
+.auth-tab.active{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+.auth-tab .ic-svg{width:15px;height:15px}
+.auth-tab.active .ic-svg{color:var(--brand-d)}
 .auth-chip{display:inline-flex;align-items:center;gap:8px;background:var(--brand-soft);color:var(--brand-d);border:1px solid var(--gold-line);padding:7px 14px;border-radius:10px;font-weight:600;font-size:13px;margin:20px 0 8px;letter-spacing:.01em}
 .auth-btn{box-shadow:0 12px 26px rgba(34,37,46,.24)}
 .auth-or{text-align:center;color:var(--muted);margin:22px 0;position:relative}
@@ -330,6 +335,18 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);b
 .intro-price .price-hi td{color:var(--brand-d);font-size:16px}
 .intro-form{max-width:640px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:28px;box-shadow:var(--shadow)}
 .intro-foot{text-align:center;color:var(--muted);font-size:13px;padding:28px 0 0;border-top:1px solid var(--line);margin-top:22px}
+/* Liên hệ + bản đồ (trang giới thiệu) */
+.intro-contact{display:grid;grid-template-columns:1fr 1.25fr;gap:20px;align-items:stretch}
+.contact-info{display:flex;flex-direction:column;gap:13px;justify-content:center}
+.ci-row{display:flex;align-items:flex-start;gap:13px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 17px;color:var(--ink);text-decoration:none}
+.intro-sec.alt .ci-row{background:var(--bg)}
+a.ci-row:hover{border-color:var(--brand)}
+.ci-row .ic-svg{width:22px;height:22px;color:var(--brand-d);flex-shrink:0;margin-top:1px}
+.ci-row b{display:block;font-size:14px;margin-bottom:2px}
+.ci-row span{font-size:13px;color:var(--ink2)}
+.contact-map{border-radius:16px;overflow:hidden;border:1px solid var(--line);min-height:290px;box-shadow:var(--shadow)}
+.contact-map iframe{width:100%;height:100%;min-height:290px;border:0;display:block}
+@media(max-width:620px){ .intro-contact{grid-template-columns:1fr} }
 /* Quản lý ảnh khu nội trú trong Cài đặt */
 .media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
 .media-slot{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--bg)}
