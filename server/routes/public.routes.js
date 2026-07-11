@@ -47,6 +47,12 @@ router.get('/info', async (req, res, next) => {
       room_fee: s.room_fee, deposit_fee: s.deposit_fee,
       electric_unit: s.electric_unit, water_fee: s.water_fee, service_fee: s.service_fee,
       washing_fee: s.washing_fee, parking_fee: s.parking_fee,
+      intro_hero_title: s.intro_hero_title, intro_hero_desc: s.intro_hero_desc,
+      intro_about_eyebrow: s.intro_about_eyebrow, intro_about_title: s.intro_about_title, intro_about_desc: s.intro_about_desc,
+      intro_rooms_eyebrow: s.intro_rooms_eyebrow, intro_rooms_title: s.intro_rooms_title, intro_rooms_desc: s.intro_rooms_desc,
+      intro_amenities_title: s.intro_amenities_title,
+      intro_price_title: s.intro_price_title, intro_price_desc: s.intro_price_desc,
+      intro_contact_title: s.intro_contact_title, intro_contact_desc: s.intro_contact_desc,
     });
   } catch (e) { next(e); }
 });

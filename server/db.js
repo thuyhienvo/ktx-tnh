@@ -86,6 +86,20 @@ async function init() {
     bravo_fee_type: 'T0704',
     bravo_room: 'GP00180', bravo_water: 'GP00181', bravo_service: 'GP00183',
     bravo_electric: 'GP00184', bravo_parking: 'GP00182', bravo_washing: '', bravo_other: '',
+    // Nội dung trang giới thiệu (admin chỉnh trong Cài đặt)
+    intro_hero_title: 'Không gian nội trú\nan tâm & nề nếp',
+    intro_hero_desc: 'chỗ ở tiện nghi, kỷ luật, đồng hành cùng học viên trên hành trình sang Nhật.',
+    intro_about_eyebrow: 'Về khu nội trú',
+    intro_about_title: 'Khuôn viên ngăn nắp, an ninh, gần trường',
+    intro_about_desc: 'Khu nội trú bố trí gọn gàng với khu tự học, sinh hoạt chung và bảo vệ 24/7 — nơi học viên rèn nếp sống kỷ luật kiểu Nhật.',
+    intro_rooms_eyebrow: 'Phòng ở',
+    intro_rooms_title: 'Phòng ở tiện nghi, sạch sẽ',
+    intro_rooms_desc: 'Phòng ghép đầy đủ nội thất: giường tầng, tủ locker riêng, máy lạnh, kệ đồ — vệ sinh định kỳ.',
+    intro_amenities_title: 'Tiện ích & dịch vụ',
+    intro_price_title: 'Bảng giá chi phí',
+    intro_price_desc: 'Minh bạch theo từng khoản. Tiền điện tính theo công-tơ, chia đều số người ở phòng.',
+    intro_contact_title: 'Liên hệ & đường đến',
+    intro_contact_desc: 'Ghé thăm hoặc gọi cho ban quản lý để được tư vấn xếp phòng.',
     // Nhà trường + email (vi phạm lần 3 sẽ gửi mail)
     school_name: 'Nhà trường', school_email: '', violation_mail_threshold: '3',
     // Cấu hình SMTP (admin điền sau để bật gửi mail tự động)

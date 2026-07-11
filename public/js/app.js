@@ -17,14 +17,15 @@ async function renderPublicRegister() {
   const imgCard = (src, label) => `<figure class="ph-img"><img src="${src}" alt="${esc(label)}" loading="lazy" onerror="this.remove()"><span class="ph-ico">${IC.building}</span><figcaption>${esc(label)}</figcaption></figure>`;
   const amen = (ico, label) => `<div class="amen-item"><span class="amen-ic">${ico}</span><span>${label}</span></div>`;
   const priceRow = (label, val, unit) => `<tr><td>${label}</td><td class="num"><strong>${money(val)}</strong><span class="muted">${unit}</span></td></tr>`;
+  const T = (k, def) => esc(info[k] || def); // nội dung trang giới thiệu (admin chỉnh trong Cài đặt)
   el('app').innerHTML = `
   <div class="intro">
     <header class="intro-hero">
       <figure class="intro-hero-bg ph-img"><img src="/api/public/image/hero" alt="" onerror="this.remove()"><span class="ph-ico">${IC.building}</span></figure>
       <div class="intro-hero-in">
         <div class="intro-brand">${IC.home} <span>${dorm}</span></div>
-        <h1>Không gian nội trú<br>an tâm &amp; nề nếp</h1>
-        <p>${info.address ? esc(info.address) + ' — ' : ''}chỗ ở tiện nghi, kỷ luật, đồng hành cùng học viên trên hành trình sang Nhật.</p>
+        <h1>${T('intro_hero_title', 'Không gian nội trú\nan tâm & nề nếp').replace(/\n/g, '<br>')}</h1>
+        <p>${info.address ? esc(info.address) + ' — ' : ''}${T('intro_hero_desc', 'chỗ ở tiện nghi, kỷ luật, đồng hành cùng học viên trên hành trình sang Nhật.')}</p>
         <div class="intro-stats">
           <div><b>${info.room_count != null ? info.room_count : '—'}</b><span>Phòng ở</span></div>
           <div><b>${info.bed_free != null ? info.bed_free : '—'}</b><span>Giường trống</span></div>
@@ -37,8 +38,8 @@ async function renderPublicRegister() {
     </header>
 
     <section class="intro-sec">
-      <div class="intro-head"><span class="eyebrow">Về khu nội trú</span><h2>Khuôn viên ngăn nắp, an ninh, gần trường</h2>
-        <p>Khu nội trú bố trí gọn gàng với khu tự học, sinh hoạt chung và bảo vệ 24/7 — nơi học viên rèn nếp sống kỷ luật kiểu Nhật.</p></div>
+      <div class="intro-head"><span class="eyebrow">${T('intro_about_eyebrow', 'Về khu nội trú')}</span><h2>${T('intro_about_title', 'Khuôn viên ngăn nắp, an ninh, gần trường')}</h2>
+        <p>${T('intro_about_desc', 'Khu nội trú bố trí gọn gàng với khu tự học, sinh hoạt chung và bảo vệ 24/7 — nơi học viên rèn nếp sống kỷ luật kiểu Nhật.')}</p></div>
       <div class="intro-gallery">
         ${imgCard('/api/public/image/khuon-vien-1', 'Khuôn viên')}
         ${imgCard('/api/public/image/khuon-vien-2', 'Sảnh sinh hoạt chung')}
@@ -47,8 +48,8 @@ async function renderPublicRegister() {
     </section>
 
     <section class="intro-sec alt">
-      <div class="intro-head"><span class="eyebrow">Phòng ở</span><h2>Phòng ở tiện nghi, sạch sẽ</h2>
-        <p>Phòng ghép đầy đủ nội thất: giường tầng, tủ locker riêng, máy lạnh, kệ đồ — vệ sinh định kỳ.</p></div>
+      <div class="intro-head"><span class="eyebrow">${T('intro_rooms_eyebrow', 'Phòng ở')}</span><h2>${T('intro_rooms_title', 'Phòng ở tiện nghi, sạch sẽ')}</h2>
+        <p>${T('intro_rooms_desc', 'Phòng ghép đầy đủ nội thất: giường tầng, tủ locker riêng, máy lạnh, kệ đồ — vệ sinh định kỳ.')}</p></div>
       <div class="intro-gallery">
         ${imgCard('/api/public/image/phong-1', 'Phòng ghép')}
         ${imgCard('/api/public/image/phong-2', 'Nội thất phòng')}
@@ -57,7 +58,7 @@ async function renderPublicRegister() {
     </section>
 
     <section class="intro-sec">
-      <div class="intro-head"><span class="eyebrow">Tiện ích</span><h2>Tiện ích &amp; dịch vụ</h2></div>
+      <div class="intro-head"><span class="eyebrow">Tiện ích</span><h2>${T('intro_amenities_title', 'Tiện ích & dịch vụ')}</h2></div>
       <div class="amen-grid">
         ${amen(IC.bed, 'Giường tầng · tủ locker riêng')}
         ${amen(IC.wifi, 'Wifi tốc độ cao')}
@@ -71,8 +72,8 @@ async function renderPublicRegister() {
     </section>
 
     <section class="intro-sec alt">
-      <div class="intro-head"><span class="eyebrow">Chi phí</span><h2>Bảng giá chi phí</h2>
-        <p>Minh bạch theo từng khoản. Tiền điện tính theo công-tơ, chia đều số người ở phòng.</p></div>
+      <div class="intro-head"><span class="eyebrow">Chi phí</span><h2>${T('intro_price_title', 'Bảng giá chi phí')}</h2>
+        <p>${T('intro_price_desc', 'Minh bạch theo từng khoản. Tiền điện tính theo công-tơ, chia đều số người ở phòng.')}</p></div>
       <div class="intro-price"><table>
         <thead><tr><th>Khoản chi phí</th><th class="num">Mức phí</th></tr></thead>
         <tbody>
@@ -94,8 +95,8 @@ async function renderPublicRegister() {
     </section>
 
     <section class="intro-sec alt">
-      <div class="intro-head"><span class="eyebrow">Liên hệ</span><h2>Liên hệ &amp; đường đến</h2>
-        <p>Ghé thăm hoặc gọi cho ban quản lý để được tư vấn xếp phòng.</p></div>
+      <div class="intro-head"><span class="eyebrow">Liên hệ</span><h2>${T('intro_contact_title', 'Liên hệ & đường đến')}</h2>
+        <p>${T('intro_contact_desc', 'Ghé thăm hoặc gọi cho ban quản lý để được tư vấn xếp phòng.')}</p></div>
       <div class="intro-contact">
         <div class="contact-info">
           ${info.address ? `<div class="ci-row">${IC.mapPin}<div><b>Địa chỉ</b><span>${esc(info.address)}</span></div></div>` : ''}
@@ -253,6 +254,21 @@ const CONTRACT_BADGE = { done: 'green', scanned: 'blue', unsigned: 'amber', none
 const CHECKOUT_REASONS = [['departure', 'Xuất cảnh (đi Nhật)'], ['personal', 'Cá nhân'], ['facility', 'Cơ sở vật chất'], ['dropout', 'Nghỉ học'], ['reserve', 'Bảo lưu'], ['other', 'Khác']];
 const REASON_LABEL = { departure: 'Xuất cảnh', personal: 'Cá nhân', facility: 'Cơ sở vật chất', dropout: 'Nghỉ học', reserve: 'Bảo lưu', other: 'Khác', normal: 'Khác', urgent_visa: 'Xuất cảnh' };
 const VIO_SEV = { minor: ['Nhẹ', 'gray'], major: ['Nặng', 'amber'], severe: ['Nghiêm trọng', 'red'] };
+const INTRO_FIELDS = [
+  ['intro_hero_title', 'Tiêu đề lớn (hero) — Enter để xuống dòng', 'ta'],
+  ['intro_hero_desc', 'Mô tả dưới tiêu đề (địa chỉ tự thêm phía trước)', 'ta'],
+  ['intro_about_eyebrow', 'Mục "Về khu nội trú" — nhãn nhỏ', 'in'],
+  ['intro_about_title', 'Mục "Về khu nội trú" — tiêu đề', 'in'],
+  ['intro_about_desc', 'Mục "Về khu nội trú" — mô tả', 'ta'],
+  ['intro_rooms_eyebrow', 'Mục "Phòng ở" — nhãn nhỏ', 'in'],
+  ['intro_rooms_title', 'Mục "Phòng ở" — tiêu đề', 'in'],
+  ['intro_rooms_desc', 'Mục "Phòng ở" — mô tả', 'ta'],
+  ['intro_amenities_title', 'Mục "Tiện ích" — tiêu đề', 'in'],
+  ['intro_price_title', 'Mục "Bảng giá" — tiêu đề', 'in'],
+  ['intro_price_desc', 'Mục "Bảng giá" — mô tả', 'ta'],
+  ['intro_contact_title', 'Mục "Liên hệ" — tiêu đề', 'in'],
+  ['intro_contact_desc', 'Mục "Liên hệ" — mô tả', 'ta'],
+];
 const INTRO_MEDIA = [
   ['hero', 'Ảnh nền đầu trang (toàn cảnh)'],
   ['khuon-vien-1', 'Khuôn viên'],
@@ -1833,6 +1849,12 @@ function viewSettings() {
       <div class="pad muted" style="font-size:12.5px">${IC.bulb} Phí bồi hoàn dùng để khấu trừ vào cọc khi học viên trả phòng (nếu tài sản hư/mất/không vệ sinh).</div>
     </div>
 
+    <div class="panel"><div class="hd"><h2>${IC.filePen} Nội dung trang giới thiệu</h2><a class="btn sm" href="/dang-ky" target="_blank">Xem trang</a></div><div class="pad">
+      <div class="hint">${IC.info} Chỉnh tiêu đề &amp; mô tả từng mục ở trang đăng ký công khai. Để trống sẽ dùng nội dung mặc định.</div>
+      ${INTRO_FIELDS.map(([k, label, t]) => `<div class="field"><label>${label}</label>${t === 'ta' ? `<textarea id="set_${k}" rows="2">${esc(s[k] || '')}</textarea>` : `<input id="set_${k}" value="${esc(s[k] || '')}">`}</div>`).join('')}
+      <button class="btn pri" onclick="saveIntro()">Lưu nội dung</button>
+    </div></div>
+
     <div class="panel"><div class="hd"><h2>${IC.building} Ảnh khu nội trú (trang giới thiệu)</h2><a class="btn sm" href="/dang-ky" target="_blank">Xem trang</a></div><div class="pad">
       <div class="hint">${IC.info} Ảnh hiển thị ở <strong>trang đăng ký công khai</strong> cho học viên xem. Chọn ảnh từ máy — lưu ngay, <strong>không cần sửa code</strong>. Nên dùng ảnh ngang, dung lượng < 1MB để tải nhanh.</div>
       <div class="media-grid">
@@ -1900,6 +1922,12 @@ function uploadIntroMedia(key, input) {
 async function removeIntroMedia(key) {
   if (!confirm('Xóa ảnh này? Trang giới thiệu sẽ hiện ô mẫu.')) return;
   await guard(() => API.deleteMedia(key)); toast('Đã xóa ảnh'); viewSettings();
+}
+async function saveIntro() {
+  const body = {};
+  INTRO_FIELDS.forEach(([k]) => body[k] = el('set_' + k).value);
+  await guard(() => API.updateSettings(body));
+  await refreshCache(); toast('Đã lưu nội dung trang giới thiệu'); viewSettings();
 }
 function vtypeForm(id) {
   const t = id ? (ST.vtypes || []).find(x => x.id === id) : { name: '', severity: 'minor', active: true };
