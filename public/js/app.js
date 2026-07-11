@@ -32,7 +32,6 @@ async function renderPublicRegister() {
         </div>
         <div class="intro-cta">
           <a class="btn pri lg" href="#dangky">${IC.filePen} Đăng ký nội trú</a>
-          <a class="btn lg intro-ghost" href="/">${IC.key} Đăng nhập quản lý</a>
         </div>
       </div>
     </header>

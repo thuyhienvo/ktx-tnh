@@ -144,7 +144,7 @@ async function init() {
   const fac = await pool.query('SELECT id FROM facilities LIMIT 1');
   if (fac.rows.length === 0) {
     await pool.query('INSERT INTO facilities (name, address) VALUES ($1, $2)',
-      ['Cơ sở 1', '11/9/4 Thoại Ngọc Hầu, Tân Phú']);
+      ['Cơ sở 1', '11/9/4 Thoại Ngọc Hầu, Phường Hòa Thạnh, Quận Tân Phú, Thành phố Hồ Chí Minh']);
     console.log('🏢 Đã tạo cơ sở mặc định');
   }
 
