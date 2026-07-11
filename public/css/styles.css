@@ -19,7 +19,7 @@
   /* Charcoal — thanh bên & lớp nền tối */
   --dark:#22252e; --dark2:#2b2f39; --dark-line:#343845; --dark-ink:#c6c1b6; --dark-ink2:#87887f;
   /* Serif hiển thị thanh lịch — Cormorant, fallback Palatino cho offline */
-  --serif:"Cormorant Garamond","Palatino Linotype","Book Antiqua",Palatino,Georgia,"Times New Roman",serif;
+  --serif:"Playfair Display","Palatino Linotype","Book Antiqua",Palatino,Georgia,"Times New Roman",serif;
   --sans:"Inter","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
 }
 *{box-sizing:border-box}
@@ -300,7 +300,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);b
 .intro-hero h1{font-family:var(--serif);font-size:clamp(34px,5vw,52px);line-height:1.08;margin:0 0 14px;font-weight:600;letter-spacing:.005em}
 .intro-hero p{max-width:52ch;font-size:16px;line-height:1.6;opacity:.9;margin:0 0 26px}
 .intro-stats{display:flex;gap:38px;flex-wrap:wrap;margin-bottom:28px}
-.intro-stats b{font-family:var(--serif);font-size:34px;font-weight:600;display:block;line-height:1;color:var(--gold-line)}
+.intro-stats b{font-family:var(--sans);font-size:32px;font-weight:800;display:block;line-height:1;color:var(--gold-line);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
 .intro-stats small{font-size:16px}
 .intro-stats span{font-size:12px;opacity:.82;letter-spacing:.04em;text-transform:uppercase}
 .intro-cta{display:flex;gap:12px;flex-wrap:wrap}
