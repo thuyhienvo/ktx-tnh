@@ -5,7 +5,7 @@ const billing = require('../billing');
 const { recalcInvoice } = require('../invoice-calc');
 
 const router = express.Router();
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth, requireRole('admin', 'staff'));
 
 // Tính lại 1 hóa đơn theo dữ liệu hiện tại (số ngày ở, dịch vụ...)
 router.post('/:id/recalc', async (req, res, next) => {

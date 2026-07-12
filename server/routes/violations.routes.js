@@ -4,7 +4,7 @@ const { requireAuth, requireRole } = require('../auth');
 const { sendViolationMail, mailStatus } = require('../mailer');
 
 const router = express.Router();
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth, requireRole('admin', 'staff'));
 
 const SEV = v => (['minor', 'major', 'severe'].includes(v) ? v : 'minor');
 

@@ -29,14 +29,14 @@ const RENTAL = t => (t === 'phong' ? 'phong' : 'ghep');
 const RESIDENCY = r => (r === 'registered' ? 'registered' : 'unregistered');
 const D = v => (v ? v : null);
 
-router.get('/', requireRole('admin'), async (req, res, next) => {
+router.get('/', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { rows } = await query(`${LIST_SELECT} ORDER BY s.name`);
     res.json(rows);
   } catch (e) { next(e); }
 });
 
-router.get('/:id', requireRole('admin'), async (req, res, next) => {
+router.get('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { rows } = await query(`
       SELECT s.*, r.name AS room_name, r.floor AS room_floor, r.gender AS room_gender, r.hang AS room_hang,
@@ -64,7 +64,7 @@ function studentFields(b) {
   ];
 }
 
-router.post('/', requireRole('admin'), async (req, res, next) => {
+router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -118,7 +118,7 @@ router.post('/', requireRole('admin'), async (req, res, next) => {
   }
 });
 
-router.put('/:id', requireRole('admin'), async (req, res, next) => {
+router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const b = req.body;
     const f = studentFields(b);
@@ -138,13 +138,13 @@ router.put('/:id', requireRole('admin'), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.delete('/:id', requireRole('admin'), async (req, res, next) => {
+router.delete('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   try { await query('DELETE FROM students WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
   catch (e) { next(e); }
 });
 
 // Check-in
-router.post('/:id/checkin', requireRole('admin'), async (req, res, next) => {
+router.post('/:id/checkin', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { date, room_id, note } = req.body;
     const d = date || new Date().toISOString().slice(0, 10);
@@ -161,7 +161,7 @@ router.post('/:id/checkin', requireRole('admin'), async (req, res, next) => {
 });
 
 // Check-out (kèm ngày báo + lý do, tự xét hoàn cọc)
-router.post('/:id/checkout', requireRole('admin'), async (req, res, next) => {
+router.post('/:id/checkout', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { date, notice_date, reason, note } = req.body;
     const d = date || new Date().toISOString().slice(0, 10);
@@ -183,7 +183,7 @@ router.post('/:id/checkout', requireRole('admin'), async (req, res, next) => {
 });
 
 // Chuyển phòng
-router.post('/:id/transfer', requireRole('admin'), async (req, res, next) => {
+router.post('/:id/transfer', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { room_id, date, note } = req.body;
     if (!room_id) return res.status(400).json({ error: 'Chọn phòng mới' });
@@ -201,7 +201,7 @@ router.post('/:id/transfer', requireRole('admin'), async (req, res, next) => {
 });
 
 // Ghi nhận đóng cọc
-router.post('/:id/deposit', requireRole('admin'), async (req, res, next) => {
+router.post('/:id/deposit', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const settings = await getSettings();
     const amount = req.body.amount != null ? +req.body.amount : (+settings.deposit_fee || 0);
@@ -216,7 +216,7 @@ router.post('/:id/deposit', requireRole('admin'), async (req, res, next) => {
 });
 
 // Xử lý cọc khi trả phòng: hoàn (kèm STK/ngân hàng + khấu trừ hư hao) hoặc giữ cọc
-router.post('/:id/deposit-settle', requireRole('admin'), async (req, res, next) => {
+router.post('/:id/deposit-settle', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const action = req.body.action === 'refund' ? 'refunded' : 'forfeited';
     const date = req.body.date || new Date().toISOString().slice(0, 10);
@@ -232,7 +232,7 @@ router.post('/:id/deposit-settle', requireRole('admin'), async (req, res, next) 
 });
 
 // Tài khoản đăng nhập
-router.post('/:id/account', requireRole('admin'), async (req, res, next) => {
+router.post('/:id/account', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { username, password } = req.body;
     if (!password || password.length < 4) return res.status(400).json({ error: 'Mật khẩu tối thiểu 4 ký tự' });

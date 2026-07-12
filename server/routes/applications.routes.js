@@ -4,7 +4,7 @@ const { query, pool, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 
 const router = express.Router();
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth, requireRole('admin', 'staff'));
 
 router.get('/', async (req, res, next) => {
   try {

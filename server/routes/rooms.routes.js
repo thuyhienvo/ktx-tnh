@@ -28,7 +28,7 @@ const HANG = h => (['A', 'B', 'C', 'D'].includes(h) ? h : 'B');
 // Tầng suy ra từ chữ số đầu tiên của tên phòng (VD 104 -> 1, A203 -> 2)
 const floorOf = name => { const m = String(name || '').match(/\d/); return m ? +m[0] : 1; };
 
-router.post('/', requireRole('admin'), async (req, res, next) => {
+router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { facility_id, name, gender, hang, capacity, monthly_fee, note } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Nhập tên phòng' });
@@ -42,7 +42,7 @@ router.post('/', requireRole('admin'), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.put('/:id', requireRole('admin'), async (req, res, next) => {
+router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { facility_id, name, gender, hang, capacity, monthly_fee, note } = req.body;
     const { rows } = await query(
@@ -57,7 +57,7 @@ router.put('/:id', requireRole('admin'), async (req, res, next) => {
 });
 
 // Xóa mềm: đánh dấu deleted_at (khôi phục được), không xóa hẳn
-router.delete('/:id', requireRole('admin'), async (req, res, next) => {
+router.delete('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { rows } = await query("SELECT COUNT(*)::int c FROM students WHERE room_id=$1 AND status='in'", [req.params.id]);
     if (rows[0].c > 0) return res.status(400).json({ error: 'Phòng đang có học viên ở, không thể xóa' });
@@ -67,7 +67,7 @@ router.delete('/:id', requireRole('admin'), async (req, res, next) => {
 });
 
 // Khôi phục phòng đã xóa
-router.post('/:id/restore', requireRole('admin'), async (req, res, next) => {
+router.post('/:id/restore', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     await query('UPDATE rooms SET deleted_at=NULL WHERE id=$1', [req.params.id]);
     res.json({ ok: true });

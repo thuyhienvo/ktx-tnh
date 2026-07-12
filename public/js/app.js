@@ -3,7 +3,7 @@ function boot() {
   if (location.pathname.replace(/\/$/, '') === '/dang-ky') return renderPublicRegister();
   const user = Auth.user;
   if (!Auth.token || !user) return renderLogin();
-  if (user.role === 'admin') renderAdmin();
+  if (user.role === 'admin' || user.role === 'staff') renderAdmin();
   else renderStudent();
 }
 
@@ -241,8 +241,10 @@ const AdminTitles = {
   invoices: ['Tiền phòng', 'Hóa đơn hàng tháng, điện nước, cọc'],
   revenue: ['Doanh thu', 'Báo cáo doanh thu theo tháng / năm, đối chiếu Bravo'],
   requests: ['Trung tâm hỗ trợ', 'Đăng ký nội trú · hư hỏng/vi phạm · trả phòng'],
+  audit: ['Nhật ký hệ thống', 'Lịch sử thao tác của quản lý & nhân viên'],
   settings: ['Cài đặt', 'Đơn giá, hạng phòng, cơ sở'],
 };
+const ADMIN_ONLY_VIEWS = ['exec', 'revenue', 'audit', 'settings'];
 let ST = { view: 'dashboard', rooms: [], students: [], facilities: [], settings: {}, applications: [], damage: [], couts: [], logs: [], assets: [], vtypes: [] };
 
 const G = { male: 'Nam', female: 'Nữ' };
@@ -296,13 +298,14 @@ const statusBadge = s => { const [l, c] = STATUS_INFO[liveStatus(s)]; return `<s
 const isOccupying = s => ['staying', 'leaving'].includes(liveStatus(s));
 
 function renderAdmin() {
+  const isAdmin = Auth.user.role === 'admin';
   el('app').innerHTML = `
     <div class="app">
       <aside class="side">
         <div class="logo">${IC.home} <span>Nội trú Esuhai</span></div>
         <nav id="nav">
           <div class="grp">Quản lý</div>
-          <button data-v="exec"><span class="ico">${IC.gauge}</span><span class="lbl">Điều hành</span></button>
+          ${isAdmin ? `<button data-v="exec"><span class="ico">${IC.gauge}</span><span class="lbl">Điều hành</span></button>` : ''}
           <button data-v="dashboard"><span class="ico">${IC.dashboard}</span><span class="lbl">Tổng quan</span></button>
           <button data-v="students"><span class="ico">${IC.users}</span><span class="lbl">Học viên</span></button>
           <button data-v="rooms"><span class="ico">${IC.doorOpen}</span><span class="lbl">Phòng</span></button>
@@ -310,14 +313,15 @@ function renderAdmin() {
           <div class="grp">Vận hành</div>
           <button data-v="checkin"><span class="ico">${IC.key}</span><span class="lbl">Check-in / out</span></button>
           <button data-v="invoices"><span class="ico">${IC.wallet}</span><span class="lbl">Tiền phòng</span></button>
-          <button data-v="revenue"><span class="ico">${IC.trendingUp}</span><span class="lbl">Doanh thu</span></button>
+          ${isAdmin ? `<button data-v="revenue"><span class="ico">${IC.trendingUp}</span><span class="lbl">Doanh thu</span></button>` : ''}
           <button data-v="requests"><span class="ico">${IC.inbox}</span><span class="lbl">Trung tâm hỗ trợ</span><span class="cnt" id="navReq" style="display:none"></span></button>
-          <div class="grp">Hệ thống</div>
-          <button data-v="settings"><span class="ico">${IC.settings}</span><span class="lbl">Cài đặt</span></button>
+          ${isAdmin ? `<div class="grp">Hệ thống</div>
+          <button data-v="audit"><span class="ico">${IC.history}</span><span class="lbl">Nhật ký</span></button>
+          <button data-v="settings"><span class="ico">${IC.settings}</span><span class="lbl">Cài đặt</span></button>` : ''}
         </nav>
         <div class="foot">
           <div class="u">${esc(Auth.user.full_name || Auth.user.username)}</div>
-          <div class="r muted" style="font-size:11px">Quản trị viên</div>
+          <div class="r muted" style="font-size:11px">${isAdmin ? 'Quản trị viên' : 'Nhân viên'}</div>
           <button onclick="changePwd()">${IC.key} Đổi mật khẩu</button>
           <button onclick="Auth.logout()">${IC.undo} Đăng xuất</button>
         </div>
@@ -339,7 +343,7 @@ function renderAdmin() {
   startTableResize();
   const qp = new URLSearchParams(location.search);
   const startView = qp.get('view'); if (qp.get('tab')) reqTab = qp.get('tab');
-  const views = ['exec', 'dashboard', 'students', 'rooms', 'vehicles', 'checkin', 'invoices', 'revenue', 'requests', 'settings'];
+  const views = ['exec', 'dashboard', 'students', 'rooms', 'vehicles', 'checkin', 'invoices', 'revenue', 'requests', 'audit', 'settings'];
   refreshCache().then(() => adminGo(views.includes(startView) ? startView : 'dashboard')).catch(e => toast(e.message, 'err'));
 }
 
@@ -406,12 +410,14 @@ function closeSide() {
   if (s) s.classList.remove('open'); if (b) b.classList.remove('show');
 }
 function adminGo(view) {
+  // Chặn nhân viên (staff) truy cập các mục dành riêng quản trị (kể cả deep-link)
+  if (ADMIN_ONLY_VIEWS.includes(view) && Auth.user.role !== 'admin') view = 'dashboard';
   ST.view = view; closeSide();
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.v === view));
   el('pgTitle').textContent = AdminTitles[view][0];
   el('pgSub').textContent = AdminTitles[view][1];
   el('topActions').innerHTML = '';
-  ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, vehicles: viewVehicles, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, requests: viewRequests, settings: viewSettings }[view])();
+  ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, vehicles: viewVehicles, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, requests: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
 }
 const roomById = id => ST.rooms.find(r => r.id === id);
 const studentById = id => ST.students.find(s => s.id === id);
@@ -1223,6 +1229,83 @@ function exportRevenue(data) {
   toast('Đã xuất file CSV');
 }
 
+/* ---------- NHẬT KÝ HỆ THỐNG (AUDIT LOG) ---------- */
+const AUDIT_RES = {
+  students: 'Học viên', rooms: 'Phòng', vehicles: 'Xe', assets: 'Tài sản',
+  invoices: 'Hóa đơn', electric: 'Điện', violations: 'Vi phạm', applications: 'Đơn đăng ký',
+  requests: 'Yêu cầu hỗ trợ', settings: 'Cài đặt', facilities: 'Cơ sở', media: 'Ảnh giới thiệu',
+  admin: 'Tài khoản', logs: 'Nhật ký ra/vào', reports: 'Báo cáo', me: 'Học viên (tự thao tác)',
+};
+const AUDIT_SUB = {
+  checkin: 'Check-in', checkout: 'Check-out', transfer: 'Chuyển phòng', approve: 'Duyệt đơn',
+  reject: 'Từ chối', confirm: 'Xác nhận trả phòng', notify: 'Gửi mail nhà trường', restore: 'Khôi phục',
+  generate: 'Lập hóa đơn hàng loạt', 'generate-one': 'Lập hóa đơn 1 HV', bulk: 'Lưu chỉ số điện',
+  'mark-paid': 'Đánh dấu đã thu', status: 'Đổi trạng thái', recalc: 'Tính lại hóa đơn',
+  password: 'Đặt lại mật khẩu', account: 'Cấp tài khoản', deposit: 'Cập nhật cọc',
+  'deposit-settle': 'Tất toán cọc', note: 'Ghi chú', types: 'Loại vi phạm', users: 'Tài khoản NV',
+  damage: 'Báo hư hỏng',
+};
+function auditLabel(method, pathStr) {
+  const seg = String(pathStr || '').replace(/^\/api\//, '').split('/').filter(Boolean);
+  const res = AUDIT_RES[seg[0]] || seg[0] || '—';
+  const tail = seg.slice(1).filter(x => !/^\d+$/.test(x));
+  const key = tail[tail.length - 1];
+  if (key && AUDIT_SUB[key]) return AUDIT_SUB[key] + ' · ' + res;
+  const verb = method === 'POST' ? 'Tạo mới' : (method === 'PUT' || method === 'PATCH') ? 'Cập nhật' : method === 'DELETE' ? 'Xóa' : method;
+  return verb + ' · ' + res;
+}
+const AUDIT_MCLR = { POST: 'green', PUT: 'amber', PATCH: 'amber', DELETE: 'red' };
+function fmtDT(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return String(v).slice(0, 16).replace('T', ' ');
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} · ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+let auditLimit = 200;
+async function viewAudit() {
+  el('topActions').innerHTML = `<button class="btn" onclick="viewAudit()">${IC.refresh} Tải lại</button>`;
+  el('content').innerHTML = '<div class="spinner"></div>';
+  const rows = await guard(() => API.auditLog(auditLimit));
+  const todayStr = today();
+  const todayCnt = rows.filter(r => String(r.at || '').slice(0, 10) === todayStr).length;
+  const users = new Set(rows.map(r => r.username)).size;
+
+  const body = rows.map(r => {
+    const label = auditLabel(r.method, r.path);
+    const s = `${r.username} ${label} ${r.detail || ''} ${r.path || ''}`.toLowerCase();
+    return `<tr data-s="${esc(s)}">
+      <td style="white-space:nowrap">${fmtDT(r.at)}</td>
+      <td><strong>${esc(r.username || '—')}</strong> <span class="badge ${r.role === 'admin' ? 'gray' : 'blue'}" style="font-size:10px">${r.role === 'admin' ? 'QTV' : 'NV'}</span></td>
+      <td><span class="badge ${AUDIT_MCLR[r.method] || 'gray'}" style="font-size:10px">${r.method}</span> ${esc(label)}</td>
+      <td class="muted" style="font-size:12px;max-width:360px;overflow:hidden;text-overflow:ellipsis">${esc(r.detail || '')}</td>
+    </tr>`;
+  }).join('');
+
+  el('content').innerHTML = `
+    <div class="cards">
+      <div class="stat"><div class="l">${IC.history} Tổng bản ghi (mới nhất)</div><div class="v sm">${rows.length}</div></div>
+      <div class="stat"><div class="l">${IC.calendar} Thao tác hôm nay</div><div class="v sm">${todayCnt}</div></div>
+      <div class="stat"><div class="l">${IC.users} Người thao tác</div><div class="v sm">${users}</div></div>
+    </div>
+    <div class="panel"><div class="hd"><h2>${IC.history} Nhật ký thao tác</h2>
+      <div class="flex" style="gap:8px">
+        <select id="auLimit" style="padding:6px 8px;font-size:13px">
+          ${[100, 200, 500].map(n => `<option value="${n}" ${n === auditLimit ? 'selected' : ''}>${n} dòng gần nhất</option>`).join('')}
+        </select>
+        <div class="search"><span class="i">${IC.search}</span><input id="auSearch" placeholder="Tìm người dùng / thao tác..."></div>
+      </div></div>
+      <div class="pad" style="padding-top:0"><span class="muted" style="font-size:12px" id="auCount"></span></div>
+      <div class="table-wrap">
+        ${rows.length ? `<table><thead><tr><th>Thời gian</th><th>Người dùng</th><th>Thao tác</th><th>Chi tiết</th></tr></thead>
+          <tbody>${body}</tbody></table>` : '<div class="empty">Chưa có nhật ký thao tác nào.</div>'}
+      </div>
+      <div class="pad muted" style="font-size:12px">${IC.info} Nhật ký ghi lại mọi thao tác thêm/sửa/xóa của quản lý & nhân viên. Mật khẩu, CCCD, ảnh được ẩn tự động.</div>
+    </div>`;
+  const sel = el('auLimit'); if (sel) sel.onchange = e => { auditLimit = +e.target.value; viewAudit(); };
+  const inp = el('auSearch'); if (inp) attachRowSearch(inp, 'auCount');
+}
+
 /* ---------- TRUNG TÂM HỖ TRỢ ---------- */
 let reqTab = 'apps';
 async function viewRequests() {
@@ -1992,9 +2075,80 @@ function viewSettings() {
       <button class="btn pri" onclick="saveMailSettings()">Lưu cấu hình email</button>
     </div></div>
 
-    <div class="panel"><div class="hd"><h2>${IC.shield} Tài khoản</h2></div><div class="pad">
-      <button class="btn" onclick="changePwd()">${IC.key} Đổi mật khẩu quản trị</button>
+    <div class="panel"><div class="hd"><h2>${IC.shield} Người dùng & phân quyền</h2><button class="btn sm" onclick="userForm()">${IC.plus} Thêm nhân viên</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Vai trò</th><th></th></tr></thead>
+        <tbody id="usrRows"><tr><td colspan="4"><div class="spinner"></div></td></tr></tbody></table></div>
+      <div class="pad muted" style="font-size:12.5px">${IC.bulb} <strong>Quản trị viên</strong> có toàn quyền (kể cả Điều hành, Doanh thu, Nhật ký, Cài đặt). <strong>Nhân viên</strong> chỉ thao tác nghiệp vụ (Học viên, Phòng, Xe, Check-in/out, Tiền phòng, Trung tâm hỗ trợ) và đều được ghi vào Nhật ký.</div>
+    </div>
+
+    <div class="panel"><div class="hd"><h2>${IC.key} Tài khoản của bạn</h2></div><div class="pad">
+      <button class="btn" onclick="changePwd()">${IC.key} Đổi mật khẩu</button>
     </div></div>`;
+  loadAdminUsers();
+}
+/* ---------- Quản lý tài khoản nhân viên (chỉ quản trị) ---------- */
+const ROLE_LABEL = { admin: ['Quản trị viên', 'gray'], staff: ['Nhân viên', 'blue'] };
+async function loadAdminUsers() {
+  const box = el('usrRows'); if (!box) return;
+  let users = [];
+  try { users = await API.adminUsers(); } catch (e) { box.innerHTML = `<tr><td colspan="4" class="muted">${esc(e.message)}</td></tr>`; return; }
+  const me = Auth.user.id;
+  box.innerHTML = users.map(u => {
+    const [rl, rc] = ROLE_LABEL[u.role] || [u.role, 'gray'];
+    return `<tr>
+      <td><strong>${esc(u.username)}</strong>${u.id === me ? ' <span class="badge amber" style="font-size:10px">Bạn</span>' : ''}</td>
+      <td>${esc(u.full_name || '—')}</td>
+      <td><span class="badge ${rc}">${rl}</span></td>
+      <td class="num"><div class="rowbtns" style="justify-content:flex-end">
+        <button class="btn sm" onclick="userForm(${u.id})">Sửa</button>
+        <button class="btn sm" onclick="resetUserPwForm(${u.id})">${IC.key} MK</button>
+        ${u.id === me ? '' : `<button class="btn sm ghost" title="Xóa" onclick="delUser(${u.id}, '${esc(u.username).replace(/'/g, "\\'")}')">${IC.trash}</button>`}
+      </div></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" class="muted">Chưa có tài khoản.</td></tr>';
+  window._usrCache = users;
+}
+function userForm(id) {
+  const u = id ? (window._usrCache || []).find(x => x.id === id) : { username: '', full_name: '', role: 'staff' };
+  if (id && !u) return;
+  const roleOpt = (v, l) => `<option value="${v}" ${u.role === v ? 'selected' : ''}>${l}</option>`;
+  openModal(`
+    <div class="mh"><h3>${id ? 'Sửa tài khoản' : 'Thêm nhân viên'}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <div class="field"><label>Tên đăng nhập *</label><input id="u_username" value="${esc(u.username)}" ${id ? 'disabled' : ''} placeholder="vd: nhanvien01"></div>
+      <div class="field"><label>Họ tên</label><input id="u_full" value="${esc(u.full_name || '')}" placeholder="Nguyễn Văn A"></div>
+      <div class="field"><label>Vai trò</label><select id="u_role">${roleOpt('staff', 'Nhân viên — thao tác nghiệp vụ')}${roleOpt('admin', 'Quản trị viên — toàn quyền')}</select></div>
+      ${id ? '' : `<div class="field"><label>Mật khẩu *</label><input id="u_pass" type="text" placeholder="Tối thiểu 4 ký tự"></div>`}
+      ${id === Auth.user.id ? `<div class="hint">${IC.info} Bạn không thể tự hạ quyền chính mình.</div>` : ''}
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveUser(${id || 0})">Lưu</button></div>`);
+}
+async function saveUser(id) {
+  const body = { full_name: el('u_full').value.trim(), role: el('u_role').value };
+  if (!id) { body.username = el('u_username').value.trim(); body.password = el('u_pass').value.trim(); }
+  await guard(() => id ? API.updateUser(id, body) : API.createUser(body));
+  closeModal(); toast(id ? 'Đã cập nhật tài khoản' : 'Đã tạo tài khoản'); loadAdminUsers();
+}
+function resetUserPwForm(id) {
+  const u = (window._usrCache || []).find(x => x.id === id);
+  openModal(`
+    <div class="mh"><h3>Đặt lại mật khẩu</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <p class="muted" style="margin-top:0">Tài khoản: <strong>${esc(u ? u.username : '')}</strong></p>
+      <div class="field"><label>Mật khẩu mới *</label><input id="u_newpass" type="text" placeholder="Tối thiểu 4 ký tự"></div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="doResetUserPw(${id})">Đổi mật khẩu</button></div>`);
+}
+async function doResetUserPw(id) {
+  const pw = el('u_newpass').value.trim();
+  if (pw.length < 4) return toast('Mật khẩu tối thiểu 4 ký tự', 'err');
+  await guard(() => API.resetUserPw(id, pw));
+  closeModal(); toast('Đã đổi mật khẩu');
+}
+async function delUser(id, name) {
+  if (!confirm(`Xóa tài khoản "${name}"? Không thể hoàn tác.`)) return;
+  await guard(() => API.deleteUser(id));
+  toast('Đã xóa tài khoản'); loadAdminUsers();
 }
 /* Ảnh trang giới thiệu (upload trong Cài đặt) */
 function uploadIntroMedia(key, input) {

@@ -4,7 +4,7 @@ const { requireAuth, requireRole } = require('../auth');
 const { recalcInvoice } = require('../invoice-calc');
 
 const router = express.Router();
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth, requireRole('admin', 'staff'));
 
 /* ---- Báo cáo hư hỏng ---- */
 router.get('/damage', async (req, res, next) => {

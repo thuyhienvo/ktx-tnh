@@ -3,7 +3,7 @@ const { query } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 
 const router = express.Router();
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth, requireRole('admin', 'staff'));
 
 // Danh sách xe (kèm thông tin học viên + phòng + trạng thái ở)
 router.get('/', async (req, res, next) => {

@@ -3,7 +3,7 @@ const { query } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 
 const router = express.Router();
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth, requireRole('admin', 'staff'));
 
 // Tháng liền trước 'YYYY-MM'
 function prevMonth(month) {

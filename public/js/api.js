@@ -92,6 +92,14 @@ const API = {
   updateVType: (id, b) => api('/violations/types/' + id, { method: 'PUT', body: b }),
   deleteVType: id => api('/violations/types/' + id, { method: 'DELETE' }),
 
+  // Admin: nhật ký + tài khoản nhân viên
+  auditLog: limit => api('/admin/audit' + (limit ? '?limit=' + limit : '')),
+  adminUsers: () => api('/admin/users'),
+  createUser: b => api('/admin/users', { method: 'POST', body: b }),
+  updateUser: (id, b) => api('/admin/users/' + id, { method: 'PUT', body: b }),
+  resetUserPw: (id, password) => api('/admin/users/' + id + '/password', { method: 'POST', body: { password } }),
+  deleteUser: id => api('/admin/users/' + id, { method: 'DELETE' }),
+
   meProfile: () => api('/me/profile'),
   meInvoices: () => api('/me/invoices'),
   meLogs: () => api('/me/logs'),

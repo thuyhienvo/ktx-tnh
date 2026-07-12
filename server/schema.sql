@@ -247,6 +247,19 @@ CREATE TABLE IF NOT EXISTS media (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Nhật ký thao tác (audit) — ai làm gì, khi nào
+CREATE TABLE IF NOT EXISTS audit_log (
+  id       SERIAL PRIMARY KEY,
+  user_id  INTEGER,
+  username TEXT DEFAULT '',
+  role     TEXT DEFAULT '',
+  method   TEXT DEFAULT '',
+  path     TEXT DEFAULT '',
+  detail   TEXT DEFAULT '',
+  at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_students_status ON students(status);
 CREATE INDEX IF NOT EXISTS idx_invoices_month  ON invoices(month);
 CREATE INDEX IF NOT EXISTS idx_logs_student    ON logs(student_id);
