@@ -187,6 +187,8 @@ CREATE TABLE IF NOT EXISTS damage_reports (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   resolved_at TIMESTAMPTZ
 );
+-- Yêu cầu hỗ trợ học viên: phân loại (hư hỏng phòng / báo vi phạm / khác)
+ALTER TABLE damage_reports ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'damage';
 
 -- Danh mục tài sản / trang thiết bị trong phòng (kèm phí bồi hoàn)
 CREATE TABLE IF NOT EXISTS assets (

@@ -51,11 +51,12 @@ router.get('/damage', async (req, res, next) => {
 router.post('/damage', async (req, res, next) => {
   try {
     const { title, description } = req.body;
-    if (!title || !title.trim()) return res.status(400).json({ error: 'Nhập nội dung hư hỏng' });
+    const category = ['damage', 'violation', 'other'].includes(req.body.category) ? req.body.category : 'damage';
+    if (!title || !title.trim()) return res.status(400).json({ error: 'Nhập nội dung yêu cầu hỗ trợ' });
     const st = await query('SELECT room_id FROM students WHERE id=$1', [req.user.student_id]);
     const { rows } = await query(
-      `INSERT INTO damage_reports (student_id, room_id, title, description) VALUES ($1,$2,$3,$4) RETURNING *`,
-      [req.user.student_id, st.rows[0]?.room_id || null, title.trim(), description || '']
+      `INSERT INTO damage_reports (student_id, room_id, category, title, description) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [req.user.student_id, st.rows[0]?.room_id || null, category, title.trim(), description || '']
     );
     res.status(201).json(rows[0]);
   } catch (e) { next(e); }

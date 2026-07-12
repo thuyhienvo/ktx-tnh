@@ -739,7 +739,7 @@ function stuSortVal(s) {
   }
 }
 function viewStudents() {
-  el('topActions').innerHTML = `<button class="btn" onclick="showDeletedStudents()">${IC.trash} Đã xóa</button><button class="btn pri" onclick="studentForm()">${IC.plus} Thêm học viên</button>`;
+  el('topActions').innerHTML = `<button class="btn" onclick="showDeletedStudents()">${IC.trash} Đã xóa</button><button class="btn pri" onclick="reqTab='apps';adminGo('requests')">${IC.filePen} Đăng ký / duyệt đơn</button>`;
   let list = ST.students.slice();
   if (stuFilter === 'in') list = list.filter(isOccupying);
   if (stuFilter === 'upcoming') list = list.filter(s => liveStatus(s) === 'upcoming');
@@ -1116,6 +1116,55 @@ async function restoreStudentAndReload(id) {
   await guard(() => API.restoreStudent(id));
   await refreshCache(); closeModal(); toast('Đã khôi phục học viên'); viewStudents();
 }
+// Admin tạo ĐƠN ĐĂNG KÝ hộ học viên (thay cho việc thêm học viên trực tiếp).
+// Đơn vào trạng thái "Chờ duyệt" -> admin bấm "Thêm vào phòng" để tạo học viên.
+function appForm() {
+  const facOpts = (ST.facilities || []).map(f => `<option value="${f.id}">${esc(f.name)}</option>`).join('');
+  openModal(`
+    <div class="mh"><h3>${IC.filePen} Tạo đơn đăng ký</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <div class="hint">${IC.info} Đơn tạo ở đây vào danh sách <strong>Đăng ký ở nội trú</strong> ở trạng thái <strong>Chờ duyệt</strong>. Bấm <strong>“Thêm vào phòng”</strong> để duyệt & tạo học viên.</div>
+      <div class="grid2">
+        <div class="field"><label>Họ và tên *</label><input id="ap_name" placeholder="Nguyễn Văn A"></div>
+        <div class="field"><label>SĐT *</label><input id="ap_phone" placeholder="09..."></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Giới tính</label><select id="ap_gender"><option value="female">Nữ</option><option value="male">Nam</option></select></div>
+        <div class="field"><label>Ngày sinh</label><input id="ap_birth" placeholder="dd/mm/yyyy" readonly></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Mã học viên (MSHV)</label><input id="ap_code" placeholder="TXTS-..."></div>
+        <div class="field"><label>Lớp</label><input id="ap_class" placeholder="Esu..."></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Hình thức</label><select id="ap_rental"><option value="ghep">Thuê ghép</option><option value="phong">Thuê nguyên phòng</option></select></div>
+        <div class="field"><label>Cơ sở</label><select id="ap_fac">${facOpts}</select></div>
+      </div>
+      <div class="field"><label>Nguyện vọng phòng</label><input id="ap_pref" placeholder="VD: tầng thấp, gần thang máy..."></div>
+      <div class="grid2">
+        <label class="chk" style="align-self:center"><input type="checkbox" id="ap_wash"> Đăng ký máy giặt</label>
+        <label class="chk" style="align-self:center"><input type="checkbox" id="ap_park"> Gửi xe</label>
+      </div>
+      <div class="field"><label>Biển số xe (nếu gửi xe)</label><input id="ap_plate" placeholder="59-..."></div>
+      <div class="field"><label>Ghi chú</label><textarea id="ap_note" rows="2"></textarea></div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveApp()">Tạo đơn</button></div>`);
+  attachDate(el('ap_birth'), '');
+}
+async function saveApp() {
+  const name = el('ap_name').value.trim(), phone = el('ap_phone').value.trim();
+  if (!name) return toast('Nhập họ tên', 'err');
+  if (!phone) return toast('Nhập số điện thoại', 'err');
+  const body = {
+    name, phone, gender: el('ap_gender').value, birth_date: el('ap_birth').dataset.iso || null,
+    code: el('ap_code').value.trim(), class_name: el('ap_class').value.trim(),
+    rental_type: el('ap_rental').value, facility_id: +el('ap_fac').value || null,
+    pref: el('ap_pref').value.trim(), note: el('ap_note').value.trim(),
+    wants_washing: el('ap_wash').checked, wants_parking: el('ap_park').checked, plate: el('ap_plate').value.trim(),
+  };
+  await guard(() => API.publicApply(body));
+  await refreshCache(); closeModal(); toast('Đã tạo đơn đăng ký (chờ duyệt)'); reqTab = 'apps'; viewRequests();
+}
 function accountForm(id, code) {
   openModal(`
     <div class="mh"><h3>Tài khoản đăng nhập học viên</h3><button class="x" onclick="closeModal()">×</button></div>
@@ -1373,6 +1422,8 @@ async function viewAudit() {
 }
 
 /* ---------- TRUNG TÂM HỖ TRỢ ---------- */
+const SUPCAT = { damage: ['Hư hỏng phòng', 'gray', IC.wrench], violation: ['Báo vi phạm', 'amber', IC.flag], other: ['Khác — cần hỗ trợ', 'blue', IC.info] };
+const supCatBadge = c => { const [l, cl] = SUPCAT[c] || SUPCAT.damage; return `<span class="badge ${cl}">${l}</span>`; };
 let reqTab = 'apps';
 async function viewRequests() {
   if (reqTab === 'violations' || reqTab === 'damage') reqTab = 'reports';
@@ -1390,7 +1441,8 @@ async function viewRequests() {
 
   let body = '';
   if (reqTab === 'apps') {
-    body = apps.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày gửi</th><th>Họ tên</th><th>SĐT</th><th>GT</th><th>Hình thức</th><th>Nguyện vọng</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+    const addBtn = `<div class="rowbtns" style="justify-content:space-between;align-items:center;margin-bottom:10px"><span class="muted" style="font-size:12.5px">${IC.info} Mọi học viên đều vào qua đơn đăng ký rồi duyệt. Học viên tự đăng ký tại trang công khai, hoặc admin tạo đơn hộ tại đây.</span><button class="btn pri" onclick="appForm()">${IC.plus} Tạo đơn đăng ký</button></div>`;
+    body = addBtn + (apps.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày gửi</th><th>Họ tên</th><th>SĐT</th><th>GT</th><th>Hình thức</th><th>Nguyện vọng</th><th>Trạng thái</th><th></th></tr></thead><tbody>
       ${apps.map(a => `<tr>
         <td>${fmtDate(String(a.created_at).slice(0, 10))}</td>
         <td><strong>${esc(a.name)}</strong>${a.class_name ? `<div class="muted" style="font-size:11px">${esc(a.class_name)}</div>` : ''}${a.facility_name ? `<div class="sub2">${IC.building} ${esc(a.facility_name)}</div>` : ''}</td>
@@ -1403,11 +1455,12 @@ async function viewRequests() {
           <button class="btn sm ghost" title="Ghi chú" onclick="noteForm('app', ${a.id})">${IC.filePen}</button>
           <button class="btn sm ghost" onclick="delApp(${a.id})">${IC.trash}</button>
         </div></td></tr>`).join('')}
-    </tbody></table></div>` : '<div class="empty">Chưa có đơn đăng ký nào.</div>';
+    </tbody></table></div>` : '<div class="empty">Chưa có đơn đăng ký nào.</div>');
   } else if (reqTab === 'reports') {
-    const dmgTable = damage.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày</th><th>Học viên</th><th>Phòng</th><th>Nội dung</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+    const dmgTable = damage.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày</th><th>Loại</th><th>Học viên</th><th>Phòng</th><th>Nội dung</th><th>Trạng thái</th><th></th></tr></thead><tbody>
       ${damage.map(d => `<tr>
         <td>${fmtDate(String(d.created_at).slice(0, 10))}</td>
+        <td>${supCatBadge(d.category)}</td>
         <td>${esc(d.student_name || '—')}</td><td>${esc(d.room_name || '—')}</td>
         <td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}${noteLine(d.admin_note)}</td>
         <td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>' : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td>
@@ -1437,7 +1490,7 @@ async function viewRequests() {
         </div></div>
         ${vios.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày</th><th>Học viên</th><th>Loại vi phạm</th><th>Mức độ</th><th class="num">Lần</th><th>Nhà trường</th><th></th></tr></thead><tbody>${vioRows}</tbody></table></div>` : '<div class="empty">Chưa ghi nhận vi phạm nào. Bấm <strong>Ghi nhận vi phạm</strong> hoặc mở chi tiết học viên.</div>'}
       </div>
-      <div class="panel"><div class="hd"><h2>${IC.wrench} Báo cáo hư hỏng</h2></div>${dmgTable}</div>`;
+      <div class="panel"><div class="hd"><h2>${IC.handCoins} Yêu cầu hỗ trợ học viên</h2><span class="muted" style="font-size:12px">Hư hỏng phòng · Báo vi phạm · Khác</span></div>${dmgTable}</div>`;
   } else if (reqTab === 'history') {
     const hist = [];
     apps.filter(a => a.status !== 'pending').forEach(a => hist.push({ date: (a.reviewed_at || a.created_at), type: 'Đăng ký nội trú', who: a.name, detail: a.status === 'approved' ? 'Đã thêm vào phòng' : 'Từ chối', ok: a.status === 'approved', note: a.admin_note }));
@@ -1470,7 +1523,7 @@ async function viewRequests() {
   el('content').innerHTML = `
     <div class="pill-row">
       ${tabBtn('apps', IC.filePen, 'Đăng ký ở nội trú', pApps)}
-      ${tabBtn('reports', IC.wrench, 'Báo cáo hư hỏng / vi phạm', nRep)}
+      ${tabBtn('reports', IC.wrench, 'Hỗ trợ học viên', nRep)}
       ${tabBtn('cout', IC.logOut, 'Đăng ký trả phòng', pCout)}
       ${tabBtn('history', IC.history, 'Lịch sử xử lý', 0)}
     </div>
@@ -2440,10 +2493,10 @@ async function loadStudentPortal() {
       <div class="pad muted" style="font-size:12.5px">${IC.creditCard} Đóng tiền qua mã QR quản lý gửi trên Zalo. Sau khi đóng, quản lý cập nhật "Đã đóng".</div>
     </div></div>
 
-    <div class="panel"><div class="hd"><h2>${IC.wrench} Báo cáo hư hỏng</h2><button class="btn sm pri" onclick="damageForm()">${IC.plus} Báo hư hỏng</button></div><div class="table-wrap">
-      ${damage.length ? `<table><thead><tr><th>Ngày</th><th>Nội dung</th><th>Trạng thái</th></tr></thead><tbody>
-        ${damage.map(d => `<tr><td>${fmtDate(String(d.created_at).slice(0, 10))}</td><td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}${d.admin_note ? `<div style="font-size:12px;color:var(--green)">QL: ${esc(d.admin_note)}</div>` : ''}</td><td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>' : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td></tr>`).join('')}
-      </tbody></table>` : '<div class="empty">Chưa có báo cáo.</div>'}
+    <div class="panel"><div class="hd"><h2>${IC.handCoins} Hỗ trợ học viên</h2><button class="btn sm pri" onclick="damageForm()">${IC.plus} Gửi yêu cầu hỗ trợ</button></div><div class="table-wrap">
+      ${damage.length ? `<table><thead><tr><th>Ngày</th><th>Loại</th><th>Nội dung</th><th>Trạng thái</th></tr></thead><tbody>
+        ${damage.map(d => `<tr><td>${fmtDate(String(d.created_at).slice(0, 10))}</td><td>${supCatBadge(d.category)}</td><td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}${d.admin_note ? `<div style="font-size:12px;color:var(--green)">QL: ${esc(d.admin_note)}</div>` : ''}</td><td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>' : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td></tr>`).join('')}
+      </tbody></table>` : '<div class="empty">Chưa có yêu cầu nào.</div>'}
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.logOut} Đăng ký trả phòng</h2>${!pendingCout && profile.status === 'in' ? '<button class="btn sm danger" onclick="checkoutReqForm()">Xin trả phòng</button>' : ''}</div><div class="pad">
@@ -2457,18 +2510,32 @@ async function loadStudentPortal() {
 }
 function damageForm() {
   openModal(`
-    <div class="mh"><h3>${IC.wrench} Báo cáo hư hỏng</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.handCoins} Gửi yêu cầu hỗ trợ</h3><button class="x" onclick="closeModal()">×</button></div>
     <div class="mb">
-      <div class="field"><label>Hư hỏng gì? *</label><input id="dm_title" placeholder="VD: Vòi nước bị rò, bóng đèn hỏng..."></div>
-      <div class="field"><label>Mô tả chi tiết</label><textarea id="dm_desc" rows="3"></textarea></div>
+      <div class="field"><label>Loại yêu cầu *</label><select id="dm_cat" onchange="dmCatHint()">
+        <option value="damage">Báo hư hỏng trong phòng</option>
+        <option value="violation">Báo cáo vi phạm</option>
+        <option value="other">Khác (cần hỗ trợ trong quá trình ở)</option>
+      </select></div>
+      <div class="field"><label>Nội dung *</label><input id="dm_title" placeholder="Nêu ngắn gọn nội dung..."></div>
+      <div class="field"><label>Mô tả chi tiết</label><textarea id="dm_desc" rows="3" placeholder="Mô tả thêm nếu cần..."></textarea></div>
+      <div class="hint" id="dmHint" style="font-size:12px">${IC.info} Báo hư hỏng thiết bị/cơ sở vật chất trong phòng để quản lý sửa chữa.</div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="submitDamage()">Gửi báo cáo</button></div>`);
+    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="submitDamage()">Gửi yêu cầu</button></div>`);
   setTimeout(() => el('dm_title').focus(), 50);
 }
+function dmCatHint() {
+  const c = el('dm_cat').value, h = el('dmHint');
+  const t = { damage: 'Báo hư hỏng thiết bị/cơ sở vật chất trong phòng để quản lý sửa chữa.',
+    violation: 'Phản ánh vi phạm nội quy (ồn ào, mất vệ sinh, người lạ...) để quản lý xử lý.',
+    other: 'Nội dung khác cần hỗ trợ trong quá trình ở — điền rõ ở ô Nội dung.' };
+  if (h) h.innerHTML = `${IC.info} ${t[c] || t.damage}`;
+  el('dm_title').placeholder = c === 'other' ? 'Bạn cần hỗ trợ việc gì?' : (c === 'violation' ? 'Vi phạm gì? Ai/phòng nào?' : 'Hư hỏng gì?');
+}
 async function submitDamage() {
-  const title = el('dm_title').value.trim(); if (!title) return toast('Nhập nội dung hư hỏng', 'err');
-  await guard(() => API.createMeDamage({ title, description: el('dm_desc').value.trim() }));
-  closeModal(); toast('Đã gửi báo cáo'); loadStudentPortal();
+  const title = el('dm_title').value.trim(); if (!title) return toast('Nhập nội dung yêu cầu', 'err');
+  await guard(() => API.createMeDamage({ category: el('dm_cat').value, title, description: el('dm_desc').value.trim() }));
+  closeModal(); toast('Đã gửi yêu cầu hỗ trợ'); loadStudentPortal();
 }
 function checkoutReqForm() {
   openModal(`
