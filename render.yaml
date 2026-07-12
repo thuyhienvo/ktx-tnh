@@ -1,11 +1,6 @@
-# Cấu hình triển khai lên Render (https://render.com) — 1 web service + 1 PostgreSQL
-# Render đọc file này (Blueprint) để tự tạo app + cơ sở dữ liệu.
-
-databases:
-  - name: ktx-db
-    plan: free            # Postgres miễn phí (nâng cấp trả phí khi dùng thật)
-    databaseName: ktx
-    user: ktx
+# Cấu hình triển khai lên Render (https://render.com)
+# CSDL dùng PostgreSQL của Supabase (không tạo Postgres trên Render nữa).
+# Các biến sync:false phải điền trong Render Dashboard > Environment.
 
 services:
   - type: web
@@ -16,15 +11,24 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
-      - key: DATABASE_URL           # tự lấy chuỗi kết nối từ CSDL ở trên
-        fromDatabase:
-          name: ktx-db
-          property: connectionString
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL           # chuỗi kết nối Supabase (session pooler, port 5432) — điền trong Dashboard
+        sync: false
       - key: JWT_SECRET             # tự sinh chuỗi bí mật ngẫu nhiên
         generateValue: true
       - key: ADMIN_USERNAME
         value: admin
-      - key: ADMIN_PASSWORD         # chị tự đặt trong bảng điều khiển Render (không lưu vào code)
+      - key: ADMIN_PASSWORD         # đặt trong Dashboard; admin phải đổi mật khẩu ở lần đăng nhập đầu
         sync: false
       - key: DORM_NAME
-        value: "Ký túc xá KTX TNH"
+        value: "Ký túc xá Nội trú Esuhai"
+      # ----- Supabase Storage (ảnh CCCD + ảnh giới thiệu) -----
+      - key: SUPABASE_URL
+        value: https://sceuwqrpyungzkhohmvj.supabase.co
+      - key: SUPABASE_SERVICE_KEY   # service_role key — điền trong Dashboard, KHÔNG commit
+        sync: false
+      - key: SUPABASE_CCCD_BUCKET
+        value: cccd
+      - key: SUPABASE_INTRO_BUCKET
+        value: intro

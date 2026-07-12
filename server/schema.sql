@@ -276,6 +276,9 @@ ALTER TABLE violations   ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE users        ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
+-- Ảnh giới thiệu lưu trên Supabase Storage: cột path thay cho base64 trong 'data'
+ALTER TABLE media ADD COLUMN IF NOT EXISTS path TEXT;
+
 -- Chỉ mục lọc bản ghi còn hiệu lực + vá các FK còn thiếu (từ rà soát hiệu năng)
 CREATE INDEX IF NOT EXISTS idx_students_deleted  ON students(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_students_room     ON students(room_id);

@@ -2,18 +2,24 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { query, getSettings } = require('../db');
+const storage = require('../storage');
 
 const router = express.Router(); // KHÔNG yêu cầu đăng nhập
 
 // Danh sách khóa ảnh hợp lệ của trang giới thiệu
 const MEDIA_KEYS = ['hero', 'khuon-vien-1', 'khuon-vien-2', 'khuon-vien-3', 'phong-1', 'phong-2', 'phong-3'];
 
-// Phục vụ ảnh khu nội trú: ưu tiên ảnh upload (CSDL) -> file trong /public/images -> 404
+// Phục vụ ảnh khu nội trú: Storage (redirect) -> base64 cũ (CSDL) -> file trong /public/images -> 404
 router.get('/image/:key', async (req, res, next) => {
   try {
     const key = req.params.key;
     if (!MEDIA_KEYS.includes(key)) return res.status(404).end();
-    const row = (await query('SELECT data FROM media WHERE key=$1', [key])).rows[0];
+    const row = (await query('SELECT path, data, updated_at FROM media WHERE key=$1', [key])).rows[0];
+    if (row && row.path && storage.enabled) {
+      // bucket công khai -> chuyển hướng tới URL Supabase (kèm mốc thời gian để phá cache khi đổi ảnh)
+      const v = row.updated_at ? '?v=' + new Date(row.updated_at).getTime() : '';
+      return res.redirect(302, storage.publicUrl(storage.INTRO_BUCKET, row.path) + v);
+    }
     if (row && row.data) {
       const m = /^data:(image\/[\w.+-]+);base64,(.+)$/s.exec(row.data);
       if (m) {

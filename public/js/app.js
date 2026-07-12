@@ -1910,6 +1910,15 @@ async function saveElectric() {
 async function runGenerate() {
   const month = el('g_month').value; if (!month) return toast('Chọn kỳ', 'err');
   const readings = readElectricInputs();
+  // Bước 1: xem trước (dry-run) — tính nhưng KHÔNG lưu
+  const pv = await guard(() => API.generateInvoices({ month, readings, preview: true }));
+  const msg = `Kỳ ${month} — ${pv.total} học viên ở trong kỳ:\n`
+    + `• Tạo mới: ${pv.created}\n`
+    + `• Cập nhật (chưa thu): ${pv.updated}\n`
+    + `• Bỏ qua (đã đóng, khóa): ${pv.skipped}\n\n`
+    + `Tiếp tục lập hóa đơn? (Chạy lại bao nhiêu lần cũng được — HV mới vào giữa tháng sẽ được tạo bù, hóa đơn đã thu không bị đụng.)`;
+  if (!confirm(msg)) return;
+  // Bước 2: lập thật
   const r = await guard(() => API.generateInvoices({ month, readings }));
   await refreshCache(); closeModal(); invMonth = month; invFilter = 'all';
   toast(`Đã tạo ${r.created} · cập nhật ${r.updated || 0}${r.skipped ? ` · bỏ qua ${r.skipped} (đã đóng)` : ''} hóa đơn`);

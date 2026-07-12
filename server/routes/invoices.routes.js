@@ -45,6 +45,7 @@ router.post('/generate', async (req, res, next) => {
   const client = await pool.connect();
   try {
     const { month, readings } = req.body;
+    const preview = !!req.body.preview; // xem trước: tính rồi ROLLBACK, không ghi gì
     if (!month) return res.status(400).json({ error: 'Chọn kỳ (tháng)' });
     const fees = await getSettings();
 
@@ -70,8 +71,10 @@ router.post('/generate', async (req, res, next) => {
 
     const mStart = billing.firstDay(month), mEnd = billing.lastDay(month);
     // Học viên có ở trong tháng (vào trước cuối tháng & chưa rời trước đầu tháng)
+    // Chỉ lấy cột cần dùng (không kéo ảnh CCCD/base64) -> nhẹ RAM & băng thông
     const students = (await client.query(
-      `SELECT * FROM students
+      `SELECT id, room_id, rental_type, check_in_date, check_out_date, uses_washing, uses_parking
+       FROM students
        WHERE deleted_at IS NULL AND check_in_date IS NOT NULL AND check_in_date <= $1
          AND (check_out_date IS NULL OR check_out_date >= $2)`,
       [mEnd, mStart]
@@ -87,16 +90,21 @@ router.post('/generate', async (req, res, next) => {
 
     // Cache thông tin phòng
     const rooms = {};
-    (await client.query('SELECT * FROM rooms')).rows.forEach(r => { rooms[r.id] = r; });
+    (await client.query('SELECT id, hang, monthly_fee, capacity FROM rooms')).rows.forEach(r => { rooms[r.id] = r; });
 
     // Số xe theo học viên (để tính phí gửi xe)
     const vehByStudent = {};
-    (await client.query('SELECT student_id, COUNT(*)::int c FROM vehicles GROUP BY student_id')).rows
+    (await client.query('SELECT student_id, COUNT(*)::int c FROM vehicles WHERE deleted_at IS NULL GROUP BY student_id')).rows
       .forEach(v => { vehByStudent[v.student_id] = v.c; });
+
+    // Nạp sẵn hóa đơn hiện có của kỳ trong 1 truy vấn (diệt N+1: trước đây mỗi HV 1 SELECT)
+    const existingByStudent = {};
+    (await client.query('SELECT id, student_id, status, other_charge FROM invoices WHERE month=$1', [month])).rows
+      .forEach(iv => { existingByStudent[iv.student_id] = iv; });
 
     let created = 0, updated = 0, skipped = 0;
     for (const s of students) {
-      const dup = (await client.query('SELECT id, status, other_charge FROM invoices WHERE student_id=$1 AND month=$2', [s.id, month])).rows[0];
+      const dup = existingByStudent[s.id];
       if (dup && dup.status === 'paid') { skipped++; continue; } // đã đóng -> khóa, không sửa
 
       const room = s.room_id ? rooms[s.room_id] : null;
@@ -128,8 +136,12 @@ router.post('/generate', async (req, res, next) => {
         created++;
       }
     }
+    if (preview) {
+      await client.query('ROLLBACK'); // xem trước: không lưu gì
+      return res.json({ preview: true, created, updated, skipped, total: students.length });
+    }
     await client.query('COMMIT');
-    res.json({ created, updated, skipped });
+    res.json({ created, updated, skipped, total: students.length });
   } catch (e) {
     await client.query('ROLLBACK');
     next(e);

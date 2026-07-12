@@ -4,9 +4,25 @@ const { query, pool, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { depositRefundEligible } = require('../billing');
 const { recalcInvoice } = require('../invoice-calc');
+const storage = require('../storage');
 
 const router = express.Router();
 router.use(requireAuth);
+
+const CCCD_FIELDS = storage.CCCD_FIELDS;
+const signCccd = row => storage.signRowCccd(row);
+
+// Ảnh CCCD -> Supabase Storage (bucket riêng tư). Lưu PATH vào DB, KHÔNG lưu base64.
+// value: data URL ảnh mới -> upload; '' hoặc null -> xóa; path/URL cũ -> giữ nguyên; undefined -> không đổi.
+async function resolveCccd(studentId, field, value) {
+  if (value === undefined) return undefined;
+  if (!value) return null;
+  if (!/^data:image\//.test(value)) return value;      // đã là path/URL -> giữ
+  if (!storage.enabled) return value;                  // fallback local: lưu data URL vào DB
+  const p = storage.parseDataUrl(value);
+  const path = `students/${studentId}/${field}.${p ? p.ext : 'jpg'}`;
+  return await storage.uploadDataUrl(storage.CCCD_BUCKET, path, value);
+}
 
 // Danh sách (không kèm ảnh CCCD cho nhẹ)
 const LIST_SELECT = `
@@ -50,9 +66,9 @@ router.get('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
     const veh = await query('SELECT * FROM vehicles WHERE student_id=$1 ORDER BY id', [req.params.id]);
     rows[0].vehicles = veh.rows;
-    const vio = await query('SELECT * FROM violations WHERE student_id=$1 ORDER BY date DESC, id DESC', [req.params.id]);
+    const vio = await query('SELECT * FROM violations WHERE student_id=$1 AND deleted_at IS NULL ORDER BY date DESC, id DESC', [req.params.id]);
     rows[0].violations = vio.rows;
-    res.json(rows[0]);
+    res.json(await signCccd(rows[0]));
   } catch (e) { next(e); }
 });
 
@@ -80,6 +96,7 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
     const depositFee = +settings.deposit_fee || 0;
 
     const f = studentFields({ ...b, check_in_date: checkIn });
+    f[16] = null; // cccd_image: upload sau khi có id (không lưu base64 vào DB)
     const { rows } = await client.query(
       `INSERT INTO students
         (code, name, gender, phone, id_card, birth_date, class_name, room_id, check_in_date, note,
@@ -87,10 +104,23 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
          status, check_out_date, deposit_amount, deposit_status, deposit_date, cccd_front, cccd_back, checkout_reason)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
       [...f, status, checkOut, takeDeposit ? depositFee : 0, takeDeposit ? 'held' : 'none', takeDeposit ? checkIn : null,
-       b.cccd_front || null, b.cccd_back || null,
+       null, null,
        (checkOut && ['departure', 'personal', 'facility', 'dropout', 'reserve', 'other'].includes(b.checkout_reason)) ? b.checkout_reason : (checkOut ? 'other' : null)]
     );
     const student = rows[0];
+
+    // Tải ảnh CCCD lên Storage rồi lưu path (id đã có)
+    const cccdUpd = {};
+    for (const field of CCCD_FIELDS) {
+      const r = await resolveCccd(student.id, field, b[field]);
+      if (r) { cccdUpd[field] = r; }
+    }
+    if (Object.keys(cccdUpd).length) {
+      const keys = Object.keys(cccdUpd);
+      const sets = keys.map((k, i) => `${k}=$${i + 1}`).join(', ');
+      await client.query(`UPDATE students SET ${sets} WHERE id=$${keys.length + 1}`, [...keys.map(k => cccdUpd[k]), student.id]);
+      Object.assign(student, cccdUpd);
+    }
 
     await client.query(
       `INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'in',$2,$3,'Đăng ký & vào ở','admin')`,
@@ -110,7 +140,7 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
       );
     }
     await client.query('COMMIT');
-    res.status(201).json(student);
+    res.status(201).json(await signCccd(student));
   } catch (e) {
     await client.query('ROLLBACK');
     next(e);
@@ -128,14 +158,18 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
       contract_no=$14, contract_date=$15, contract_status=$16`;
     const params = f.slice(0, 16);
     let extra = '';
-    // Ảnh CCCD: chỉ cập nhật nếu gửi kèm (giữ ảnh cũ nếu bỏ trống)
-    if (b.cccd_front !== undefined) { extra += `, cccd_front=$${params.length + 1}`; params.push(b.cccd_front || null); }
-    if (b.cccd_back !== undefined) { extra += `, cccd_back=$${params.length + 1}`; params.push(b.cccd_back || null); }
+    // Ảnh CCCD: chỉ cập nhật nếu gửi kèm; ảnh mới -> upload Storage & lưu path
+    for (const field of CCCD_FIELDS) {
+      if (b[field] === undefined) continue;
+      const resolved = await resolveCccd(req.params.id, field, b[field]);
+      extra += `, ${field}=$${params.length + 1}`;
+      params.push(resolved);
+    }
     params.push(req.params.id);
     const { rows } = await query(
       `UPDATE students SET ${cols}${extra} WHERE id=$${params.length} RETURNING *`, params);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
-    res.json(rows[0]);
+    res.json(await signCccd(rows[0]));
   } catch (e) { next(e); }
 });
 

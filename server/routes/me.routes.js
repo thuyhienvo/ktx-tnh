@@ -1,6 +1,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
+const storage = require('../storage');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('student'));
@@ -13,7 +14,7 @@ router.get('/profile', async (req, res, next) => {
       FROM students s LEFT JOIN rooms r ON r.id = s.room_id
       WHERE s.id = $1`, [req.user.student_id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy hồ sơ học viên' });
-    res.json(rows[0]);
+    res.json(await storage.signRowCccd(rows[0]));
   } catch (e) { next(e); }
 });
 
