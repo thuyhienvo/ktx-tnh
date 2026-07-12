@@ -189,6 +189,8 @@ CREATE TABLE IF NOT EXISTS damage_reports (
 );
 -- Yêu cầu hỗ trợ học viên: phân loại (hư hỏng phòng / báo vi phạm / khác)
 ALTER TABLE damage_reports ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'damage';
+-- Chuyển bảo trì: mốc thời gian admin chuyển việc cho bộ phận bảo trì
+ALTER TABLE damage_reports ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ;
 
 -- Danh mục tài sản / trang thiết bị trong phòng (kèm phí bồi hoàn)
 CREATE TABLE IF NOT EXISTS assets (

@@ -58,6 +58,7 @@ app.use('/api/invoices', require('./routes/invoices.routes'));
 app.use('/api/reports', require('./routes/reports.routes'));
 app.use('/api/logs', require('./routes/logs.routes'));
 app.use('/api/me', require('./routes/me.routes'));
+app.use('/api/maintenance', require('./routes/maintenance.routes'));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 

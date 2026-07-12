@@ -5,6 +5,7 @@ function boot() {
   if (!user) return renderLogin();
   if (user.must_change_password) return renderForceChangePw();
   if (user.role === 'admin' || user.role === 'staff') renderAdmin();
+  else if (user.role === 'maintenance') renderMaintenance();
   else renderStudent();
 }
 
@@ -1463,13 +1464,17 @@ async function viewRequests() {
         <td>${supCatBadge(d.category)}</td>
         <td>${esc(d.student_name || '—')}</td><td>${esc(d.room_name || '—')}</td>
         <td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}${noteLine(d.admin_note)}</td>
-        <td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>' : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td>
+        <td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>'
+          : d.assigned_at ? `<span class="badge blue">${IC.wrench} Đã chuyển bảo trì</span>`
+          : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
-          ${d.status !== 'processing' ? `<button class="btn sm" onclick="setDamage(${d.id},'processing')">Đang xử lý</button>` : ''}
-          ${d.status !== 'done' ? `<button class="btn sm green" onclick="setDamage(${d.id},'done')">${IC.check} Xong</button>` : `<button class="btn sm" onclick="setDamage(${d.id},'new')">Mở lại</button>`}
+          ${d.category === 'damage' && !d.assigned_at && d.status !== 'done' ? `<button class="btn sm pri" onclick="assignMaint(${d.id})">${IC.wrench} Duyệt & chuyển bảo trì</button>` : ''}
+          ${d.category !== 'damage' && d.status === 'new' ? `<button class="btn sm" onclick="setDamage(${d.id},'processing')">Đang xử lý</button>` : ''}
+          ${d.category !== 'damage' && d.status !== 'done' ? `<button class="btn sm green" onclick="setDamage(${d.id},'done')">${IC.check} Xong</button>` : ''}
+          ${d.status === 'done' ? `<button class="btn sm" onclick="setDamage(${d.id},'new')">Mở lại</button>` : ''}
           <button class="btn sm ghost" title="Ghi chú" onclick="noteForm('damage', ${d.id})">${IC.filePen}</button>
         </div></td></tr>`).join('')}
-    </tbody></table></div>` : '<div class="empty">Chưa có báo cáo hư hỏng.</div>';
+    </tbody></table></div>` : '<div class="empty">Chưa có yêu cầu hỗ trợ.</div>';
     const vioRows = vios.map(v => `<tr>
       <td>${fmtDate(v.date)}</td>
       <td><a href="#" onclick="studentDetail(${v.student_id});return false"><strong>${esc(v.student_name)}</strong></a>${v.student_code ? `<div class="muted" style="font-size:11px">${esc(v.student_code)}</div>` : ''}${v.room_name ? `<div class="muted" style="font-size:11px">${esc(v.room_name)}</div>` : ''}</td>
@@ -1669,6 +1674,11 @@ async function doApprove(id) {
 async function rejectApp(id) { if (!confirm('Từ chối đơn này?')) return; await guard(() => API.rejectApplication(id)); toast('Đã từ chối'); viewRequests(); }
 async function delApp(id) { if (!confirm('Xóa đơn này?')) return; await guard(() => API.deleteApplication(id)); toast('Đã xóa'); viewRequests(); }
 async function setDamage(id, status) { await guard(() => API.updateDamage(id, { status })); toast('Đã cập nhật'); viewRequests(); }
+async function assignMaint(id) {
+  if (!confirm('Duyệt báo hư hỏng này và chuyển cho bộ phận bảo trì xử lý?')) return;
+  await guard(() => API.assignMaintenance(id));
+  toast('Đã chuyển cho bộ phận bảo trì'); viewRequests();
+}
 async function confirmCout(id) { if (!confirm('Xác nhận trả phòng cho học viên này?')) return; await guard(() => API.confirmCheckoutReq(id, {})); await refreshCache(); toast('Đã trả phòng'); viewRequests(); }
 async function rejectCout(id) { if (!confirm('Từ chối đơn trả phòng?')) return; await guard(() => API.rejectCheckoutReq(id)); toast('Đã từ chối'); viewRequests(); }
 
@@ -2220,7 +2230,7 @@ function viewSettings() {
   loadAdminUsers();
 }
 /* ---------- Quản lý tài khoản nhân viên (chỉ quản trị) ---------- */
-const ROLE_LABEL = { admin: ['Quản trị viên', 'gray'], staff: ['Nhân viên', 'blue'] };
+const ROLE_LABEL = { admin: ['Quản trị viên', 'gray'], staff: ['Nhân viên', 'blue'], maintenance: ['Bảo trì', 'amber'] };
 async function loadAdminUsers() {
   const box = el('usrRows'); if (!box) return;
   let users = [];
@@ -2250,7 +2260,7 @@ function userForm(id) {
     <div class="mb">
       <div class="field"><label>Tên đăng nhập *</label><input id="u_username" value="${esc(u.username)}" ${id ? 'disabled' : ''} placeholder="vd: nhanvien01"></div>
       <div class="field"><label>Họ tên</label><input id="u_full" value="${esc(u.full_name || '')}" placeholder="Nguyễn Văn A"></div>
-      <div class="field"><label>Vai trò</label><select id="u_role">${roleOpt('staff', 'Nhân viên — thao tác nghiệp vụ')}${roleOpt('admin', 'Quản trị viên — toàn quyền')}</select></div>
+      <div class="field"><label>Vai trò</label><select id="u_role">${roleOpt('staff', 'Nhân viên — thao tác nghiệp vụ')}${roleOpt('maintenance', 'Bảo trì — xử lý báo hư hỏng')}${roleOpt('admin', 'Quản trị viên — toàn quyền')}</select></div>
       ${id ? '' : `<div class="field"><label>Mật khẩu *</label><input id="u_pass" type="text" placeholder="Tối thiểu 4 ký tự"></div>`}
       ${id === Auth.user.id ? `<div class="hint">${IC.info} Bạn không thể tự hạ quyền chính mình.</div>` : ''}
     </div>
@@ -2553,6 +2563,64 @@ function checkoutReqForm() {
 async function submitCheckoutReq() {
   await guard(() => API.createMeCheckoutReq({ desired_date: el('co_date').value, reason: el('co_reason').value, note: el('co_note').value.trim() }));
   closeModal(); toast('Đã gửi đơn trả phòng'); loadStudentPortal();
+}
+
+/* ================================================================= */
+/* ==============          CỔNG BẢO TRÌ             ================= */
+/* ================================================================= */
+async function renderMaintenance() {
+  el('app').innerHTML = `
+    <div class="app"><div class="main" style="margin:0 auto;max-width:940px;width:100%">
+      <div class="top">
+        <div><h1>${IC.wrench} Bảo trì ký túc xá</h1><div class="sub">Xin chào, ${esc(Auth.user.full_name || Auth.user.username)}</div></div>
+        <div class="toolbar"><button class="btn sm" onclick="loadMaintenance()">${IC.refresh} Tải lại</button><button class="btn sm" onclick="changePwd()">${IC.key} Đổi mật khẩu</button><button class="btn sm" onclick="Auth.logout()">${IC.undo} Đăng xuất</button></div>
+      </div>
+      <div class="content" id="content"><div class="spinner"></div></div>
+    </div></div>`;
+  startTableResize();
+  loadMaintenance();
+}
+async function loadMaintenance() {
+  let tasks = [];
+  try { tasks = await API.maintenanceTasks(); }
+  catch (e) { el('content').innerHTML = `<div class="hint">${IC.alert} ${esc(e.message)}</div>`; return; }
+  const pending = tasks.filter(t => t.status !== 'done');
+  const done = tasks.filter(t => t.status === 'done');
+  el('content').innerHTML = `
+    <div class="cards">
+      <div class="stat"><div class="l">${IC.bell} Cần xử lý</div><div class="v sm" style="color:${pending.length ? 'var(--red)' : 'var(--green)'}">${pending.length}</div></div>
+      <div class="stat"><div class="l">${IC.checkCircle} Đã hoàn thành</div><div class="v sm">${done.length}</div></div>
+    </div>
+    ${pending.length ? `<div class="hint" style="border-color:var(--amber-ink)">${IC.bell} Bạn có <strong>${pending.length}</strong> công việc bảo trì cần xử lý.</div>` : `<div class="hint">${IC.checkCircle} Không có công việc nào đang chờ.</div>`}
+    <div class="panel"><div class="hd"><h2>${IC.wrench} Công việc cần xử lý</h2></div><div class="table-wrap">
+      ${pending.length ? `<table><thead><tr><th>Chuyển lúc</th><th>Phòng</th><th>Nội dung</th><th>Người báo</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+        ${pending.map(t => `<tr>
+          <td>${fmtDate(String(t.assigned_at).slice(0, 10))}</td>
+          <td><strong>${esc(t.room_name || '—')}</strong></td>
+          <td><strong>${esc(t.title)}</strong>${t.description ? `<div class="muted" style="font-size:12px">${esc(t.description)}</div>` : ''}</td>
+          <td>${esc(t.student_name || '—')}${t.student_phone ? `<div class="muted" style="font-size:11px">${esc(t.student_phone)}</div>` : ''}</td>
+          <td>${t.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới nhận</span>'}</td>
+          <td class="num"><div class="rowbtns" style="justify-content:flex-end">
+            ${t.status !== 'processing' ? `<button class="btn sm" onclick="maintDo(${t.id},'processing')">Bắt đầu xử lý</button>` : ''}
+            <button class="btn sm green" onclick="maintDoneForm(${t.id})">${IC.check} Đã xử lý xong</button>
+          </div></td></tr>`).join('')}
+      </tbody></table>` : '<div class="empty">Không có công việc cần xử lý.</div>'}
+    </div></div>
+    ${done.length ? `<div class="panel"><div class="hd"><h2>${IC.history} Đã hoàn thành (${done.length})</h2></div><div class="table-wrap">
+      <table><thead><tr><th>Xong lúc</th><th>Phòng</th><th>Nội dung</th><th>Ghi chú bảo trì</th></tr></thead><tbody>
+        ${done.map(t => `<tr><td>${fmtDate(String(t.resolved_at || t.assigned_at).slice(0, 10))}</td><td>${esc(t.room_name || '—')}</td><td>${esc(t.title)}</td><td class="muted">${esc(t.admin_note || '—')}</td></tr>`).join('')}
+      </tbody></table></div></div>` : ''}`;
+}
+async function maintDo(id, status) { await guard(() => API.maintenanceTaskStatus(id, status)); toast('Đã cập nhật'); loadMaintenance(); }
+function maintDoneForm(id) {
+  openModal(`
+    <div class="mh"><h3>${IC.check} Hoàn thành công việc</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb"><div class="field"><label>Ghi chú bảo trì (đã làm gì)</label><textarea id="mt_note" rows="3" placeholder="VD: Đã thay vòi nước mới, kiểm tra lại..."></textarea></div></div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="submitMaintDone(${id})">Xác nhận đã xong</button></div>`);
+}
+async function submitMaintDone(id) {
+  await guard(() => API.maintenanceTaskStatus(id, 'done', el('mt_note').value.trim()));
+  closeModal(); toast('Đã hoàn thành công việc'); loadMaintenance();
 }
 
 /* ================= LỊCH CHỌN NGÀY (tiếng Việt, chỉ chọn) ================= */

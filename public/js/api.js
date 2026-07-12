@@ -140,6 +140,12 @@ const API = {
   deleteApplication: id => api('/applications/' + id, { method: 'DELETE' }),
   damageAll: () => api('/requests/damage'),
   updateDamage: (id, b) => api('/requests/damage/' + id, { method: 'PUT', body: b }),
+  assignMaintenance: id => api('/requests/damage/' + id + '/assign', { method: 'POST' }),
+
+  // Bảo trì
+  maintenanceTasks: () => api('/maintenance/tasks'),
+  maintenanceSummary: () => api('/maintenance/summary'),
+  maintenanceTaskStatus: (id, status, note) => api('/maintenance/tasks/' + id + '/status', { method: 'POST', body: { status, note } }),
   checkoutReqs: () => api('/requests/checkout'),
   confirmCheckoutReq: (id, b) => api('/requests/checkout/' + id + '/confirm', { method: 'POST', body: b }),
   rejectCheckoutReq: id => api('/requests/checkout/' + id + '/reject', { method: 'POST' }),

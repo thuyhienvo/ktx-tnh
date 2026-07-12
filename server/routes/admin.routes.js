@@ -16,13 +16,13 @@ router.get('/audit', async (req, res, next) => {
 });
 
 /* ---------- Quản lý tài khoản nhân viên ---------- */
-const ROLE = r => (['admin', 'staff'].includes(r) ? r : 'staff');
+const ROLE = r => (['admin', 'staff', 'maintenance'].includes(r) ? r : 'staff');
 
 router.get('/users', async (req, res, next) => {
   try {
     const { rows } = await query(
       `SELECT id, username, role, full_name, created_at FROM users
-       WHERE role IN ('admin','staff') AND deleted_at IS NULL ORDER BY role, username`);
+       WHERE role IN ('admin','staff','maintenance') AND deleted_at IS NULL ORDER BY role, username`);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -50,7 +50,7 @@ router.put('/users/:id', async (req, res, next) => {
     if (id === req.user.id && req.body.role && req.body.role !== 'admin')
       return res.status(400).json({ error: 'Không thể tự hạ quyền chính mình' });
     const { rows } = await query(
-      `UPDATE users SET full_name=$1, role=$2 WHERE id=$3 AND role IN ('admin','staff') RETURNING id`,
+      `UPDATE users SET full_name=$1, role=$2 WHERE id=$3 AND role IN ('admin','staff','maintenance') RETURNING id`,
       [(req.body.full_name || '').trim(), ROLE(req.body.role), id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy tài khoản' });
     res.json({ ok: true });
@@ -75,7 +75,7 @@ router.delete('/users/:id', async (req, res, next) => {
     const target = (await query('SELECT role FROM users WHERE id=$1', [id])).rows[0];
     if (target && target.role === 'admin' && admins <= 1) return res.status(400).json({ error: 'Phải còn ít nhất 1 quản trị viên' });
     // Vô hiệu hóa (xóa mềm) — giữ lại lịch sử thao tác của tài khoản
-    await query("UPDATE users SET deleted_at=now() WHERE id=$1 AND role IN ('admin','staff')", [id]);
+    await query("UPDATE users SET deleted_at=now() WHERE id=$1 AND role IN ('admin','staff','maintenance')", [id]);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
