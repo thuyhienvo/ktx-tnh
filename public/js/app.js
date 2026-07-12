@@ -1465,6 +1465,7 @@ async function viewRequests() {
         <td>${esc(d.student_name || '—')}</td><td>${esc(d.room_name || '—')}</td>
         <td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}${noteLine(d.admin_note)}</td>
         <td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>'
+          : d.status === 'blocked' ? `<span class="badge red">Bảo trì: chưa xử lý được</span>${d.admin_note ? `<div style="font-size:11px;color:var(--red-ink)">Lý do: ${esc(d.admin_note)}</div>` : ''}`
           : d.assigned_at ? `<span class="badge blue">${IC.wrench} Đã chuyển bảo trì</span>`
           : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
@@ -2505,7 +2506,7 @@ async function loadStudentPortal() {
 
     <div class="panel"><div class="hd"><h2>${IC.handCoins} Hỗ trợ học viên</h2><button class="btn sm pri" onclick="damageForm()">${IC.plus} Gửi yêu cầu hỗ trợ</button></div><div class="table-wrap">
       ${damage.length ? `<table><thead><tr><th>Ngày</th><th>Loại</th><th>Nội dung</th><th>Trạng thái</th></tr></thead><tbody>
-        ${damage.map(d => `<tr><td>${fmtDate(String(d.created_at).slice(0, 10))}</td><td>${supCatBadge(d.category)}</td><td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}${d.admin_note ? `<div style="font-size:12px;color:var(--green)">QL: ${esc(d.admin_note)}</div>` : ''}</td><td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>' : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td></tr>`).join('')}
+        ${damage.map(d => `<tr><td>${fmtDate(String(d.created_at).slice(0, 10))}</td><td>${supCatBadge(d.category)}</td><td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}${d.admin_note ? `<div style="font-size:12px;color:${d.status === 'blocked' ? 'var(--red-ink)' : 'var(--green)'}">${d.status === 'blocked' ? 'Lý do' : 'Phản hồi'}: ${esc(d.admin_note)}</div>` : ''}</td><td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>' : d.status === 'blocked' ? '<span class="badge red">Chưa xử lý được</span>' : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td></tr>`).join('')}
       </tbody></table>` : '<div class="empty">Chưa có yêu cầu nào.</div>'}
     </div></div>
 
@@ -2599,9 +2600,11 @@ async function loadMaintenance() {
           <td><strong>${esc(t.room_name || '—')}</strong></td>
           <td><strong>${esc(t.title)}</strong>${t.description ? `<div class="muted" style="font-size:12px">${esc(t.description)}</div>` : ''}</td>
           <td>${esc(t.student_name || '—')}${t.student_phone ? `<div class="muted" style="font-size:11px">${esc(t.student_phone)}</div>` : ''}</td>
-          <td>${t.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới nhận</span>'}</td>
-          <td class="num"><div class="rowbtns" style="justify-content:flex-end">
+          <td>${t.status === 'blocked' ? `<span class="badge red">Chưa xử lý được</span>${t.admin_note ? `<div style="font-size:11px;color:var(--red-ink)">Lý do: ${esc(t.admin_note)}</div>` : ''}`
+            : t.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới nhận</span>'}</td>
+          <td class="num"><div class="rowbtns" style="justify-content:flex-end;flex-wrap:wrap;gap:4px">
             ${t.status !== 'processing' ? `<button class="btn sm" onclick="maintDo(${t.id},'processing')">Bắt đầu xử lý</button>` : ''}
+            <button class="btn sm danger" onclick="maintBlockForm(${t.id})">${IC.alert} Chưa xử lý được</button>
             <button class="btn sm green" onclick="maintDoneForm(${t.id})">${IC.check} Đã xử lý xong</button>
           </div></td></tr>`).join('')}
       </tbody></table>` : '<div class="empty">Không có công việc cần xử lý.</div>'}
@@ -2621,6 +2624,21 @@ function maintDoneForm(id) {
 async function submitMaintDone(id) {
   await guard(() => API.maintenanceTaskStatus(id, 'done', el('mt_note').value.trim()));
   closeModal(); toast('Đã hoàn thành công việc'); loadMaintenance();
+}
+function maintBlockForm(id) {
+  openModal(`
+    <div class="mh"><h3>${IC.alert} Chưa xử lý được</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb"><div class="field"><label>Lý do chưa xử lý được *</label>
+      <textarea id="mt_reason" rows="3" placeholder="VD: Cần thay linh kiện, đang đặt hàng · Ngoài khả năng, cần thợ ngoài · Chờ học viên có mặt..."></textarea></div>
+      <div class="hint" style="font-size:12px">${IC.info} Công việc vẫn nằm trong danh sách "Cần xử lý"; quản lý & học viên sẽ thấy lý do này.</div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn danger" onclick="submitMaintBlock(${id})">Lưu lý do</button></div>`);
+  setTimeout(() => el('mt_reason').focus(), 50);
+}
+async function submitMaintBlock(id) {
+  const reason = el('mt_reason').value.trim(); if (!reason) return toast('Nhập lý do chưa xử lý được', 'err');
+  await guard(() => API.maintenanceTaskStatus(id, 'blocked', reason));
+  closeModal(); toast('Đã ghi nhận lý do'); loadMaintenance();
 }
 
 /* ================= LỊCH CHỌN NGÀY (tiếng Việt, chỉ chọn) ================= */

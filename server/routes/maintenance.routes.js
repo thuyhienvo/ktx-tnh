@@ -28,14 +28,16 @@ router.get('/summary', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Bảo trì cập nhật tiến độ: đang xử lý / đã xong (kèm ghi chú bảo trì)
+// Bảo trì cập nhật tiến độ: đang xử lý / chưa xử lý được (kèm lý do) / đã xong (kèm ghi chú)
 router.post('/tasks/:id/status', async (req, res, next) => {
   try {
-    const status = ['processing', 'done'].includes(req.body.status) ? req.body.status : 'processing';
+    const status = ['processing', 'blocked', 'done'].includes(req.body.status) ? req.body.status : 'processing';
+    const note = (req.body.note || '').trim();
+    if (status === 'blocked' && !note) return res.status(400).json({ error: 'Nhập lý do chưa xử lý được' });
     const { rows } = await query(
       `UPDATE damage_reports SET status=$1, admin_note=$2, resolved_at=$3
        WHERE id=$4 AND category='damage' AND assigned_at IS NOT NULL RETURNING *`,
-      [status, req.body.note || '', status === 'done' ? new Date().toISOString() : null, req.params.id]);
+      [status, note, status === 'done' ? new Date().toISOString() : null, req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy công việc' });
     res.json(rows[0]);
   } catch (e) { next(e); }
