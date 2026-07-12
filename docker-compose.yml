@@ -1,37 +1,70 @@
+# ============================================================
+#  BACKING SERVICES cho phase LOCAL DEV
+#  - Postgres (cùng engine với staging/Supabase)
+#  - MinIO (S3 object storage, cùng giao thức với Supabase Storage)
+#  App chạy trên host (npm start / Chay-App.bat) và trỏ vào 2 service này qua .env.
+#  KHÔNG đặt secret mặc định ở đây — mọi biến lấy từ .env (bắt buộc có).
+#  Chạy:  docker compose up -d
+# ============================================================
 services:
   db:
     image: postgres:16-alpine
     container_name: ktx-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-ktx}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ktx_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-ktx}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER chua dat trong .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD chua dat trong .env}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB chua dat trong .env}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - ktx_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ktx} -d ${POSTGRES_DB:-ktx}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  app:
-    build: .
-    container_name: ktx-app
+  minio:
+    image: minio/minio:latest
+    container_name: ktx-minio
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
+    command: server /data --console-address ":9001"
     environment:
-      NODE_ENV: production
-      PORT: 3000
-      DATABASE_URL: postgres://${POSTGRES_USER:-ktx}:${POSTGRES_PASSWORD:-ktx_secret}@db:5432/${POSTGRES_DB:-ktx}
-      JWT_SECRET: ${JWT_SECRET:-doi_chuoi_bi_mat_nay_di}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
-      DORM_NAME: ${DORM_NAME:-Ký túc xá Học viên}
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?S3_ACCESS_KEY chua dat trong .env}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY chua dat trong .env}
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "${S3_PORT:-9000}:9000"      # S3 API
+      - "${S3_CONSOLE_PORT:-9001}:9001"  # web console
+    volumes:
+      - ktx_miniodata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Tạo sẵn 2 bucket (idempotent) rồi thoát
+  minio-init:
+    image: minio/mc:latest
+    container_name: ktx-minio-init
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until (mc alias set local http://minio:9000 $${S3_ACCESS_KEY} $${S3_SECRET_KEY}) do echo 'cho minio...'; sleep 1; done;
+      mc mb -p local/$${S3_CCCD_BUCKET};
+      mc mb -p local/$${S3_INTRO_BUCKET};
+      echo 'da tao bucket $${S3_CCCD_BUCKET} + $${S3_INTRO_BUCKET}';
+      exit 0;
+      "
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_CCCD_BUCKET: ${S3_CCCD_BUCKET:-cccd}
+      S3_INTRO_BUCKET: ${S3_INTRO_BUCKET:-intro}
 
 volumes:
   ktx_pgdata:
+  ktx_miniodata:

@@ -1,6 +1,4 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const { query, getSettings } = require('../db');
 const storage = require('../storage');
 
@@ -9,29 +7,19 @@ const router = express.Router(); // KHÔNG yêu cầu đăng nhập
 // Danh sách khóa ảnh hợp lệ của trang giới thiệu
 const MEDIA_KEYS = ['hero', 'khuon-vien-1', 'khuon-vien-2', 'khuon-vien-3', 'phong-1', 'phong-2', 'phong-3'];
 
-// Phục vụ ảnh khu nội trú: Storage (redirect) -> base64 cũ (CSDL) -> file trong /public/images -> 404
+// Phục vụ ảnh giới thiệu: proxy từ S3 (bucket intro) — cùng 1 cơ chế ở mọi môi trường.
+// Chưa upload -> 404 (frontend tự hiện ảnh mẫu placeholder).
 router.get('/image/:key', async (req, res, next) => {
   try {
     const key = req.params.key;
     if (!MEDIA_KEYS.includes(key)) return res.status(404).end();
-    const row = (await query('SELECT path, data, updated_at FROM media WHERE key=$1', [key])).rows[0];
-    if (row && row.path && storage.enabled) {
-      // bucket công khai -> chuyển hướng tới URL Supabase (kèm mốc thời gian để phá cache khi đổi ảnh)
-      const v = row.updated_at ? '?v=' + new Date(row.updated_at).getTime() : '';
-      return res.redirect(302, storage.publicUrl(storage.INTRO_BUCKET, row.path) + v);
-    }
-    if (row && row.data) {
-      const m = /^data:(image\/[\w.+-]+);base64,(.+)$/s.exec(row.data);
-      if (m) {
-        res.set('Content-Type', m[1]);
-        res.set('Cache-Control', 'no-cache');
-        return res.send(Buffer.from(m[2], 'base64'));
-      }
-    }
-    const file = path.join(__dirname, '..', '..', 'public', 'images', key + '.jpg');
-    if (fs.existsSync(file)) return res.sendFile(file);
-    return res.status(404).end();
-  } catch (e) { next(e); }
+    const row = (await query('SELECT path FROM media WHERE key=$1', [key])).rows[0];
+    if (!row || !row.path) return res.status(404).end();
+    const obj = await storage.getObject(storage.INTRO_BUCKET, row.path);
+    res.set('Content-Type', obj.contentType || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=300');
+    obj.body.pipe(res);
+  } catch (e) { res.status(404).end(); }
 });
 
 // Thông tin KTX + đơn giá (để hiển thị trên trang đăng ký)
@@ -93,14 +81,32 @@ router.post('/apply', async (req, res, next) => {
     const b = req.body;
     if (!b.name || !b.name.trim()) return res.status(400).json({ error: 'Vui lòng nhập họ tên' });
     if (!b.phone || !b.phone.trim()) return res.status(400).json({ error: 'Vui lòng nhập số điện thoại' });
+    // Chèn đơn trước (chưa có ảnh) để lấy id
     const { rows } = await query(
-      `INSERT INTO applications (name, phone, gender, birth_date, code, class_name, rental_type, pref, note, wants_washing, wants_parking, plate, cccd_front, cccd_back, facility_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
+      `INSERT INTO applications (name, phone, gender, birth_date, code, class_name, rental_type, pref, note, wants_washing, wants_parking, plate, facility_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
       [b.name.trim(), b.phone.trim(), b.gender === 'male' ? 'male' : 'female', b.birth_date || null,
        b.code || '', b.class_name || '', b.rental_type === 'phong' ? 'phong' : 'ghep', b.pref || '', b.note || '',
-       !!b.wants_washing, !!b.wants_parking, b.plate || '', b.cccd_front || null, b.cccd_back || null, +b.facility_id || null]
+       !!b.wants_washing, !!b.wants_parking, b.plate || '', +b.facility_id || null]
     );
-    res.status(201).json({ ok: true, id: rows[0].id });
+    const appId = rows[0].id;
+
+    // Ảnh CCCD -> S3 (bucket riêng tư), lưu key. Bỏ qua ảnh không hợp lệ / quá lớn (chống lạm dụng).
+    const upd = {};
+    for (const field of ['cccd_front', 'cccd_back']) {
+      const v = b[field];
+      if (v && /^data:image\//.test(v) && v.length <= 8 * 1024 * 1024) {
+        const p = storage.parseDataUrl(v);
+        const objKey = `applications/${appId}/${field}.${p ? p.ext : 'jpg'}`;
+        try { await storage.putDataUrl(storage.CCCD_BUCKET, objKey, v); upd[field] = objKey; } catch (e) {}
+      }
+    }
+    if (Object.keys(upd).length) {
+      const keys = Object.keys(upd);
+      await query(`UPDATE applications SET ${keys.map((k, i) => `${k}=$${i + 1}`).join(', ')} WHERE id=$${keys.length + 1}`,
+        [...keys.map(k => upd[k]), appId]);
+    }
+    res.status(201).json({ ok: true, id: appId });
   } catch (e) { next(e); }
 });
 

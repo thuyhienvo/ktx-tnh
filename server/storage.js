@@ -1,80 +1,65 @@
-// ===== Lưu ảnh trên Supabase Storage (S3) =====
-// CCCD -> bucket riêng tư (đọc bằng link ký hạn); ảnh giới thiệu -> bucket công khai.
-// Nếu chưa cấu hình SUPABASE_URL/SERVICE_KEY thì enabled=false (route sẽ fallback / báo lỗi rõ ràng).
+// ===== Object storage (S3) — MỘT client duy nhất cho mọi môi trường =====
+// local dev -> MinIO;  staging/UAT/prod -> Supabase Storage / AWS S3.
+// Chỉ khác endpoint + credentials qua ENV; KHÔNG rẽ nhánh framework theo môi trường.
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
-const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
-const CCCD_BUCKET = process.env.SUPABASE_CCCD_BUCKET || 'cccd';
-const INTRO_BUCKET = process.env.SUPABASE_INTRO_BUCKET || 'intro';
+// Fail-fast: bắt buộc cấu hình S3 ở MỌI môi trường (không có fallback base64/đĩa)
+const NEED = ['S3_ENDPOINT', 'S3_REGION', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_CCCD_BUCKET', 'S3_INTRO_BUCKET'];
+const missing = NEED.filter(k => !process.env[k]);
+if (missing.length) {
+  throw new Error('Thiếu cấu hình object storage (S3): ' + missing.join(', ') +
+    '. Local: chạy "docker compose up -d" (MinIO) rồi điền S3_* trong .env.');
+}
 
-const enabled = !!(SUPABASE_URL && SERVICE_KEY);
+const CCCD_BUCKET = process.env.S3_CCCD_BUCKET;
+const INTRO_BUCKET = process.env.S3_INTRO_BUCKET;
+
+const s3 = new S3Client({
+  endpoint: process.env.S3_ENDPOINT,
+  region: process.env.S3_REGION,
+  credentials: { accessKeyId: process.env.S3_ACCESS_KEY, secretAccessKey: process.env.S3_SECRET_KEY },
+  forcePathStyle: true, // MinIO & Supabase Storage đều dùng path-style
+});
+
+const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
 
 function parseDataUrl(dataUrl) {
   const m = /^data:(image\/[\w.+-]+);base64,(.+)$/s.exec(dataUrl || '');
   if (!m) return null;
-  const ext = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' })[m[1]] || 'bin';
-  return { contentType: m[1], ext, buffer: Buffer.from(m[2], 'base64') };
+  return { contentType: m[1], ext: EXT[m[1]] || 'bin', buffer: Buffer.from(m[2], 'base64') };
 }
 
-function headers(extra = {}) {
-  return { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, ...extra };
+async function putBuffer(bucket, key, buffer, contentType) {
+  await s3.send(new PutObjectCommand({
+    Bucket: bucket, Key: key, Body: buffer, ContentType: contentType, CacheControl: 'public, max-age=3600',
+  }));
+  return key;
 }
 
-// Tải ảnh (data URL) lên bucket, ghi đè nếu đã tồn tại. Trả về path đã lưu.
-async function uploadDataUrl(bucket, path, dataUrl) {
+async function putDataUrl(bucket, key, dataUrl) {
   const p = parseDataUrl(dataUrl);
   if (!p) throw new Error('Ảnh không hợp lệ (không phải data URL base64)');
-  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${encodeURI(path)}`, {
-    method: 'POST',
-    headers: headers({ 'Content-Type': p.contentType, 'x-upsert': 'true', 'cache-control': '3600' }),
-    body: p.buffer,
-  });
-  if (!res.ok) throw new Error(`Upload Storage lỗi ${res.status}: ${await res.text()}`);
-  return path;
+  return putBuffer(bucket, key, p.buffer, p.contentType);
 }
 
-// Link ký hạn để xem ảnh ở bucket riêng tư (mặc định 1 giờ)
-async function signedUrl(bucket, path, expiresIn = 3600) {
-  if (!path) return null;
-  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/${bucket}/${encodeURI(path)}`, {
-    method: 'POST',
-    headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ expiresIn }),
-  });
-  if (!res.ok) return null;
-  const j = await res.json();
-  return j.signedURL ? SUPABASE_URL + '/storage/v1' + j.signedURL : null;
+// Lấy object để stream ra client (proxy). Trả stream + metadata; ném lỗi nếu không có.
+async function getObject(bucket, key) {
+  const r = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  return { body: r.Body, contentType: r.ContentType, contentLength: r.ContentLength, etag: r.ETag };
 }
 
-// URL công khai (bucket public)
-function publicUrl(bucket, path) {
-  return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${encodeURI(path)}`;
+async function deleteObject(bucket, key) {
+  if (!key) return;
+  await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
-async function remove(bucket, paths) {
-  const list = Array.isArray(paths) ? paths : [paths];
-  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}`, {
-    method: 'DELETE',
-    headers: headers({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ prefixes: list }),
-  });
-  return res.ok;
-}
-
-// Thay path CCCD trong 1 bản ghi bằng link ký hạn (để client hiển thị ảnh bucket riêng tư)
-const CCCD_FIELDS = ['cccd_front', 'cccd_back', 'cccd_image'];
-async function signRowCccd(row, expiresIn = 3600) {
-  if (!row) return row;
-  for (const f of CCCD_FIELDS) {
-    const v = row[f];
-    if (v && enabled && !/^data:/.test(v) && !/^https?:/.test(v)) {
-      row[f] = (await signedUrl(CCCD_BUCKET, v, expiresIn)) || null;
-    }
-  }
-  return row;
+// Link ký hạn (không dùng cho luồng hiển thị mặc định — app proxy — nhưng để sẵn tiện ích)
+async function signedGetUrl(bucket, key, expiresIn = 3600) {
+  return getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn });
 }
 
 module.exports = {
-  enabled, CCCD_BUCKET, INTRO_BUCKET, CCCD_FIELDS,
-  parseDataUrl, uploadDataUrl, signedUrl, publicUrl, remove, signRowCccd,
+  s3, CCCD_BUCKET, INTRO_BUCKET,
+  parseDataUrl, putBuffer, putDataUrl, getObject, deleteObject, signedGetUrl,
 };

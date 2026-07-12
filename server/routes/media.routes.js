@@ -17,7 +17,7 @@ router.get('/', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Upload / thay ảnh (nhận base64 data URL, lưu lên Supabase Storage bucket công khai)
+// Upload / thay ảnh giới thiệu — luôn lưu lên S3 (bucket intro), lưu KEY vào DB
 router.post('/:key', async (req, res, next) => {
   try {
     const key = req.params.key;
@@ -26,33 +26,24 @@ router.post('/:key', async (req, res, next) => {
     if (!/^data:image\/[\w.+-]+;base64,/.test(data)) return res.status(400).json({ error: 'Ảnh không hợp lệ' });
     if (data.length > 8 * 1024 * 1024) return res.status(400).json({ error: 'Ảnh quá lớn (tối đa ~6MB)' });
 
-    if (storage.enabled) {
-      const p = storage.parseDataUrl(data);
-      const path = `${key}.${p ? p.ext : 'jpg'}`;
-      await storage.uploadDataUrl(storage.INTRO_BUCKET, path, data);
-      await query(
-        `INSERT INTO media (key, path, data, updated_at) VALUES ($1,$2,NULL,now())
-         ON CONFLICT (key) DO UPDATE SET path=EXCLUDED.path, data=NULL, updated_at=now()`,
-        [key, path]
-      );
-    } else {
-      // fallback local (không có Storage): lưu base64 vào DB như cũ
-      await query(
-        `INSERT INTO media (key, data, updated_at) VALUES ($1,$2,now())
-         ON CONFLICT (key) DO UPDATE SET data=EXCLUDED.data, updated_at=now()`,
-        [key, data]
-      );
-    }
+    const p = storage.parseDataUrl(data);
+    const objectKey = `${key}.${p ? p.ext : 'jpg'}`;
+    await storage.putDataUrl(storage.INTRO_BUCKET, objectKey, data);
+    await query(
+      `INSERT INTO media (key, path, data, updated_at) VALUES ($1,$2,NULL,now())
+       ON CONFLICT (key) DO UPDATE SET path=EXCLUDED.path, data=NULL, updated_at=now()`,
+      [key, objectKey]
+    );
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
 
-// Xóa ảnh upload (trở về placeholder / file nếu có)
+// Xóa ảnh upload (dọn cả object trên S3)
 router.delete('/:key', async (req, res, next) => {
   try {
     const key = req.params.key;
     const row = (await query('SELECT path FROM media WHERE key=$1', [key])).rows[0];
-    if (row && row.path && storage.enabled) { try { await storage.remove(storage.INTRO_BUCKET, row.path); } catch (e) {} }
+    if (row && row.path) { try { await storage.deleteObject(storage.INTRO_BUCKET, row.path); } catch (e) {} }
     await query('DELETE FROM media WHERE key=$1', [key]);
     res.json({ ok: true });
   } catch (e) { next(e); }

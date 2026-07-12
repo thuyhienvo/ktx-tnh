@@ -1,6 +1,12 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'doi_chuoi_bi_mat_nay_di';
+// Fail-fast: không dùng secret mặc định. Bắt buộc đặt JWT_SECRET ở mọi môi trường.
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
+  throw new Error('Thiếu JWT_SECRET (hoặc quá ngắn < 16). Sinh chuỗi ngẫu nhiên rồi đặt vào ENV/.env.');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
+// Cookie Secure bật theo kết nối HTTPS thật, khai báo tường minh — KHÔNG suy theo NODE_ENV.
+const COOKIE_SECURE = process.env.COOKIE_SECURE === 'true';
 
 function signToken(user) {
   return jwt.sign(
@@ -27,7 +33,7 @@ function setAuthCookie(res, token) {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: COOKIE_SECURE,
     path: '/',
     maxAge: COOKIE_MAX_AGE,
   });

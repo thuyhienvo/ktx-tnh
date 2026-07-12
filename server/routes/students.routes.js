@@ -5,24 +5,46 @@ const { requireAuth, requireRole } = require('../auth');
 const { depositRefundEligible } = require('../billing');
 const { recalcInvoice } = require('../invoice-calc');
 const storage = require('../storage');
+const { cccdUrls, SIDE_COL } = require('../cccd-url');
 
 const router = express.Router();
 router.use(requireAuth);
 
-const CCCD_FIELDS = storage.CCCD_FIELDS;
-const signCccd = row => storage.signRowCccd(row);
+const CCCD_FIELDS = ['cccd_front', 'cccd_back', 'cccd_image'];
+const signCccd = row => cccdUrls(row); // trả URL proxy cho các cột CCCD
 
-// Ảnh CCCD -> Supabase Storage (bucket riêng tư). Lưu PATH vào DB, KHÔNG lưu base64.
-// value: data URL ảnh mới -> upload; '' hoặc null -> xóa; path/URL cũ -> giữ nguyên; undefined -> không đổi.
-async function resolveCccd(studentId, field, value) {
+// Ảnh CCCD -> S3 (bucket riêng tư). Lưu KEY vào DB, KHÔNG lưu base64.
+// value: data URL ảnh mới -> upload; '' hoặc null -> xóa object cũ; key cũ -> giữ; undefined -> không đổi.
+async function resolveCccd(studentId, field, value, oldKey) {
+  const isKey = k => k && !/^data:/.test(k) && !/^https?:/.test(k);
   if (value === undefined) return undefined;
-  if (!value) return null;
-  if (!/^data:image\//.test(value)) return value;      // đã là path/URL -> giữ
-  if (!storage.enabled) return value;                  // fallback local: lưu data URL vào DB
+  if (!value) {
+    if (isKey(oldKey)) await storage.deleteObject(storage.CCCD_BUCKET, oldKey).catch(() => {});
+    return null;
+  }
+  if (!/^data:image\//.test(value)) return value; // đã là key -> giữ
   const p = storage.parseDataUrl(value);
-  const path = `students/${studentId}/${field}.${p ? p.ext : 'jpg'}`;
-  return await storage.uploadDataUrl(storage.CCCD_BUCKET, path, value);
+  const key = `students/${studentId}/${field}.${p ? p.ext : 'jpg'}`;
+  await storage.putDataUrl(storage.CCCD_BUCKET, key, value);
+  if (isKey(oldKey) && oldKey !== key) await storage.deleteObject(storage.CCCD_BUCKET, oldKey).catch(() => {});
+  return key;
 }
+
+// Proxy ảnh CCCD (bucket riêng tư): admin/staff hoặc chính học viên đó. Ảnh chảy S3 -> app -> client.
+router.get('/:id/cccd/:side', async (req, res, next) => {
+  try {
+    const col = SIDE_COL[req.params.side];
+    if (!col) return res.status(404).end();
+    const isStaff = ['admin', 'staff'].includes(req.user.role);
+    if (!isStaff && req.user.student_id !== +req.params.id) return res.status(403).end();
+    const row = (await query(`SELECT ${col} AS k FROM students WHERE id=$1`, [req.params.id])).rows[0];
+    if (!row || !row.k) return res.status(404).end();
+    const obj = await storage.getObject(storage.CCCD_BUCKET, row.k);
+    res.set('Content-Type', obj.contentType || 'image/jpeg');
+    res.set('Cache-Control', 'private, max-age=300');
+    obj.body.pipe(res);
+  } catch (e) { res.status(404).end(); }
+});
 
 // Danh sách (không kèm ảnh CCCD cho nhẹ)
 const LIST_SELECT = `
@@ -158,10 +180,14 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
       contract_no=$14, contract_date=$15, contract_status=$16`;
     const params = f.slice(0, 16);
     let extra = '';
-    // Ảnh CCCD: chỉ cập nhật nếu gửi kèm; ảnh mới -> upload Storage & lưu path
+    // Ảnh CCCD: chỉ cập nhật nếu gửi kèm; ảnh mới -> upload S3 & lưu key, dọn object cũ
+    const needCccd = CCCD_FIELDS.some(field => b[field] !== undefined);
+    const oldKeys = needCccd
+      ? (await query('SELECT cccd_front, cccd_back, cccd_image FROM students WHERE id=$1', [req.params.id])).rows[0] || {}
+      : {};
     for (const field of CCCD_FIELDS) {
       if (b[field] === undefined) continue;
-      const resolved = await resolveCccd(req.params.id, field, b[field]);
+      const resolved = await resolveCccd(req.params.id, field, b[field], oldKeys[field]);
       extra += `, ${field}=$${params.length + 1}`;
       params.push(resolved);
     }

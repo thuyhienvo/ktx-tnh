@@ -1,73 +1,69 @@
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const { Pool, types } = require('pg');
 
-// Hai chế độ:
-//  - Có DATABASE_URL  -> dùng PostgreSQL (khi chạy bằng Docker)
-//  - Không có         -> dùng PGlite (Postgres nhúng, lưu ra thư mục .data, không cần server/Docker)
-const USE_PG = !!process.env.DATABASE_URL;
+// Một kiến trúc CSDL duy nhất cho MỌI môi trường: PostgreSQL qua node-postgres.
+// (local dev: Postgres container; staging/UAT/prod: Postgres quản lý — chỉ khác DATABASE_URL.)
+if (!process.env.DATABASE_URL) {
+  throw new Error('Thiếu DATABASE_URL. Local: chạy "docker compose up -d" rồi đặt DATABASE_URL trong .env.');
+}
 
-let impl;        // triển khai thực (pg Pool hoặc bộ bọc PGlite), gán trong init()
-let pgliteDb;    // instance PGlite (khi dùng nhúng)
+// Ép DATE -> 'YYYY-MM-DD', NUMERIC -> số (áp dụng toàn cục cho pg)
+types.setTypeParser(1082, v => v);
+types.setTypeParser(1700, v => (v == null ? null : parseFloat(v)));
 
-// Proxy ổn định để các route destructure { pool } lúc require vẫn dùng được sau init()
-const pool = {
-  query: (text, params) => impl.query(text, params),
-  connect: () => impl.connect(),
-};
-
-// Ép DATE -> 'YYYY-MM-DD', NUMERIC -> số
-const PARSERS = { 1082: v => v, 1700: v => (v == null ? null : parseFloat(v)) };
+// SSL: bật cho DB cloud (Supabase...). Đặt PGSSL=disable cho Postgres nội bộ (container local).
+const ssl = process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: false };
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl, max: 10 });
 
 async function query(text, params) {
-  return impl.query(text, params);
+  return pool.query(text, params);
 }
 
-async function connectPg() {
-  const { Pool, types } = require('pg');
-  types.setTypeParser(1082, v => v);
-  types.setTypeParser(1700, v => (v == null ? null : parseFloat(v)));
-  // Bật SSL cho DB cloud (Supabase/Render...). Đặt PGSSL=disable nếu chạy Postgres nội bộ không SSL.
-  const ssl = process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: false };
-  const p = new Pool({ connectionString: process.env.DATABASE_URL, ssl, max: 10 });
-  // chờ DB sẵn sàng
-  for (let i = 0; i < 30; i++) {
-    try { await p.query('SELECT 1'); break; }
-    catch (e) { console.log(`⏳ Chờ PostgreSQL... (${i + 1}/30)`); await new Promise(r => setTimeout(r, 2000)); }
+// Helper transaction dùng chung — không thể quên ROLLBACK/release.
+async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw e;
+  } finally {
+    client.release();
   }
-  return p;
-}
-
-async function connectPglite() {
-  const { PGlite } = await import('@electric-sql/pglite');
-  const dir = process.env.PGLITE_DIR || path.join(__dirname, '..', '.data');
-  pgliteDb = new PGlite(dir, { parsers: PARSERS });
-  await pgliteDb.waitReady;
-  // Bọc lại để có cùng giao diện với pg (query + connect/transaction)
-  return {
-    query: (text, params) => pgliteDb.query(text, params || []),
-    connect: async () => ({
-      query: (text, params) => pgliteDb.query(text, params || []),
-      release: () => {},
-    }),
-    _pglite: pgliteDb,
-  };
 }
 
 async function init() {
-  impl = USE_PG ? await connectPg() : await connectPglite();
-  console.log(USE_PG ? '🐘 Dùng PostgreSQL' : '📦 Dùng CSDL nhúng PGlite (.data)');
+  // chờ DB sẵn sàng (container/pooler có thể khởi động sau app)
+  for (let i = 0; i < 30; i++) {
+    try { await pool.query('SELECT 1'); break; }
+    catch (e) {
+      if (i === 29) throw new Error('Không kết nối được PostgreSQL: ' + e.message);
+      console.log(`⏳ Chờ PostgreSQL... (${i + 1}/30)`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  console.log('🐘 Dùng PostgreSQL');
 
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-  if (USE_PG) await impl.query(schema);
-  else await pgliteDb.exec(schema);
+  await pool.query(schema);
+  await seedDefaults();
+  console.log('✅ CSDL sẵn sàng');
+}
 
-  // Tài khoản quản trị mặc định
+async function seedDefaults() {
+  // Tài khoản quản trị khởi tạo lần đầu — fail-fast nếu thiếu mật khẩu (không dùng default yếu)
   const adminUser = process.env.ADMIN_USERNAME || 'admin';
-  const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
   const { rows } = await pool.query('SELECT id FROM users WHERE username = $1', [adminUser]);
   if (rows.length === 0) {
-    // Admin khởi tạo từ ENV -> bắt buộc đổi mật khẩu ở lần đăng nhập đầu
+    const adminPass = process.env.ADMIN_PASSWORD;
+    if (!adminPass || adminPass.length < 6) {
+      throw new Error('Chưa có tài khoản quản trị và ADMIN_PASSWORD thiếu/quá ngắn (≥6). Đặt ADMIN_PASSWORD rồi khởi động lại.');
+    }
     await pool.query(
       "INSERT INTO users (username, password_hash, role, full_name, must_change_password) VALUES ($1, $2, 'admin', $3, true)",
       [adminUser, bcrypt.hashSync(adminPass, 10), 'Quản trị viên']
@@ -76,20 +72,17 @@ async function init() {
   }
 
   // Cấu hình mặc định
-  const dormName = process.env.DORM_NAME || 'Ký túc xá Học viên';
+  const dormName = process.env.DORM_NAME || 'Ký túc xá Nội trú Esuhai';
   const defaults = {
     dorm_name: dormName,
     room_fee: '1200000', water_fee: '100000', electric_unit: '3000', service_fee: '50000',
     washing_fee: '70000', parking_fee: '100000', deposit_fee: '1200000',
     partial_half_min: '10', partial_full_min: '15',
     legal_female: 'E2', legal_male: 'S2', due_day_from: '1', due_day_to: '5', hotline: '',
-    // Giá thuê nguyên phòng theo hạng
     room_price_A: '5500000', room_price_B: '4800000', room_price_C: '4200000', room_price_D: '3600000',
-    // Mã sản phẩm Bravo (để đối chiếu doanh thu)
     bravo_fee_type: 'T0704',
     bravo_room: 'GP00180', bravo_water: 'GP00181', bravo_service: 'GP00183',
     bravo_electric: 'GP00184', bravo_parking: 'GP00182', bravo_washing: '', bravo_other: '',
-    // Nội dung trang giới thiệu (admin chỉnh trong Cài đặt)
     intro_hero_title: 'Không gian nội trú\nan tâm & nề nếp',
     intro_hero_desc: 'chỗ ở tiện nghi, kỷ luật, đồng hành cùng học viên trên hành trình sang Nhật.',
     intro_about_eyebrow: 'Về khu nội trú',
@@ -103,12 +96,9 @@ async function init() {
     intro_price_desc: 'Minh bạch theo từng khoản. Tiền điện tính theo công-tơ, chia đều số người ở phòng.',
     intro_contact_title: 'Liên hệ & đường đến',
     intro_contact_desc: 'Ghé thăm hoặc gọi cho ban quản lý để được tư vấn xếp phòng.',
-    // Nhãn hiển thị của từng ảnh giới thiệu
     'imgcap_khuon-vien-1': 'Khuôn viên', 'imgcap_khuon-vien-2': 'Sảnh sinh hoạt chung', 'imgcap_khuon-vien-3': 'Khu tự học',
     'imgcap_phong-1': 'Phòng ghép', 'imgcap_phong-2': 'Nội thất phòng', 'imgcap_phong-3': 'Khu vệ sinh',
-    // Nhà trường + email (vi phạm lần 3 sẽ gửi mail)
     school_name: 'Nhà trường', school_email: '', violation_mail_threshold: '3',
-    // Cấu hình SMTP (admin điền sau để bật gửi mail tự động)
     smtp_host: '', smtp_port: '587', smtp_secure: 'false',
     smtp_user: '', smtp_pass: '', smtp_from: '',
   };
@@ -116,7 +106,6 @@ async function init() {
     await pool.query(`INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`, [key, value]);
   }
 
-  // Danh mục tài sản mặc định (theo biên bản bàn giao)
   const assetCount = await pool.query('SELECT COUNT(*)::int c FROM assets');
   if (assetCount.rows[0].c === 0) {
     const seed = [
@@ -139,7 +128,6 @@ async function init() {
     console.log('🪑 Đã tạo danh mục tài sản mặc định');
   }
 
-  // Danh mục loại vi phạm mặc định (sửa được trong Cài đặt)
   const vtCount = await pool.query('SELECT COUNT(*)::int c FROM violation_types');
   if (vtCount.rows[0].c === 0) {
     const vt = [
@@ -160,15 +148,12 @@ async function init() {
     console.log('⚠️  Đã tạo danh mục loại vi phạm mặc định');
   }
 
-  // Cơ sở mặc định
   const fac = await pool.query('SELECT id FROM facilities LIMIT 1');
   if (fac.rows.length === 0) {
     await pool.query('INSERT INTO facilities (name, address) VALUES ($1, $2)',
       ['Cơ sở 1', '11/9/4 Thoại Ngọc Hầu, Phường Hòa Thạnh, Quận Tân Phú, Thành phố Hồ Chí Minh']);
     console.log('🏢 Đã tạo cơ sở mặc định');
   }
-
-  console.log('✅ CSDL sẵn sàng');
 }
 
 async function getSettings() {
@@ -178,4 +163,4 @@ async function getSettings() {
   return o;
 }
 
-module.exports = { pool, query, init, getSettings };
+module.exports = { pool, query, withTransaction, init, getSettings };
