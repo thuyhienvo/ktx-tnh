@@ -28,6 +28,7 @@ router.post('/', requireRole('admin'), async (req, res, next) => {
 router.put('/:id', requireRole('admin'), async (req, res, next) => {
   try {
     const { name, address } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Nhập tên cơ sở' });
     const { rows } = await query('UPDATE facilities SET name=$1, address=$2 WHERE id=$3 RETURNING *',
       [name.trim(), address || '', req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy cơ sở' });

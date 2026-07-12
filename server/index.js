@@ -70,10 +70,11 @@ app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(pub, 'index.html'));
 });
 
-// Xử lý lỗi tập trung
+// Xử lý lỗi tập trung. Lỗi có err.status 4xx -> trả message cho client; còn lại -> 500 chung (không lộ chi tiết nội bộ).
 app.use((err, req, res, next) => {
-  console.error('❌', err);
-  res.status(500).json({ error: 'Lỗi máy chủ', detail: err.message });
+  const status = (err && Number(err.status) >= 400 && Number(err.status) < 500) ? Number(err.status) : 500;
+  if (status >= 500) console.error('❌', err);
+  res.status(status).json({ error: status >= 500 ? 'Lỗi máy chủ' : (err.message || 'Yêu cầu không hợp lệ') });
 });
 
 const PORT = process.env.PORT || 3000;

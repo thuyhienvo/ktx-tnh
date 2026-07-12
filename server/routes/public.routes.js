@@ -17,6 +17,7 @@ router.get('/image/:key', async (req, res, next) => {
     if (!row || !row.path) return res.status(404).end();
     const obj = await storage.getObject(storage.INTRO_BUCKET, row.path);
     res.set('Content-Type', obj.contentType || 'image/jpeg');
+    res.set('X-Content-Type-Options', 'nosniff');
     res.set('Cache-Control', 'public, max-age=300');
     obj.body.pipe(res);
   } catch (e) { res.status(404).end(); }

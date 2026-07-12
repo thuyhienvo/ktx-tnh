@@ -27,6 +27,7 @@ router.post('/', requireRole('admin'), async (req, res, next) => {
 router.put('/:id', requireRole('admin'), async (req, res, next) => {
   try {
     const { name, unit, category, quantity, fee, note } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Nhập tên tài sản' });
     const { rows } = await query(
       `UPDATE assets SET name=$1, unit=$2, category=$3, quantity=$4, fee=$5, note=$6 WHERE id=$7 RETURNING *`,
       [name.trim(), unit || 'Cái', category === 'person' ? 'person' : 'fixed', +quantity || 1, +fee || 0, note || '', req.params.id]

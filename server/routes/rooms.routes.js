@@ -45,6 +45,7 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
 router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { facility_id, name, gender, hang, capacity, monthly_fee, note } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Nhập tên phòng' });
     const { rows } = await query(
       `UPDATE rooms SET facility_id=$1, name=$2, floor=$3, gender=$4, hang=$5, capacity=$6, monthly_fee=$7, note=$8
        WHERE id=$9 RETURNING *`,

@@ -22,12 +22,15 @@ const s3 = new S3Client({
   forcePathStyle: true, // MinIO & Supabase Storage đều dùng path-style
 });
 
+// CHỈ chấp nhận ảnh raster an toàn. KHÔNG nhận SVG (có thể chứa <script> -> XSS khi proxy).
 const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
 
 function parseDataUrl(dataUrl) {
   const m = /^data:(image\/[\w.+-]+);base64,(.+)$/s.exec(dataUrl || '');
   if (!m) return null;
-  return { contentType: m[1], ext: EXT[m[1]] || 'bin', buffer: Buffer.from(m[2], 'base64') };
+  const ext = EXT[m[1]];
+  if (!ext) return null; // loại type ngoài whitelist (vd svg) -> caller sẽ báo "Ảnh không hợp lệ"
+  return { contentType: m[1], ext, buffer: Buffer.from(m[2], 'base64') };
 }
 
 async function putBuffer(bucket, key, buffer, contentType) {
@@ -39,7 +42,7 @@ async function putBuffer(bucket, key, buffer, contentType) {
 
 async function putDataUrl(bucket, key, dataUrl) {
   const p = parseDataUrl(dataUrl);
-  if (!p) throw new Error('Ảnh không hợp lệ (không phải data URL base64)');
+  if (!p) { const e = new Error('Ảnh không hợp lệ (chỉ nhận JPG/PNG/WEBP/GIF)'); e.status = 400; throw e; }
   return putBuffer(bucket, key, p.buffer, p.contentType);
 }
 

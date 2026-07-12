@@ -1,6 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { query, pool, getSettings } = require('../db');
+const { query, withTransaction, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { depositRefundEligible } = require('../billing');
 const { recalcInvoice } = require('../invoice-calc');
@@ -15,18 +15,20 @@ const signCccd = row => cccdUrls(row); // trả URL proxy cho các cột CCCD
 
 // Ảnh CCCD -> S3 (bucket riêng tư). Lưu KEY vào DB, KHÔNG lưu base64.
 // value: data URL ảnh mới -> upload; '' hoặc null -> xóa object cũ; key cũ -> giữ; undefined -> không đổi.
+const isCccdKey = k => typeof k === 'string' && /^(students|applications)\//.test(k);
 async function resolveCccd(studentId, field, value, oldKey) {
-  const isKey = k => k && !/^data:/.test(k) && !/^https?:/.test(k);
   if (value === undefined) return undefined;
   if (!value) {
-    if (isKey(oldKey)) await storage.deleteObject(storage.CCCD_BUCKET, oldKey).catch(() => {});
+    if (isCccdKey(oldKey)) await storage.deleteObject(storage.CCCD_BUCKET, oldKey).catch(() => {});
     return null;
   }
-  if (!/^data:image\//.test(value)) return value; // đã là key -> giữ
+  if (isCccdKey(value)) return value; // đã là key hợp lệ (giữ nguyên khi không đổi ảnh)
+  if (!/^data:image\//.test(value)) return undefined; // giá trị lạ (không phải ảnh/không phải key) -> bỏ qua, không ghi rác
   const p = storage.parseDataUrl(value);
-  const key = `students/${studentId}/${field}.${p ? p.ext : 'jpg'}`;
+  if (!p) { const e = new Error('Ảnh CCCD không hợp lệ (chỉ nhận JPG/PNG/WEBP/GIF)'); e.status = 400; throw e; }
+  const key = `students/${studentId}/${field}.${p.ext}`;
   await storage.putDataUrl(storage.CCCD_BUCKET, key, value);
-  if (isKey(oldKey) && oldKey !== key) await storage.deleteObject(storage.CCCD_BUCKET, oldKey).catch(() => {});
+  if (isCccdKey(oldKey) && oldKey !== key) await storage.deleteObject(storage.CCCD_BUCKET, oldKey).catch(() => {});
   return key;
 }
 
@@ -37,10 +39,12 @@ router.get('/:id/cccd/:side', async (req, res, next) => {
     if (!col) return res.status(404).end();
     const isStaff = ['admin', 'staff'].includes(req.user.role);
     if (!isStaff && req.user.student_id !== +req.params.id) return res.status(403).end();
-    const row = (await query(`SELECT ${col} AS k FROM students WHERE id=$1`, [req.params.id])).rows[0];
+    // Không phục vụ ảnh của học viên đã xóa mềm (bảo vệ PII)
+    const row = (await query(`SELECT ${col} AS k FROM students WHERE id=$1 AND deleted_at IS NULL`, [req.params.id])).rows[0];
     if (!row || !row.k) return res.status(404).end();
     const obj = await storage.getObject(storage.CCCD_BUCKET, row.k);
     res.set('Content-Type', obj.contentType || 'image/jpeg');
+    res.set('X-Content-Type-Options', 'nosniff');
     res.set('Cache-Control', 'private, max-age=300');
     obj.body.pipe(res);
   } catch (e) { res.status(404).end(); }
@@ -52,7 +56,7 @@ const LIST_SELECT = `
     s.status, s.note, s.uses_washing, s.deposit_amount, s.deposit_status, s.deposit_date, s.deposit_refund_date,
     s.checkout_notice_date, s.checkout_reason, s.birth_date, s.class_name, s.rental_type, s.residency_status,
     s.contract_no, s.contract_date, s.contract_status, s.deposit_bank, s.deposit_account,
-    (s.cccd_front IS NOT NULL OR s.cccd_image IS NOT NULL) AS has_cccd,
+    (s.cccd_front IS NOT NULL OR s.cccd_back IS NOT NULL OR s.cccd_image IS NOT NULL) AS has_cccd,
     r.name AS room_name, r.floor AS room_floor, r.gender AS room_gender, r.hang AS room_hang,
     u.username AS login_username,
     (SELECT COUNT(*) FROM vehicles v WHERE v.student_id=s.id AND v.deleted_at IS NULL)::int AS vehicle_count,
@@ -104,11 +108,20 @@ function studentFields(b) {
 }
 
 router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
     const b = req.body;
+    // ---- KIỂM TRA trước khi mở transaction (tránh rò transaction khi return sớm) ----
     if (!b.name || !b.name.trim()) return res.status(400).json({ error: 'Nhập họ tên học viên' });
+    let uname = null, pass = null;
+    if (b.create_login) {
+      uname = (b.login_username || b.code || '').trim();
+      pass = (b.login_password || '').trim();
+      if (!uname) return res.status(400).json({ error: 'Cần tên đăng nhập (hoặc mã HV) để tạo tài khoản' });
+      if (pass.length < 4) return res.status(400).json({ error: 'Mật khẩu tài khoản tối thiểu 4 ký tự' });
+      const dup = await query('SELECT 1 FROM users WHERE lower(username)=lower($1)', [uname]);
+      if (dup.rows.length) return res.status(400).json({ error: `Tên đăng nhập "${uname}" đã tồn tại` });
+    }
+
     const checkIn = b.check_in_date || new Date().toISOString().slice(0, 10);
     const checkOut = b.check_out_date || null;
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -116,59 +129,51 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
     const settings = await getSettings();
     const takeDeposit = !!b.deposit_paid;
     const depositFee = +settings.deposit_fee || 0;
-
     const f = studentFields({ ...b, check_in_date: checkIn });
     f[16] = null; // cccd_image: upload sau khi có id (không lưu base64 vào DB)
-    const { rows } = await client.query(
-      `INSERT INTO students
-        (code, name, gender, phone, id_card, birth_date, class_name, room_id, check_in_date, note,
-         uses_washing, rental_type, residency_status, contract_no, contract_date, contract_status, cccd_image,
-         status, check_out_date, deposit_amount, deposit_status, deposit_date, cccd_front, cccd_back, checkout_reason)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
-      [...f, status, checkOut, takeDeposit ? depositFee : 0, takeDeposit ? 'held' : 'none', takeDeposit ? checkIn : null,
-       null, null,
-       (checkOut && ['departure', 'personal', 'facility', 'dropout', 'reserve', 'other'].includes(b.checkout_reason)) ? b.checkout_reason : (checkOut ? 'other' : null)]
-    );
-    const student = rows[0];
 
-    // Tải ảnh CCCD lên Storage rồi lưu path (id đã có)
-    const cccdUpd = {};
-    for (const field of CCCD_FIELDS) {
-      const r = await resolveCccd(student.id, field, b[field]);
-      if (r) { cccdUpd[field] = r; }
-    }
-    if (Object.keys(cccdUpd).length) {
-      const keys = Object.keys(cccdUpd);
-      const sets = keys.map((k, i) => `${k}=$${i + 1}`).join(', ');
-      await client.query(`UPDATE students SET ${sets} WHERE id=$${keys.length + 1}`, [...keys.map(k => cccdUpd[k]), student.id]);
-      Object.assign(student, cccdUpd);
-    }
-
-    await client.query(
-      `INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'in',$2,$3,'Đăng ký & vào ở','admin')`,
-      [student.id, checkIn, b.room_id || null]
-    );
-
-    if (b.create_login) {
-      const uname = (b.login_username || b.code || '').trim();
-      const pass = (b.login_password || '').trim();
-      if (!uname) return res.status(400).json({ error: 'Cần tên đăng nhập (hoặc mã HV) để tạo tài khoản' });
-      if (pass.length < 4) return res.status(400).json({ error: 'Mật khẩu tài khoản tối thiểu 4 ký tự' });
-      const dup = await client.query('SELECT 1 FROM users WHERE lower(username)=lower($1)', [uname]);
-      if (dup.rows.length) return res.status(400).json({ error: `Tên đăng nhập "${uname}" đã tồn tại` });
-      await client.query(
-        `INSERT INTO users (username, password_hash, role, full_name, student_id) VALUES ($1,$2,'student',$3,$4)`,
-        [uname, bcrypt.hashSync(pass, 10), b.name.trim(), student.id]
+    // ---- GHI trong 1 transaction (withTransaction đảm bảo ROLLBACK + release khi lỗi) ----
+    const student = await withTransaction(async (client) => {
+      const { rows } = await client.query(
+        `INSERT INTO students
+          (code, name, gender, phone, id_card, birth_date, class_name, room_id, check_in_date, note,
+           uses_washing, rental_type, residency_status, contract_no, contract_date, contract_status, cccd_image,
+           status, check_out_date, deposit_amount, deposit_status, deposit_date, cccd_front, cccd_back, checkout_reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
+        [...f, status, checkOut, takeDeposit ? depositFee : 0, takeDeposit ? 'held' : 'none', takeDeposit ? checkIn : null,
+         null, null,
+         (checkOut && ['departure', 'personal', 'facility', 'dropout', 'reserve', 'other'].includes(b.checkout_reason)) ? b.checkout_reason : (checkOut ? 'other' : null)]
       );
-    }
-    await client.query('COMMIT');
+      const st = rows[0];
+
+      // Tải ảnh CCCD lên Storage rồi lưu key (id đã có)
+      const cccdUpd = {};
+      for (const field of CCCD_FIELDS) {
+        const r = await resolveCccd(st.id, field, b[field]);
+        if (r) cccdUpd[field] = r;
+      }
+      if (Object.keys(cccdUpd).length) {
+        const keys = Object.keys(cccdUpd);
+        const sets = keys.map((k, i) => `${k}=$${i + 1}`).join(', ');
+        await client.query(`UPDATE students SET ${sets} WHERE id=$${keys.length + 1}`, [...keys.map(k => cccdUpd[k]), st.id]);
+        Object.assign(st, cccdUpd);
+      }
+
+      await client.query(
+        `INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'in',$2,$3,'Đăng ký & vào ở','admin')`,
+        [st.id, checkIn, b.room_id || null]
+      );
+      if (b.create_login) {
+        await client.query(
+          `INSERT INTO users (username, password_hash, role, full_name, student_id) VALUES ($1,$2,'student',$3,$4)`,
+          [uname, bcrypt.hashSync(pass, 10), b.name.trim(), st.id]
+        );
+      }
+      return st;
+    });
+
     res.status(201).json(await signCccd(student));
-  } catch (e) {
-    await client.query('ROLLBACK');
-    next(e);
-  } finally {
-    client.release();
-  }
+  } catch (e) { next(e); }
 });
 
 router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
@@ -188,6 +193,7 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
     for (const field of CCCD_FIELDS) {
       if (b[field] === undefined) continue;
       const resolved = await resolveCccd(req.params.id, field, b[field], oldKeys[field]);
+      if (resolved === undefined) continue; // giá trị không hợp lệ -> giữ nguyên, không ghi rác
       extra += `, ${field}=$${params.length + 1}`;
       params.push(resolved);
     }
