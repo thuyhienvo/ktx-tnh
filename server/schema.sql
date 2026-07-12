@@ -92,6 +92,8 @@ CREATE TABLE IF NOT EXISTS users (
   student_id    INTEGER REFERENCES students(id) ON DELETE CASCADE,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Bắt buộc đổi mật khẩu lần đăng nhập đầu (tài khoản admin khởi tạo từ ENV)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS logs (
   id          SERIAL PRIMARY KEY,
@@ -263,3 +265,20 @@ CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at DESC);
 CREATE INDEX IF NOT EXISTS idx_students_status ON students(status);
 CREATE INDEX IF NOT EXISTS idx_invoices_month  ON invoices(month);
 CREATE INDEX IF NOT EXISTS idx_logs_student    ON logs(student_id);
+
+-- ===== Xóa mềm (soft-delete) toàn hệ thống: chỉ đánh dấu deleted_at, KHÔNG xóa thật =====
+ALTER TABLE students     ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE vehicles     ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE assets       ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE facilities   ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE invoices     ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE violations   ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE users        ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+-- Chỉ mục lọc bản ghi còn hiệu lực + vá các FK còn thiếu (từ rà soát hiệu năng)
+CREATE INDEX IF NOT EXISTS idx_students_deleted  ON students(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_students_room     ON students(room_id);
+CREATE INDEX IF NOT EXISTS idx_vehicles_student  ON vehicles(student_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_deleted  ON invoices(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_electric_month    ON electric_readings(month);

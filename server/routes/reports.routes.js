@@ -10,8 +10,8 @@ router.get('/revenue', async (req, res, next) => {
   try {
     const year = req.query.year;
     const params = [];
-    let where = '';
-    if (year) { params.push(year + '-%'); where = 'WHERE month LIKE $1'; }
+    let where = 'WHERE deleted_at IS NULL';
+    if (year) { params.push(year + '-%'); where += ' AND month LIKE $1'; }
     const { rows } = await query(`
       SELECT month,
         COALESCE(SUM(room_charge),0) AS room,
@@ -33,7 +33,7 @@ router.get('/revenue', async (req, res, next) => {
 // Các năm có dữ liệu hóa đơn
 router.get('/years', async (req, res, next) => {
   try {
-    const { rows } = await query(`SELECT DISTINCT substr(month,1,4) AS y FROM invoices ORDER BY y DESC`);
+    const { rows } = await query(`SELECT DISTINCT substr(month,1,4) AS y FROM invoices WHERE deleted_at IS NULL ORDER BY y DESC`);
     res.json(rows.map(r => r.y));
   } catch (e) { next(e); }
 });

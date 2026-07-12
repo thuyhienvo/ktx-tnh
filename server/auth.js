@@ -10,10 +10,35 @@ function signToken(user) {
   );
 }
 
+const COOKIE_NAME = 'ktx_token';
+const COOKIE_MAX_AGE = 30 * 24 * 3600 * 1000; // 30 ngày
+
+// Lấy token: ưu tiên cookie httpOnly; fallback header Authorization (cho script/kiểm thử)
+function readToken(req) {
+  const cookie = req.headers.cookie || '';
+  const m = cookie.match(/(?:^|;\s*)ktx_token=([^;]+)/);
+  if (m) return decodeURIComponent(m[1]);
+  const header = req.headers.authorization || '';
+  return header.startsWith('Bearer ') ? header.slice(7) : null;
+}
+
+// Đặt cookie phiên (httpOnly để JS client không đọc được -> chống XSS đánh cắp token)
+function setAuthCookie(res, token) {
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: COOKIE_MAX_AGE,
+  });
+}
+function clearAuthCookie(res) {
+  res.clearCookie(COOKIE_NAME, { path: '/' });
+}
+
 // Middleware: yêu cầu đã đăng nhập
 function requireAuth(req, res, next) {
-  const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  const token = readToken(req);
   if (!token) return res.status(401).json({ error: 'Chưa đăng nhập' });
   try {
     req.user = jwt.verify(token, JWT_SECRET);
@@ -33,4 +58,4 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { signToken, requireAuth, requireRole, JWT_SECRET };
+module.exports = { signToken, requireAuth, requireRole, JWT_SECRET, setAuthCookie, clearAuthCookie };

@@ -20,7 +20,7 @@ router.get('/profile', async (req, res, next) => {
 // Hóa đơn của học viên
 router.get('/invoices', async (req, res, next) => {
   try {
-    const { rows } = await query('SELECT * FROM invoices WHERE student_id=$1 ORDER BY month DESC', [req.user.student_id]);
+    const { rows } = await query('SELECT * FROM invoices WHERE student_id=$1 AND deleted_at IS NULL ORDER BY month DESC', [req.user.student_id]);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -35,7 +35,7 @@ router.get('/logs', async (req, res, next) => {
 // Vi phạm / nhắc nhở của chính học viên (chỉ đọc)
 router.get('/violations', async (req, res, next) => {
   try {
-    const { rows } = await query('SELECT date, type_name, severity, level, note, status FROM violations WHERE student_id=$1 ORDER BY date DESC, id DESC', [req.user.student_id]);
+    const { rows } = await query('SELECT date, type_name, severity, level, note, status FROM violations WHERE student_id=$1 AND deleted_at IS NULL ORDER BY date DESC, id DESC', [req.user.student_id]);
     res.json(rows);
   } catch (e) { next(e); }
 });

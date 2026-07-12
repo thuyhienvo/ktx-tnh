@@ -1,12 +1,35 @@
 const express = require('express');
 const { query, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
+const { testConnection } = require('../mailer');
 
 const router = express.Router();
 
-// Cấu hình công khai (mọi người đăng nhập đều xem được đơn giá)
+// Các khóa bí mật KHÔNG bao giờ trả về client (chỉ trả cờ "đã cấu hình")
+const SECRET_KEYS = ['smtp_pass'];
+
+// Bỏ secret khỏi object cấu hình, thêm cờ <key>_set để UI biết đã cấu hình hay chưa
+function sanitize(s) {
+  const out = { ...s };
+  for (const k of SECRET_KEYS) { out[k + '_set'] = !!(s[k] && String(s[k]).trim()); delete out[k]; }
+  return out;
+}
+
+// Cấu hình (mọi người đăng nhập đều xem được đơn giá) — ẩn secret
 router.get('/', requireAuth, async (req, res, next) => {
-  try { res.json(await getSettings()); } catch (e) { next(e); }
+  try { res.json(sanitize(await getSettings())); } catch (e) { next(e); }
+});
+
+// Kiểm tra kết nối SMTP (chỉ admin) — không lưu gì, chỉ verify
+router.post('/smtp/test', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const r = await testConnection({
+      smtp_host: b.smtp_host, smtp_port: b.smtp_port, smtp_secure: b.smtp_secure,
+      smtp_user: b.smtp_user, smtp_pass: b.smtp_pass,
+    });
+    res.json(r);
+  } catch (e) { next(e); }
 });
 
 // Cập nhật cấu hình (chỉ admin)
@@ -26,6 +49,8 @@ router.put('/', requireAuth, requireRole('admin'), async (req, res, next) => {
       'imgcap_phong-1', 'imgcap_phong-2', 'imgcap_phong-3'];
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
+        // Không ghi đè mật khẩu SMTP bằng chuỗi rỗng (form ẩn pass, để trống = giữ nguyên)
+        if (SECRET_KEYS.includes(key) && !String(req.body[key]).trim()) continue;
         await query(
           `INSERT INTO settings (key, value) VALUES ($1,$2)
            ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`,
@@ -33,7 +58,7 @@ router.put('/', requireAuth, requireRole('admin'), async (req, res, next) => {
         );
       }
     }
-    res.json(await getSettings());
+    res.json(sanitize(await getSettings()));
   } catch (e) { next(e); }
 });
 

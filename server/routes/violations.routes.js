@@ -33,8 +33,9 @@ router.put('/types/:id', async (req, res, next) => {
     res.json(rows[0]);
   } catch (e) { next(e); }
 });
+// "Xóa" loại vi phạm = ẩn (deactivate), giữ lại để không mất dữ liệu tham chiếu
 router.delete('/types/:id', async (req, res, next) => {
-  try { await query('DELETE FROM violation_types WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
+  try { await query('UPDATE violation_types SET active=false WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
   catch (e) { next(e); }
 });
 
@@ -50,12 +51,12 @@ router.get('/stats', async (req, res, next) => {
     const threshold = +s.violation_mail_threshold || 3;
     const year = (req.query.year || new Date().toISOString().slice(0, 4));
 
-    const total = (await query('SELECT COUNT(*)::int c FROM violations')).rows[0].c;
-    const bySeverity = (await query(`SELECT severity, COUNT(*)::int c FROM violations GROUP BY severity`)).rows;
-    const byType = (await query(`SELECT type_name, COUNT(*)::int c FROM violations GROUP BY type_name ORDER BY c DESC`)).rows;
+    const total = (await query('SELECT COUNT(*)::int c FROM violations WHERE deleted_at IS NULL')).rows[0].c;
+    const bySeverity = (await query(`SELECT severity, COUNT(*)::int c FROM violations WHERE deleted_at IS NULL GROUP BY severity`)).rows;
+    const byType = (await query(`SELECT type_name, COUNT(*)::int c FROM violations WHERE deleted_at IS NULL GROUP BY type_name ORDER BY c DESC`)).rows;
     const byMonth = (await query(
       `SELECT to_char(date,'YYYY-MM') AS month, COUNT(*)::int c FROM violations
-       WHERE to_char(date,'YYYY')=$1 GROUP BY month ORDER BY month`, [String(year)])).rows;
+       WHERE deleted_at IS NULL AND to_char(date,'YYYY')=$1 GROUP BY month ORDER BY month`, [String(year)])).rows;
     // Học viên theo số lần vi phạm (kèm cảnh báo ngưỡng gửi nhà trường)
     const byStudent = (await query(
       `SELECT s.id, s.name, s.code, s.class_name, r.name AS room_name,
@@ -64,6 +65,7 @@ router.get('/stats', async (req, res, next) => {
         BOOL_OR(v.notified_school) AS notified
        FROM violations v JOIN students s ON s.id=v.student_id
        LEFT JOIN rooms r ON r.id=s.room_id
+       WHERE v.deleted_at IS NULL AND s.deleted_at IS NULL
        GROUP BY s.id, s.name, s.code, s.class_name, r.name
        ORDER BY cnt DESC, last_date DESC`)).rows;
     const needMail = byStudent.filter(x => x.cnt >= threshold && !x.notified).length;
@@ -74,7 +76,7 @@ router.get('/stats', async (req, res, next) => {
 /* ---------- Vi phạm theo học viên ---------- */
 router.get('/student/:id', async (req, res, next) => {
   try {
-    const { rows } = await query('SELECT * FROM violations WHERE student_id=$1 ORDER BY date DESC, id DESC', [req.params.id]);
+    const { rows } = await query('SELECT * FROM violations WHERE student_id=$1 AND deleted_at IS NULL ORDER BY date DESC, id DESC', [req.params.id]);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -86,6 +88,7 @@ router.get('/', async (req, res, next) => {
       SELECT v.*, s.name AS student_name, s.code AS student_code, r.name AS room_name
       FROM violations v JOIN students s ON s.id=v.student_id
       LEFT JOIN rooms r ON r.id=s.room_id
+      WHERE v.deleted_at IS NULL AND s.deleted_at IS NULL
       ORDER BY v.date DESC, v.id DESC`);
     res.json(rows);
   } catch (e) { next(e); }
@@ -107,7 +110,7 @@ router.post('/', async (req, res, next) => {
     if (!typeName) return res.status(400).json({ error: 'Chọn loại vi phạm' });
 
     const date = b.date || new Date().toISOString().slice(0, 10);
-    const level = (await query('SELECT COUNT(*)::int c FROM violations WHERE student_id=$1', [b.student_id])).rows[0].c + 1;
+    const level = (await query('SELECT COUNT(*)::int c FROM violations WHERE student_id=$1 AND deleted_at IS NULL', [b.student_id])).rows[0].c + 1;
 
     const { rows } = await query(
       `INSERT INTO violations (student_id, type_id, type_name, severity, level, date, note)
@@ -121,7 +124,7 @@ router.post('/', async (req, res, next) => {
     const threshold = +s.violation_mail_threshold || 3;
     let mail = null;
     if (level >= threshold) {
-      const all = (await query('SELECT * FROM violations WHERE student_id=$1 ORDER BY date, id', [b.student_id])).rows;
+      const all = (await query('SELECT * FROM violations WHERE student_id=$1 AND deleted_at IS NULL ORDER BY date, id', [b.student_id])).rows;
       mail = await sendViolationMail(student, all);
       if (mail.sent) {
         await query(`UPDATE violations SET notified_school=true, notified_at=now() WHERE student_id=$1`, [b.student_id]);
@@ -142,8 +145,9 @@ router.put('/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Xóa mềm
 router.delete('/:id', async (req, res, next) => {
-  try { await query('DELETE FROM violations WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
+  try { await query('UPDATE violations SET deleted_at=now() WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
   catch (e) { next(e); }
 });
 
@@ -152,7 +156,7 @@ router.post('/student/:id/notify', async (req, res, next) => {
   try {
     const student = (await query('SELECT id, name, code, class_name, phone FROM students WHERE id=$1', [req.params.id])).rows[0];
     if (!student) return res.status(404).json({ error: 'Không tìm thấy học viên' });
-    const all = (await query('SELECT * FROM violations WHERE student_id=$1 ORDER BY date, id', [req.params.id])).rows;
+    const all = (await query('SELECT * FROM violations WHERE student_id=$1 AND deleted_at IS NULL ORDER BY date, id', [req.params.id])).rows;
     if (!all.length) return res.status(400).json({ error: 'Học viên chưa có vi phạm nào' });
     const mail = await sendViolationMail(student, all);
     if (mail.sent) await query(`UPDATE violations SET notified_school=true, notified_at=now() WHERE student_id=$1`, [req.params.id]);

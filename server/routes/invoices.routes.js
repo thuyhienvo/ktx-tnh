@@ -27,15 +27,15 @@ router.get('/', async (req, res, next) => {
   try {
     const { month } = req.query;
     const rows = month
-      ? (await query(`${SELECT} WHERE i.month=$1 ORDER BY s.name`, [month])).rows
-      : (await query(`${SELECT} ORDER BY i.month DESC, s.name`)).rows;
+      ? (await query(`${SELECT} WHERE i.month=$1 AND i.deleted_at IS NULL ORDER BY s.name`, [month])).rows
+      : (await query(`${SELECT} WHERE i.deleted_at IS NULL ORDER BY i.month DESC, s.name`)).rows;
     res.json(rows);
   } catch (e) { next(e); }
 });
 
 router.get('/months', async (req, res, next) => {
   try {
-    const { rows } = await query('SELECT DISTINCT month FROM invoices ORDER BY month DESC');
+    const { rows } = await query('SELECT DISTINCT month FROM invoices WHERE deleted_at IS NULL ORDER BY month DESC');
     res.json(rows.map(r => r.month));
   } catch (e) { next(e); }
 });
@@ -72,7 +72,7 @@ router.post('/generate', async (req, res, next) => {
     // Học viên có ở trong tháng (vào trước cuối tháng & chưa rời trước đầu tháng)
     const students = (await client.query(
       `SELECT * FROM students
-       WHERE check_in_date IS NOT NULL AND check_in_date <= $1
+       WHERE deleted_at IS NULL AND check_in_date IS NOT NULL AND check_in_date <= $1
          AND (check_out_date IS NULL OR check_out_date >= $2)`,
       [mEnd, mStart]
     )).rows;
@@ -112,7 +112,7 @@ router.post('/generate', async (req, res, next) => {
         const total = inv.room_charge + inv.electric_charge + inv.water_charge + inv.service_charge + inv.washing_charge + inv.parking_charge + other;
         await client.query(
           `UPDATE invoices SET days_stayed=$1, room_charge=$2, electric_kwh=$3, electric_charge=$4, water_charge=$5,
-             service_charge=$6, washing_charge=$7, parking_charge=$8, total=$9 WHERE id=$10`,
+             service_charge=$6, washing_charge=$7, parking_charge=$8, total=$9, deleted_at=NULL WHERE id=$10`,
           [inv.days_stayed, inv.room_charge, inv.electric_kwh, inv.electric_charge, inv.water_charge,
            inv.service_charge, inv.washing_charge, inv.parking_charge, total, dup.id]
         );
@@ -154,11 +154,11 @@ router.post('/generate-one', async (req, res, next) => {
     let occupants = 1;
     if (s.room_id) {
       occupants = (await query(
-        `SELECT COUNT(*)::int c FROM students WHERE room_id=$1 AND check_in_date IS NOT NULL AND check_in_date <= $2 AND (check_out_date IS NULL OR check_out_date >= $3)`,
+        `SELECT COUNT(*)::int c FROM students WHERE room_id=$1 AND deleted_at IS NULL AND check_in_date IS NOT NULL AND check_in_date <= $2 AND (check_out_date IS NULL OR check_out_date >= $3)`,
         [s.room_id, mEnd, mStart])).rows[0].c || 1;
     }
     const kwhRow = s.room_id ? (await query('SELECT kwh FROM electric_readings WHERE room_id=$1 AND month=$2', [s.room_id, month])).rows[0] : null;
-    const vehicleCount = (await query('SELECT COUNT(*)::int c FROM vehicles WHERE student_id=$1', [student_id])).rows[0].c;
+    const vehicleCount = (await query('SELECT COUNT(*)::int c FROM vehicles WHERE student_id=$1 AND deleted_at IS NULL', [student_id])).rows[0].c;
 
     const inv = billing.computeInvoice({ student: s, room, month, fees, occupants, kwh: kwhRow ? Number(kwhRow.kwh) : 0, vehicleCount });
     let row;
@@ -167,7 +167,7 @@ router.post('/generate-one', async (req, res, next) => {
       const total = inv.room_charge + inv.electric_charge + inv.water_charge + inv.service_charge + inv.washing_charge + inv.parking_charge + other;
       row = (await query(
         `UPDATE invoices SET days_stayed=$1, room_charge=$2, electric_kwh=$3, electric_charge=$4, water_charge=$5,
-           service_charge=$6, washing_charge=$7, parking_charge=$8, total=$9 WHERE id=$10 RETURNING *`,
+           service_charge=$6, washing_charge=$7, parking_charge=$8, total=$9, deleted_at=NULL WHERE id=$10 RETURNING *`,
         [inv.days_stayed, inv.room_charge, inv.electric_kwh, inv.electric_charge, inv.water_charge,
          inv.service_charge, inv.washing_charge, inv.parking_charge, total, dup.id])).rows[0];
     } else {
@@ -188,16 +188,29 @@ router.post('/', async (req, res, next) => {
     const b = req.body;
     if (!b.student_id || !b.month) return res.status(400).json({ error: 'Thiếu học viên hoặc kỳ' });
     const st = await query('SELECT room_id FROM students WHERE id=$1', [b.student_id]);
+    const roomId = st.rows[0]?.room_id || null;
     const total = ['room_charge', 'electric_charge', 'water_charge', 'service_charge', 'washing_charge', 'parking_charge', 'other_charge']
       .reduce((a, k) => a + (+b[k] || 0), 0);
+    const vals = [b.student_id, roomId, b.month, +b.days_stayed || 0, +b.room_charge || 0,
+      +b.electric_kwh || 0, +b.electric_charge || 0, +b.water_charge || 0, +b.service_charge || 0,
+      +b.washing_charge || 0, +b.parking_charge || 0, +b.other_charge || 0, b.other_note || '', total];
+
+    // Đã có hóa đơn kỳ này? (kể cả bản đã xóa mềm — tránh vi phạm ràng buộc UNIQUE)
+    const ex = (await query('SELECT id, deleted_at FROM invoices WHERE student_id=$1 AND month=$2', [b.student_id, b.month])).rows[0];
+    if (ex && !ex.deleted_at) return res.status(400).json({ error: 'Học viên đã có hóa đơn trong kỳ này' });
+    if (ex && ex.deleted_at) {
+      // hồi sinh hóa đơn đã xóa mềm bằng dữ liệu mới nhập
+      const { rows } = await query(
+        `UPDATE invoices SET room_id=$2, days_stayed=$4, room_charge=$5, electric_kwh=$6, electric_charge=$7,
+           water_charge=$8, service_charge=$9, washing_charge=$10, parking_charge=$11, other_charge=$12,
+           other_note=$13, total=$14, status='pending', paid_date=NULL, deleted_at=NULL WHERE id=$15 RETURNING *`,
+        [...vals, ex.id]);
+      return res.status(201).json(rows[0]);
+    }
     const { rows } = await query(
       `INSERT INTO invoices (student_id, room_id, month, days_stayed, room_charge, electric_kwh, electric_charge,
          water_charge, service_charge, washing_charge, parking_charge, other_charge, other_note, total, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pending') RETURNING *`,
-      [b.student_id, st.rows[0]?.room_id || null, b.month, +b.days_stayed || 0, +b.room_charge || 0,
-       +b.electric_kwh || 0, +b.electric_charge || 0, +b.water_charge || 0, +b.service_charge || 0,
-       +b.washing_charge || 0, +b.parking_charge || 0, +b.other_charge || 0, b.other_note || '', total]
-    );
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pending') RETURNING *`, vals);
     res.status(201).json(rows[0]);
   } catch (e) {
     if (e.code === '23505') return res.status(400).json({ error: 'Học viên đã có hóa đơn trong kỳ này' });
@@ -230,8 +243,8 @@ router.post('/mark-paid', async (req, res, next) => {
     const month = req.body.month;
     const date = new Date().toISOString().slice(0, 10);
     const r = month
-      ? await query(`UPDATE invoices SET status='paid', paid_date=$1 WHERE month=$2 AND status<>'paid' RETURNING id`, [date, month])
-      : await query(`UPDATE invoices SET status='paid', paid_date=$1 WHERE status<>'paid' RETURNING id`, [date]);
+      ? await query(`UPDATE invoices SET status='paid', paid_date=$1 WHERE month=$2 AND status<>'paid' AND deleted_at IS NULL RETURNING id`, [date, month])
+      : await query(`UPDATE invoices SET status='paid', paid_date=$1 WHERE status<>'paid' AND deleted_at IS NULL RETURNING id`, [date]);
     res.json({ ok: true, updated: (r.rows ? r.rows.length : (r.rowCount || r.affectedRows || 0)) });
   } catch (e) { next(e); }
 });
@@ -250,8 +263,9 @@ router.post('/:id/status', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Xóa mềm (lập lại hóa đơn kỳ này sẽ hồi sinh với số liệu mới)
 router.delete('/:id', async (req, res, next) => {
-  try { await query('DELETE FROM invoices WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
+  try { await query('UPDATE invoices SET deleted_at=now() WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
   catch (e) { next(e); }
 });
 

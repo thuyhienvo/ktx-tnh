@@ -27,7 +27,9 @@ async function connectPg() {
   const { Pool, types } = require('pg');
   types.setTypeParser(1082, v => v);
   types.setTypeParser(1700, v => (v == null ? null : parseFloat(v)));
-  const p = new Pool({ connectionString: process.env.DATABASE_URL });
+  // Bật SSL cho DB cloud (Supabase/Render...). Đặt PGSSL=disable nếu chạy Postgres nội bộ không SSL.
+  const ssl = process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: false };
+  const p = new Pool({ connectionString: process.env.DATABASE_URL, ssl, max: 10 });
   // chờ DB sẵn sàng
   for (let i = 0; i < 30; i++) {
     try { await p.query('SELECT 1'); break; }
@@ -65,11 +67,12 @@ async function init() {
   const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
   const { rows } = await pool.query('SELECT id FROM users WHERE username = $1', [adminUser]);
   if (rows.length === 0) {
+    // Admin khởi tạo từ ENV -> bắt buộc đổi mật khẩu ở lần đăng nhập đầu
     await pool.query(
-      "INSERT INTO users (username, password_hash, role, full_name) VALUES ($1, $2, 'admin', $3)",
+      "INSERT INTO users (username, password_hash, role, full_name, must_change_password) VALUES ($1, $2, 'admin', $3, true)",
       [adminUser, bcrypt.hashSync(adminPass, 10), 'Quản trị viên']
     );
-    console.log(`👤 Đã tạo tài khoản quản trị: ${adminUser}`);
+    console.log(`👤 Đã tạo tài khoản quản trị: ${adminUser} (bắt buộc đổi mật khẩu lần đầu)`);
   }
 
   // Cấu hình mặc định

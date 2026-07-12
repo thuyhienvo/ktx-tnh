@@ -1,3 +1,4 @@
+require('./load-env'); // nạp .env khi chạy local (phải trước khi đọc process.env)
 const path = require('path');
 const express = require('express');
 const db = require('./db');

@@ -11,10 +11,10 @@ router.get('/', async (req, res, next) => {
     const cond = req.query.deleted === '1' ? 'r.deleted_at IS NOT NULL' : 'r.deleted_at IS NULL';
     const { rows } = await query(`
       SELECT r.*, f.name AS facility_name,
-        (SELECT COUNT(*) FROM students s WHERE s.room_id = r.id
+        (SELECT COUNT(*) FROM students s WHERE s.room_id = r.id AND s.deleted_at IS NULL
            AND s.check_in_date <= CURRENT_DATE AND (s.check_out_date IS NULL OR s.check_out_date > CURRENT_DATE))::int AS occupancy,
-        (SELECT COUNT(*) FROM students s WHERE s.room_id = r.id AND s.check_in_date > CURRENT_DATE)::int AS upcoming,
-        (SELECT COUNT(*) FROM students s WHERE s.room_id = r.id
+        (SELECT COUNT(*) FROM students s WHERE s.room_id = r.id AND s.deleted_at IS NULL AND s.check_in_date > CURRENT_DATE)::int AS upcoming,
+        (SELECT COUNT(*) FROM students s WHERE s.room_id = r.id AND s.deleted_at IS NULL
            AND s.check_out_date IS NOT NULL AND s.check_out_date > CURRENT_DATE)::int AS leaving
       FROM rooms r
       LEFT JOIN facilities f ON f.id = r.facility_id

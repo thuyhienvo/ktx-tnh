@@ -9,8 +9,8 @@ router.get('/', async (req, res, next) => {
   try {
     const { rows } = await query(`
       SELECT f.*,
-        (SELECT COUNT(*) FROM rooms r WHERE r.facility_id=f.id)::int AS room_count
-      FROM facilities f ORDER BY f.id`);
+        (SELECT COUNT(*) FROM rooms r WHERE r.facility_id=f.id AND r.deleted_at IS NULL)::int AS room_count
+      FROM facilities f WHERE f.deleted_at IS NULL ORDER BY f.id`);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -37,9 +37,9 @@ router.put('/:id', requireRole('admin'), async (req, res, next) => {
 
 router.delete('/:id', requireRole('admin'), async (req, res, next) => {
   try {
-    const c = await query('SELECT COUNT(*)::int c FROM rooms WHERE facility_id=$1', [req.params.id]);
+    const c = await query('SELECT COUNT(*)::int c FROM rooms WHERE facility_id=$1 AND deleted_at IS NULL', [req.params.id]);
     if (c.rows[0].c > 0) return res.status(400).json({ error: 'Cơ sở đang có phòng, không thể xóa' });
-    await query('DELETE FROM facilities WHERE id=$1', [req.params.id]);
+    await query('UPDATE facilities SET deleted_at=now() WHERE id=$1', [req.params.id]); // xóa mềm
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

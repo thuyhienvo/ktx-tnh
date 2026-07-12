@@ -1,8 +1,9 @@
 /* ================= ĐIỀU PHỐI CHÍNH ================= */
 function boot() {
   if (location.pathname.replace(/\/$/, '') === '/dang-ky') return renderPublicRegister();
-  const user = Auth.user;
-  if (!Auth.token || !user) return renderLogin();
+  const user = Auth.user; // hint hiển thị; nguồn xác thực thật là cookie httpOnly
+  if (!user) return renderLogin();
+  if (user.must_change_password) return renderForceChangePw();
   if (user.role === 'admin' || user.role === 'staff') renderAdmin();
   else renderStudent();
 }
@@ -218,7 +219,9 @@ async function renderLogin() {
     const btn = e.submitter; btn.disabled = true; btn.textContent = 'Đang vào...';
     try {
       const r = await API.login(el('lg_user').value.trim(), el('lg_pass').value);
-      Auth.token = r.token; Auth.user = r.user; boot();
+      Auth.user = r.user; // cookie phiên do server đặt; đây chỉ là thông tin hiển thị
+      if (r.user.must_change_password) return renderForceChangePw();
+      boot();
     } catch (err) { toast(err.message, 'err'); btn.disabled = false; btn.textContent = 'Đăng nhập →'; }
   });
 }
@@ -226,6 +229,49 @@ function loginTab(t) {
   document.querySelectorAll('.auth-tab').forEach(b => b.classList.toggle('active', b.dataset.t === t));
   el('lgSub').textContent = t === 'student' ? 'Đăng nhập tài khoản học viên (do quản lý cấp).' : 'Đăng nhập hệ thống quản lý ký túc xá.';
   el('lgStudentExtra').style.display = t === 'student' ? '' : 'none';
+}
+
+// Bắt buộc đổi mật khẩu (tài khoản admin khởi tạo lần đầu)
+function renderForceChangePw() {
+  const u = Auth.user || {};
+  el('app').innerHTML = `
+    <div class="auth">
+      <div class="auth-left">
+        <div class="auth-brand"><span class="auth-logo">${IC.home}</span>
+          <div><div class="ab-title">KHU NỘI TRÚ ESUHAI</div><div class="ab-sub">Bảo mật tài khoản</div></div></div>
+        <div class="auth-hero">
+          <h1>Đặt mật khẩu<br>của riêng bạn.</h1>
+          <p>Đây là lần đăng nhập đầu tiên bằng mật khẩu khởi tạo. Vì an toàn, vui lòng đổi sang mật khẩu mới trước khi sử dụng hệ thống.</p>
+        </div>
+      </div>
+      <div class="auth-right">
+        <div class="auth-form">
+          <h2>Đổi mật khẩu</h2>
+          <p class="sub">Xin chào <strong>${esc(u.full_name || u.username || '')}</strong> — hãy tạo mật khẩu mới (tối thiểu 6 ký tự).</p>
+          <form id="fcpForm">
+            <div class="field"><label>Mật khẩu hiện tại</label><input id="fcp_old" type="password" autocomplete="current-password" placeholder="Mật khẩu khởi tạo" autofocus></div>
+            <div class="field"><label>Mật khẩu mới</label><input id="fcp_new" type="password" autocomplete="new-password" placeholder="Tối thiểu 6 ký tự"></div>
+            <div class="field"><label>Nhập lại mật khẩu mới</label><input id="fcp_new2" type="password" autocomplete="new-password" placeholder="Nhập lại"></div>
+            <button class="btn pri lg auth-btn" type="submit">Cập nhật mật khẩu →</button>
+          </form>
+          <div class="auth-or"><span>hoặc</span></div>
+          <button class="btn" style="width:100%" onclick="Auth.logout()">${IC.logOut} Đăng xuất</button>
+        </div>
+      </div>
+    </div>`;
+  el('fcpForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const oldP = el('fcp_old').value, n1 = el('fcp_new').value, n2 = el('fcp_new2').value;
+    if (n1.length < 6) return toast('Mật khẩu mới tối thiểu 6 ký tự', 'err');
+    if (n1 !== n2) return toast('Hai mật khẩu mới không khớp', 'err');
+    const btn = e.submitter; btn.disabled = true; btn.textContent = 'Đang cập nhật...';
+    try {
+      await API.changePassword(oldP, n1);
+      Auth.user = { ...Auth.user, must_change_password: false };
+      toast('Đã đổi mật khẩu, chào mừng bạn!');
+      boot();
+    } catch (err) { toast(err.message, 'err'); btn.disabled = false; btn.textContent = 'Cập nhật mật khẩu →'; }
+  });
 }
 
 /* ================================================================= */
@@ -693,7 +739,7 @@ function stuSortVal(s) {
   }
 }
 function viewStudents() {
-  el('topActions').innerHTML = `<button class="btn pri" onclick="studentForm()">${IC.plus} Thêm học viên</button>`;
+  el('topActions').innerHTML = `<button class="btn" onclick="showDeletedStudents()">${IC.trash} Đã xóa</button><button class="btn pri" onclick="studentForm()">${IC.plus} Thêm học viên</button>`;
   let list = ST.students.slice();
   if (stuFilter === 'in') list = list.filter(isOccupying);
   if (stuFilter === 'upcoming') list = list.filter(s => liveStatus(s) === 'upcoming');
@@ -1047,8 +1093,28 @@ async function doRefund(id, deposit) {
   studentDetailRefresh(id);
 }
 async function delStudent(id) {
-  if (!confirm('Xóa học viên này và toàn bộ dữ liệu liên quan (hóa đơn, lịch sử, tài khoản)?')) return;
-  await guard(() => API.deleteStudent(id)); await refreshCache(); closeModal(); toast('Đã xóa học viên'); viewStudents();
+  if (!confirm('Xóa học viên này? Đây là xóa mềm — có thể khôi phục lại trong mục "Đã xóa".')) return;
+  await guard(() => API.deleteStudent(id)); await refreshCache(); closeModal(); toast('Đã xóa học viên (khôi phục được)'); viewStudents();
+}
+// Thùng rác học viên: xem danh sách đã xóa mềm + khôi phục
+async function showDeletedStudents() {
+  const list = await guard(() => API.students(true));
+  openModal(`
+    <div class="mh"><h3>${IC.trash} Học viên đã xóa (${list.length})</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Học viên</th><th>Mã</th><th>Phòng</th><th></th></tr></thead><tbody>
+        ${list.map(s => `<tr>
+          <td><strong>${esc(s.name)}</strong>${s.class_name ? ` <span class="muted">· ${esc(s.class_name)}</span>` : ''}</td>
+          <td>${esc(s.code || '—')}</td><td>${esc(s.room_name || '—')}</td>
+          <td class="num"><button class="btn sm green" onclick="restoreStudentAndReload(${s.id})">${IC.undo} Khôi phục</button></td>
+        </tr>`).join('')}
+      </tbody></table></div>` : '<div class="empty">Không có học viên nào trong thùng rác.</div>'}
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Đóng</button></div>`, true);
+}
+async function restoreStudentAndReload(id) {
+  await guard(() => API.restoreStudent(id));
+  await refreshCache(); closeModal(); toast('Đã khôi phục học viên'); viewStudents();
 }
 function accountForm(id, code) {
   openModal(`
@@ -2066,13 +2132,18 @@ function viewSettings() {
       </div>
       <div class="grid2">
         <div class="field"><label>Tài khoản (user)</label><input id="set_smtp_user" value="${esc(s.smtp_user || '')}" placeholder="email gửi đi"></div>
-        <div class="field"><label>Mật khẩu (App Password)</label><input id="set_smtp_pass" type="password" value="${esc(s.smtp_pass || '')}" placeholder="••••••••"></div>
+        <div class="field"><label>Mật khẩu (App Password) ${s.smtp_pass_set ? '<span class="badge green" style="font-size:10px">Đã lưu</span>' : ''}</label><input id="set_smtp_pass" type="password" value="" placeholder="${s.smtp_pass_set ? '•••••• (để trống nếu giữ nguyên)' : 'Nhập App Password'}"></div>
       </div>
       <div class="grid2">
         <div class="field"><label>Người gửi <span class="opt">(from)</span></label><input id="set_smtp_from" value="${esc(s.smtp_from || '')}" placeholder="Ban quản lý KTX"></div>
         <div class="field"><label>Bảo mật (secure)</label><select id="set_smtp_secure"><option value="false" ${s.smtp_secure !== 'true' ? 'selected' : ''}>false — STARTTLS (port 587)</option><option value="true" ${s.smtp_secure === 'true' ? 'selected' : ''}>true — SSL/TLS (port 465)</option></select></div>
       </div>
-      <button class="btn pri" onclick="saveMailSettings()">Lưu cấu hình email</button>
+      <div class="hint" style="font-size:12px">${IC.lock} Vì bảo mật, mật khẩu SMTP <strong>không bao giờ được trả về</strong>. Để trống ô mật khẩu khi lưu nếu muốn giữ nguyên mật khẩu đã lưu.</div>
+      <div class="rowbtns" style="margin-top:6px">
+        <button class="btn pri" onclick="saveMailSettings()">Lưu cấu hình email</button>
+        <button class="btn" id="smtpTestBtn" onclick="testSmtpConnection()">${IC.mail} Kiểm tra kết nối</button>
+        <span id="smtpTestResult" class="muted" style="font-size:12.5px;align-self:center"></span>
+      </div>
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.shield} Người dùng & phân quyền</h2><button class="btn sm" onclick="userForm()">${IC.plus} Thêm nhân viên</button></div>
@@ -2215,6 +2286,27 @@ async function saveMailSettings() {
   };
   await guard(() => API.updateSettings(body));
   await refreshCache(); toast('Đã lưu cấu hình email'); viewSettings();
+}
+async function testSmtpConnection() {
+  const btn = el('smtpTestBtn'), out = el('smtpTestResult');
+  const body = {
+    smtp_host: el('set_smtp_host').value.trim(),
+    smtp_port: el('set_smtp_port').value.trim() || '587',
+    smtp_secure: el('set_smtp_secure').value,
+    smtp_user: el('set_smtp_user').value.trim(),
+    smtp_pass: el('set_smtp_pass').value, // để trống -> server dùng mật khẩu đã lưu
+  };
+  if (btn) { btn.disabled = true; }
+  if (out) { out.className = 'muted'; out.style.fontSize = '12.5px'; out.textContent = 'Đang kiểm tra...'; }
+  try {
+    const r = await API.testSmtp(body);
+    if (out) {
+      if (r.ok) { out.style.color = 'var(--green)'; out.textContent = '✔ Kết nối SMTP thành công'; }
+      else { out.style.color = 'var(--red)'; out.textContent = '✖ ' + (r.reason || 'Không kết nối được'); }
+    }
+  } catch (e) {
+    if (out) { out.style.color = 'var(--red)'; out.textContent = '✖ ' + e.message; }
+  } finally { if (btn) btn.disabled = false; }
 }
 function assetForm(id) {
   const a = id ? ST.assets.find(x => x.id === id) : { name: '', unit: 'Cái', category: 'fixed', quantity: 1, fee: 0, note: '' };

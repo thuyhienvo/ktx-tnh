@@ -10,6 +10,7 @@ router.get('/', async (req, res, next) => {
   try {
     const { rows } = await query(`SELECT a.*, f.name AS facility_name FROM applications a
       LEFT JOIN facilities f ON f.id = a.facility_id
+      WHERE a.deleted_at IS NULL
       ORDER BY (a.status='pending') DESC, a.created_at DESC`);
     res.json(rows);
   } catch (e) { next(e); }
@@ -91,8 +92,9 @@ router.post('/:id/reject', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Xóa mềm
 router.delete('/:id', async (req, res, next) => {
-  try { await query('DELETE FROM applications WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
+  try { await query('UPDATE applications SET deleted_at=now() WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
   catch (e) { next(e); }
 });
 

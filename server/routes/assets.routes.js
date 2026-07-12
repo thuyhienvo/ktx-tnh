@@ -7,7 +7,7 @@ router.use(requireAuth);
 
 router.get('/', async (req, res, next) => {
   try {
-    const { rows } = await query('SELECT * FROM assets ORDER BY category DESC, sort, id');
+    const { rows } = await query('SELECT * FROM assets WHERE deleted_at IS NULL ORDER BY category DESC, sort, id');
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -36,8 +36,9 @@ router.put('/:id', requireRole('admin'), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Xóa mềm
 router.delete('/:id', requireRole('admin'), async (req, res, next) => {
-  try { await query('DELETE FROM assets WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
+  try { await query('UPDATE assets SET deleted_at=now() WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
   catch (e) { next(e); }
 });
 

@@ -22,7 +22,7 @@ router.get('/', async (req, res, next) => {
         COALESCE(e.reading_end, 0) AS reading_end,
         COALESCE(e.reading_start, prev.reading_end, 0) AS reading_start,
         COALESCE(e.kwh, 0) AS kwh,
-        (SELECT COUNT(*) FROM students s WHERE s.room_id=r.id
+        (SELECT COUNT(*) FROM students s WHERE s.room_id=r.id AND s.deleted_at IS NULL
            AND s.check_in_date <= CURRENT_DATE AND (s.check_out_date IS NULL OR s.check_out_date > CURRENT_DATE))::int AS occupancy
       FROM rooms r
       LEFT JOIN electric_readings e ON e.room_id=r.id AND e.month=$1

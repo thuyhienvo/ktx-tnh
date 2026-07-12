@@ -13,12 +13,48 @@ function smtpReady(s) {
   return !!(s.smtp_host && s.smtp_user && s.smtp_pass && s.school_email);
 }
 
+// Tạo transporter với timeout ngắn (tránh treo request khi SMTP không phản hồi)
+function buildTransport(s) {
+  return nodemailer.createTransport({
+    host: s.smtp_host,
+    port: +s.smtp_port || 587,
+    secure: String(s.smtp_secure) === 'true',
+    auth: { user: s.smtp_user, pass: s.smtp_pass },
+    connectionTimeout: 10000,
+    greetingTimeout: 8000,
+    socketTimeout: 12000,
+  });
+}
+
 // Kiểm tra có gửi được không (dùng để hiển thị cảnh báo trên UI)
 async function mailStatus() {
   const s = await getSettings();
   if (!nodemailer) return { ready: false, reason: 'Server chưa cài nodemailer (chạy: npm i nodemailer)' };
   if (!smtpReady(s)) return { ready: false, reason: 'Chưa cấu hình SMTP / email nhà trường trong Cài đặt' };
   return { ready: true };
+}
+
+// Thử kết nối SMTP (nút "Kiểm tra kết nối" trong Cài đặt).
+// override: cấu hình nhập trực tiếp trên form; nếu bỏ trống smtp_pass thì dùng mật khẩu đã lưu.
+async function testConnection(override = {}) {
+  if (!nodemailer) return { ok: false, reason: 'Server chưa cài nodemailer' };
+  const saved = await getSettings();
+  const s = {
+    smtp_host: override.smtp_host ?? saved.smtp_host,
+    smtp_port: override.smtp_port ?? saved.smtp_port,
+    smtp_secure: override.smtp_secure ?? saved.smtp_secure,
+    smtp_user: override.smtp_user ?? saved.smtp_user,
+    smtp_pass: (override.smtp_pass && override.smtp_pass.trim()) ? override.smtp_pass : saved.smtp_pass,
+  };
+  if (!s.smtp_host || !s.smtp_user || !s.smtp_pass) {
+    return { ok: false, reason: 'Thiếu host / tài khoản / mật khẩu SMTP' };
+  }
+  try {
+    await buildTransport(s).verify();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: e && e.message ? e.message : String(e) };
+  }
 }
 
 // Gửi thông báo vi phạm cho nhà trường
@@ -51,12 +87,7 @@ Ban quản lý ${dorm}${s.hotline ? '\nHotline: ' + s.hotline : ''}`;
   const html = text.replace(/\n/g, '<br>');
 
   try {
-    const transporter = nodemailer.createTransport({
-      host: s.smtp_host,
-      port: +s.smtp_port || 587,
-      secure: String(s.smtp_secure) === 'true',
-      auth: { user: s.smtp_user, pass: s.smtp_pass },
-    });
+    const transporter = buildTransport(s);
     await transporter.sendMail({
       from: s.smtp_from || s.smtp_user,
       to: s.school_email,
@@ -68,4 +99,4 @@ Ban quản lý ${dorm}${s.hotline ? '\nHotline: ' + s.hotline : ''}`;
   }
 }
 
-module.exports = { sendViolationMail, mailStatus };
+module.exports = { sendViolationMail, mailStatus, testConnection };

@@ -14,6 +14,7 @@ router.get('/', async (req, res, next) => {
       FROM vehicles v
       JOIN students s ON s.id = v.student_id
       LEFT JOIN rooms r ON r.id = s.room_id
+      WHERE v.deleted_at IS NULL AND s.deleted_at IS NULL
       ORDER BY r.name, s.name`);
     res.json(rows);
   } catch (e) { next(e); }
@@ -43,8 +44,9 @@ router.put('/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Xóa mềm
 router.delete('/:id', async (req, res, next) => {
-  try { await query('DELETE FROM vehicles WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
+  try { await query('UPDATE vehicles SET deleted_at=now() WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
   catch (e) { next(e); }
 });
 

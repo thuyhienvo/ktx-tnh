@@ -1,17 +1,24 @@
-// ---- Lớp gọi API + lưu token ----
+// ---- Lớp gọi API ----
+// Xác thực bằng cookie httpOnly (server tự đặt/xóa). Client CHỈ giữ thông tin hiển thị
+// (tên, vai trò) trong localStorage — KHÔNG còn giữ token.
 const Auth = {
-  get token() { return localStorage.getItem('ktx_token'); },
-  set token(v) { v ? localStorage.setItem('ktx_token', v) : localStorage.removeItem('ktx_token'); },
   get user() { try { return JSON.parse(localStorage.getItem('ktx_user')); } catch { return null; } },
   set user(v) { v ? localStorage.setItem('ktx_user', JSON.stringify(v)) : localStorage.removeItem('ktx_user'); },
-  logout() { this.token = null; this.user = null; location.reload(); },
+  async logout() {
+    try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
+    this.user = null; location.reload();
+  },
 };
 
 async function api(path, { method = 'GET', body } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  if (Auth.token) headers.Authorization = 'Bearer ' + Auth.token;
-  const res = await fetch('/api' + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  if (res.status === 401 && Auth.token) { Auth.logout(); throw new Error('Hết phiên đăng nhập'); }
+  const res = await fetch('/api' + path, {
+    method, headers,
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: 'same-origin', // gửi kèm cookie phiên
+  });
+  // Phiên hết hạn khi đang đăng nhập -> xóa hint + tải lại về màn đăng nhập
+  if (res.status === 401 && Auth.user) { Auth.user = null; location.reload(); throw new Error('Hết phiên đăng nhập'); }
   let data = null;
   try { data = await res.json(); } catch {}
   if (!res.ok) throw new Error((data && data.error) || 'Lỗi kết nối máy chủ');
@@ -20,10 +27,13 @@ async function api(path, { method = 'GET', body } = {}) {
 
 const API = {
   login: (username, password) => api('/auth/login', { method: 'POST', body: { username, password } }),
+  logout: () => api('/auth/logout', { method: 'POST' }),
+  me: () => api('/auth/me'),
   changePassword: (oldPassword, newPassword) => api('/auth/change-password', { method: 'POST', body: { oldPassword, newPassword } }),
 
   settings: () => api('/settings'),
   updateSettings: b => api('/settings', { method: 'PUT', body: b }),
+  testSmtp: b => api('/settings/smtp/test', { method: 'POST', body: b }),
 
   facilities: () => api('/facilities'),
   createFacility: b => api('/facilities', { method: 'POST', body: b }),
@@ -36,11 +46,12 @@ const API = {
   deleteRoom: id => api('/rooms/' + id, { method: 'DELETE' }),
   restoreRoom: id => api('/rooms/' + id + '/restore', { method: 'POST' }),
 
-  students: () => api('/students'),
+  students: deleted => api('/students' + (deleted ? '?deleted=1' : '')),
   student: id => api('/students/' + id),
   createStudent: b => api('/students', { method: 'POST', body: b }),
   updateStudent: (id, b) => api('/students/' + id, { method: 'PUT', body: b }),
   deleteStudent: id => api('/students/' + id, { method: 'DELETE' }),
+  restoreStudent: id => api('/students/' + id + '/restore', { method: 'POST' }),
   checkIn: (id, b) => api('/students/' + id + '/checkin', { method: 'POST', body: b }),
   checkOut: (id, b) => api('/students/' + id + '/checkout', { method: 'POST', body: b }),
   transfer: (id, b) => api('/students/' + id + '/transfer', { method: 'POST', body: b }),

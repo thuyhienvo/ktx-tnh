@@ -17,9 +17,9 @@ const LIST_SELECT = `
     (s.cccd_front IS NOT NULL OR s.cccd_image IS NOT NULL) AS has_cccd,
     r.name AS room_name, r.floor AS room_floor, r.gender AS room_gender, r.hang AS room_hang,
     u.username AS login_username,
-    (SELECT COUNT(*) FROM vehicles v WHERE v.student_id=s.id)::int AS vehicle_count,
-    (SELECT COUNT(*) FROM violations vi WHERE vi.student_id=s.id)::int AS violation_count,
-    (SELECT COALESCE(SUM(i.total),0)::int FROM invoices i WHERE i.status<>'paid' AND i.student_id=s.id) AS debt
+    (SELECT COUNT(*) FROM vehicles v WHERE v.student_id=s.id AND v.deleted_at IS NULL)::int AS vehicle_count,
+    (SELECT COUNT(*) FROM violations vi WHERE vi.student_id=s.id AND vi.deleted_at IS NULL)::int AS violation_count,
+    (SELECT COALESCE(SUM(i.total),0)::int FROM invoices i WHERE i.status<>'paid' AND i.student_id=s.id AND i.deleted_at IS NULL) AS debt
   FROM students s
   LEFT JOIN rooms r ON r.id = s.room_id
   LEFT JOIN users u ON u.student_id = s.id`;
@@ -31,7 +31,8 @@ const D = v => (v ? v : null);
 
 router.get('/', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
-    const { rows } = await query(`${LIST_SELECT} ORDER BY s.name`);
+    const where = req.query.deleted === '1' ? 'WHERE s.deleted_at IS NOT NULL' : 'WHERE s.deleted_at IS NULL';
+    const { rows } = await query(`${LIST_SELECT} ${where} ORDER BY s.name`);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -41,7 +42,7 @@ router.get('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
     const { rows } = await query(`
       SELECT s.*, r.name AS room_name, r.floor AS room_floor, r.gender AS room_gender, r.hang AS room_hang,
         u.username AS login_username,
-        (SELECT COALESCE(SUM(i.total),0)::int FROM invoices i WHERE i.student_id=s.id AND i.status<>'paid') AS debt
+        (SELECT COALESCE(SUM(i.total),0)::int FROM invoices i WHERE i.student_id=s.id AND i.status<>'paid' AND i.deleted_at IS NULL) AS debt
       FROM students s
       LEFT JOIN rooms r ON r.id = s.room_id
       LEFT JOIN users u ON u.student_id = s.id
@@ -138,8 +139,15 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Xóa mềm (khôi phục được — không xóa dữ liệu thật)
 router.delete('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
-  try { await query('DELETE FROM students WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
+  try { await query('UPDATE students SET deleted_at=now() WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
+  catch (e) { next(e); }
+});
+
+// Khôi phục học viên đã xóa
+router.post('/:id/restore', requireRole('admin', 'staff'), async (req, res, next) => {
+  try { await query('UPDATE students SET deleted_at=NULL WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
   catch (e) { next(e); }
 });
 
