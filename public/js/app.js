@@ -678,8 +678,10 @@ async function viewDashboard() {
   const pApps = apps.filter(a => a.status === 'pending').length;
   const pDmg = damage.filter(d => d.status !== 'done').length;
   const pCout = couts.filter(c => c.status === 'pending').length;
-  const unpaid = invAll.filter(i => i.status !== 'paid').reduce((a, i) => a + (+i.total || 0), 0);
-  const paidThisMonth = invAll.filter(i => i.status === 'paid' && i.month === curMonth()).reduce((a, i) => a + (+i.total || 0), 0);
+  // App CHỈ lập phiếu báo tiền phòng — KHÔNG quản lý doanh thu/công nợ (đã có Bravo)
+  const billedThisMonth = invAll.filter(i => i.month === curMonth()).reduce((a, i) => a + (+i.total || 0), 0);
+  const billStudents = new Set(invAll.filter(i => i.month === curMonth()).map(i => i.student_id));
+  const noBill = occ.filter(s => !billStudents.has(s.id)).length; // HV đang ở chưa lập phiếu tháng này
 
   // act = onclick đầy đủ → mọi ô KPI đều drill-through tới đúng danh sách đằng sau con số
   const kpi = (cls, ico, val, label, act) => `<div class="kpi${act ? ' clickable' : ''}" ${act ? `onclick="${act}"` : ''}><span class="ic ${cls}">${ico}</span><div><div class="v">${val}</div><div class="l">${label}</div></div></div>`;
@@ -696,8 +698,8 @@ async function viewDashboard() {
       ${kpi('ic-green', IC.userCheck, inCount, 'Học viên đang ở', "stuFilter='in';adminGo('students')")}
       ${kpi('ic-blue', IC.bed, `${beds}<span class="muted" style="font-size:15px;font-weight:600"> / ${capacity}</span>`, 'Giường còn trống', "adminGo('rooms')")}
       ${kpi('ic-brand', IC.planeTakeoff, `${depMonth}<span class="muted" style="font-size:15px;font-weight:600"> · năm ${depYear}</span>`, 'Xuất cảnh tháng này', "stuFilter='departure';adminGo('students')")}
-      ${kpi('ic-brand', IC.banknote, money(paidThisMonth), 'Đã thu tháng này', "adminGo('invoices')")}
-      ${kpi('ic-red', IC.wallet, money(unpaid), 'Còn nợ tiền phòng', "adminGo('invoices')")}
+      ${kpi('ic-brand', IC.receipt, money(billedThisMonth), 'Phiếu báo tháng này', "adminGo('invoices')")}
+      ${kpi('ic-amber', IC.filePen, noBill, 'HV chưa lập phiếu tháng này', "adminGo('invoices')")}
     </div>
 
     <div class="panel"><div class="hd"><h2>${IC.zap} Cần xử lý</h2></div><div class="pad">
