@@ -71,6 +71,10 @@ ALTER TABLE students ADD COLUMN IF NOT EXISTS deposit_bank TEXT DEFAULT '';     
 ALTER TABLE students ADD COLUMN IF NOT EXISTS deposit_account TEXT DEFAULT '';    -- số TK hoàn cọc
 ALTER TABLE students ADD COLUMN IF NOT EXISTS deposit_deduction NUMERIC(12,0) DEFAULT 0;  -- khấu trừ hư hao khi trả phòng
 ALTER TABLE students ADD COLUMN IF NOT EXISTS deposit_deduction_note TEXT DEFAULT '';     -- chi tiết khấu trừ
+-- Thông tin học viên bổ sung (điểm 8 — đồng bộ từ Bitrix/Kaizen sau)
+ALTER TABLE students ADD COLUMN IF NOT EXISTS class_start_date DATE;              -- ngày khai giảng
+ALTER TABLE students ADD COLUMN IF NOT EXISTS expected_departure DATE;            -- ngày dự kiến xuất cảnh
+ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_phone TEXT DEFAULT '';       -- SĐT phụ huynh
 
 -- Xe của học viên
 CREATE TABLE IF NOT EXISTS vehicles (

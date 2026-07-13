@@ -52,6 +52,8 @@ const API = {
   updateStudent: (id, b) => api('/students/' + id, { method: 'PUT', body: b }),
   deleteStudent: id => api('/students/' + id, { method: 'DELETE' }),
   restoreStudent: id => api('/students/' + id + '/restore', { method: 'POST' }),
+  contractNoNext: (gender, date) => api('/students/contract-no/next?gender=' + encodeURIComponent(gender) + '&date=' + encodeURIComponent(date || '')),
+  renumberContracts: dry => api('/students/contract-no/renumber', { method: 'POST', body: { dry: !!dry } }),
   checkIn: (id, b) => api('/students/' + id + '/checkin', { method: 'POST', body: b }),
   checkOut: (id, b) => api('/students/' + id + '/checkout', { method: 'POST', body: b }),
   transfer: (id, b) => api('/students/' + id + '/transfer', { method: 'POST', body: b }),

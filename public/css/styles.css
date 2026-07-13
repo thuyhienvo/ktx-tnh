@@ -118,6 +118,10 @@ a:hover{text-decoration:underline;text-underline-offset:2px}
 
 /* ---------- Bảng ---------- */
 .table-wrap{overflow-x:auto}
+/* Bảng dài ở nội dung chính: khung cuộn có chiều cao tối đa → thanh cuộn ngang luôn ở đáy vùng nhìn thấy
+   (không phải kéo xuống cuối mới cuộn ngang được) + ghim tiêu đề cột khi cuộn dọc. */
+.content .table-wrap{overflow:auto;max-height:calc(100vh - 200px)}
+.content .table-wrap thead th{position:sticky;top:0;z-index:2;box-shadow:inset 0 -1px 0 var(--line)}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap}
 th{background:var(--bg2);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;position:relative}
@@ -272,6 +276,22 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);b
 .kpi .ic.ic-gray .ic-svg{color:var(--gray-ink)}
 .panel .hd h2 .ic-svg{width:18px;height:18px;color:var(--brand);vertical-align:-.14em;margin-right:2px}
 .todo .ic{display:inline-flex;align-items:center;justify-content:center}
+/* Điều hành — Vận hành & Tuân thủ */
+.exec-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(212px,1fr));gap:14px}
+.es{border:1px solid var(--line);border-radius:14px;padding:16px 17px;background:var(--card)}
+.es-h{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.es-ic{width:32px;height:32px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.es-ic .ic-svg{width:17px;height:17px}
+.es-ic.ic-blue .ic-svg{color:var(--blue-ink)}
+.es-ic.ic-brand .ic-svg{color:var(--brand-d)}
+.es-ic.ic-gray .ic-svg{color:var(--gray-ink)}
+.es-ic.ic-red .ic-svg{color:var(--red-ink)}
+.es-ic.ic-green .ic-svg{color:var(--green-ink)}
+.es-v{font-size:27px;font-weight:800;letter-spacing:-.02em;margin:11px 0 3px;font-variant-numeric:tabular-nums}
+.es-v span{font-size:14px;font-weight:600;color:var(--muted)}
+.es-bar{height:7px;border-radius:99px;background:var(--bg2);overflow:hidden;margin:6px 0 8px}
+.es-bar>div{height:100%;background:var(--brand)}
+.es-sub{font-size:12.5px;color:var(--muted);line-height:1.5}
 .todo .ic .ic-svg{width:19px;height:19px;color:var(--ink2)}
 .todo.on .ic .ic-svg{color:var(--brand-d)}
 .todo.warn .ic .ic-svg{color:var(--amber-ink)}
@@ -337,6 +357,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);b
 .intro-price tr:last-child td{border-bottom:none}
 .intro-price .price-hi{background:var(--brand-soft)}
 .intro-price .price-hi td{color:var(--brand-d);font-size:16px}
+.price-form-tag{display:flex;align-items:center;gap:9px;padding:13px 22px;background:var(--brand-soft);border-bottom:1px solid var(--line);font-size:13.5px;color:var(--brand-d);line-height:1.45}
+.price-form-tag svg{width:18px;height:18px;flex:none}
+.price-form-tag strong{color:var(--brand-d)}
 .intro-form{max-width:640px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:28px;box-shadow:var(--shadow)}
 .intro-foot{text-align:center;color:var(--muted);font-size:13px;padding:28px 0 0;border-top:1px solid var(--line);margin-top:22px}
 /* Liên hệ + bản đồ (trang giới thiệu) */

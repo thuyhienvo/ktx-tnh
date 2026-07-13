@@ -74,9 +74,11 @@ async function renderPublicRegister() {
     </section>
 
     <section class="intro-sec alt">
-      <div class="intro-head"><span class="eyebrow">Chi phí</span><h2>${T('intro_price_title', 'Bảng giá chi phí')}</h2>
+      <div class="intro-head"><span class="eyebrow">Chi phí</span><h2>${T('intro_price_title', 'Bảng giá thuê phòng ở ghép')}</h2>
         <p>${T('intro_price_desc', 'Minh bạch theo từng khoản. Tiền điện tính theo công-tơ, chia đều số người ở phòng.')}</p></div>
-      <div class="intro-price"><table>
+      <div class="intro-price">
+        <div class="price-form-tag">${IC.users} Hình thức: <strong>Thuê phòng ở ghép</strong> — nhiều học viên ở chung một phòng, chia sẻ chi phí</div>
+        <table>
         <thead><tr><th>Khoản chi phí</th><th class="num">Mức phí</th></tr></thead>
         <tbody>
           ${priceRow('Tiền phòng (thuê ghép)', info.room_fee, ' /người/tháng')}
@@ -287,7 +289,12 @@ const AdminTitles = {
   checkin: ['Check-in / Check-out', 'Lịch sử ra / vào ký túc xá'],
   invoices: ['Tiền phòng', 'Hóa đơn hàng tháng, điện nước, cọc'],
   revenue: ['Doanh thu', 'Báo cáo doanh thu theo tháng / năm, đối chiếu Bravo'],
-  requests: ['Trung tâm hỗ trợ', 'Đăng ký nội trú · hư hỏng/vi phạm · trả phòng'],
+  reg: ['Đăng ký ở nội trú', 'Duyệt đơn đăng ký vào ở'],
+  checkout: ['Đăng ký trả phòng', 'Duyệt đơn xin trả phòng'],
+  repair: ['Báo hư hỏng CSVC', 'Hư hỏng cơ sở vật chất → chuyển bảo trì'],
+  violations: ['Quản lý vi phạm', 'Ghi nhận & theo dõi vi phạm học viên'],
+  feedback: ['Hộp thư góp ý', 'Học viên báo vi phạm · cần hỗ trợ khác'],
+  requests: ['Đăng ký ở nội trú', 'Duyệt đơn đăng ký vào ở'],
   audit: ['Nhật ký hệ thống', 'Lịch sử thao tác của quản lý & nhân viên'],
   settings: ['Cài đặt', 'Đơn giá, hạng phòng, cơ sở'],
 };
@@ -299,8 +306,8 @@ const genderLabel = g => G[g] || g;
 const legalEntity = g => g === 'female' ? (ST.settings.legal_female || 'E2') : (ST.settings.legal_male || 'S2');
 const HANGS = ['A', 'B', 'C', 'D'];
 const RENTAL_LABEL = { ghep: 'Thuê ghép', phong: 'Thuê nguyên phòng' };
-const CONTRACT_LABEL = { done: 'Đã hoàn tất', scanned: 'Đã scan HĐ', unsigned: 'Chưa ký HĐ', none: 'Không ký HĐ' };
-const CONTRACT_BADGE = { done: 'green', scanned: 'blue', unsigned: 'amber', none: 'gray' };
+const CONTRACT_LABEL = { done: 'Đã hoàn tất', scanned: 'Đã scan HĐ', unsigned: 'Chưa ký HĐ', none: 'Không ký HĐ', handover: 'Đã ký phiếu bàn giao' };
+const CONTRACT_BADGE = { done: 'green', scanned: 'blue', unsigned: 'amber', none: 'gray', handover: 'blue' };
 const CHECKOUT_REASONS = [['departure', 'Xuất cảnh (đi Nhật)'], ['personal', 'Cá nhân'], ['facility', 'Cơ sở vật chất'], ['dropout', 'Nghỉ học'], ['reserve', 'Bảo lưu'], ['other', 'Khác']];
 const REASON_LABEL = { departure: 'Xuất cảnh', personal: 'Cá nhân', facility: 'Cơ sở vật chất', dropout: 'Nghỉ học', reserve: 'Bảo lưu', other: 'Khác', normal: 'Khác', urgent_visa: 'Xuất cảnh' };
 const VIO_SEV = { minor: ['Nhẹ', 'gray'], major: ['Nặng', 'amber'], severe: ['Nghiêm trọng', 'red'] };
@@ -344,6 +351,26 @@ const STATUS_INFO = {
 const statusBadge = s => { const [l, c] = STATUS_INFO[liveStatus(s)]; return `<span class="badge ${c}">${l}</span>`; };
 const isOccupying = s => ['staying', 'leaving'].includes(liveStatus(s));
 
+// ---- Rule hợp đồng thuê ghép (điểm 5 — Sếp) ----
+const DAY_MS = 86400000;
+function stayDays(s) { // số ngày đã vào ở tính đến hôm nay
+  const ci = s.check_in_date && s.check_in_date.slice(0, 10); if (!ci) return 0;
+  return Math.floor((Date.parse(today()) - Date.parse(ci)) / DAY_MS);
+}
+// Thuê ghép ngắn hạn: có ngày trả & ở < 2 tháng → chỉ cần phiếu bàn giao, không cần HĐ
+function isShortTermGhep(s) {
+  if (s.rental_type !== 'ghep' || !s.check_out_date || !s.check_in_date) return false;
+  const d = (Date.parse(s.check_out_date.slice(0, 10)) - Date.parse(s.check_in_date.slice(0, 10))) / DAY_MS;
+  return d > 0 && d < 60;
+}
+const contractSigned = s => ['done', 'scanned'].includes(s.contract_status);
+// Thuê ghép dài hạn đang ở → bắt buộc ký HĐ
+const contractRequired = s => isOccupying(s) && s.rental_type === 'ghep' && !isShortTermGhep(s);
+// Báo động: bắt buộc HĐ, đã vào ở > 7 ngày mà vẫn chưa ký
+const contractOverdue = s => contractRequired(s) && !contractSigned(s) && stayDays(s) > 7;
+// Ngắn hạn nhưng chưa ký phiếu bàn giao
+const handoverPending = s => isOccupying(s) && isShortTermGhep(s) && !['handover', 'done', 'scanned'].includes(s.contract_status);
+
 function renderAdmin() {
   const isAdmin = Auth.user.role === 'admin';
   el('app').innerHTML = `
@@ -361,7 +388,12 @@ function renderAdmin() {
           <button data-v="checkin"><span class="ico">${IC.key}</span><span class="lbl">Check-in / out</span></button>
           <button data-v="invoices"><span class="ico">${IC.wallet}</span><span class="lbl">Tiền phòng</span></button>
           ${isAdmin ? `<button data-v="revenue"><span class="ico">${IC.trendingUp}</span><span class="lbl">Doanh thu</span></button>` : ''}
-          <button data-v="requests"><span class="ico">${IC.inbox}</span><span class="lbl">Trung tâm hỗ trợ</span><span class="cnt" id="navReq" style="display:none"></span></button>
+          <div class="grp">Tiếp nhận & Hỗ trợ</div>
+          <button data-v="reg"><span class="ico">${IC.filePen}</span><span class="lbl">Đăng ký ở nội trú</span><span class="cnt" id="navReg" style="display:none"></span></button>
+          <button data-v="checkout"><span class="ico">${IC.logOut}</span><span class="lbl">Đăng ký trả phòng</span><span class="cnt" id="navCheckout" style="display:none"></span></button>
+          <button data-v="repair"><span class="ico">${IC.wrench}</span><span class="lbl">Báo hư hỏng CSVC</span><span class="cnt" id="navRepair" style="display:none"></span></button>
+          <button data-v="violations"><span class="ico">${IC.alert}</span><span class="lbl">Quản lý vi phạm</span><span class="cnt" id="navViol" style="display:none"></span></button>
+          <button data-v="feedback"><span class="ico">${IC.inbox}</span><span class="lbl">Hộp thư góp ý</span><span class="cnt" id="navFeed" style="display:none"></span></button>
           ${isAdmin ? `<div class="grp">Hệ thống</div>
           <button data-v="audit"><span class="ico">${IC.history}</span><span class="lbl">Nhật ký</span></button>
           <button data-v="settings"><span class="ico">${IC.settings}</span><span class="lbl">Cài đặt</span></button>` : ''}
@@ -389,8 +421,8 @@ function renderAdmin() {
   document.querySelectorAll('#nav button').forEach(b => b.addEventListener('click', () => adminGo(b.dataset.v)));
   startTableResize();
   const qp = new URLSearchParams(location.search);
-  const startView = qp.get('view'); if (qp.get('tab')) reqTab = qp.get('tab');
-  const views = ['exec', 'dashboard', 'students', 'rooms', 'vehicles', 'checkin', 'invoices', 'revenue', 'requests', 'audit', 'settings'];
+  const startView = qp.get('view');
+  const views = ['exec', 'dashboard', 'students', 'rooms', 'vehicles', 'checkin', 'invoices', 'revenue', 'reg', 'checkout', 'repair', 'violations', 'feedback', 'requests', 'audit', 'settings'];
   refreshCache().then(() => adminGo(views.includes(startView) ? startView : 'dashboard')).catch(e => toast(e.message, 'err'));
 }
 
@@ -404,11 +436,13 @@ async function refreshCache() {
   updateNavBadges();
 }
 function updateNavBadges() {
-  const n = ST.applications.filter(a => a.status === 'pending').length
-    + ST.damage.filter(d => d.status !== 'done').length
-    + ST.couts.filter(c => c.status === 'pending').length
-    + (ST.vstats && ST.vstats.needMail || 0);
-  const b = el('navReq'); if (b) { b.textContent = n; b.style.display = n ? '' : 'none'; }
+  const dmg = ST.damage || [];
+  const setBadge = (id, n) => { const b = el(id); if (b) { b.textContent = n; b.style.display = n ? '' : 'none'; } };
+  setBadge('navReg', ST.applications.filter(a => a.status === 'pending').length);
+  setBadge('navCheckout', ST.couts.filter(c => c.status === 'pending').length);
+  setBadge('navRepair', dmg.filter(d => (d.category || 'damage') === 'damage' && d.status !== 'done').length);
+  setBadge('navViol', (ST.vstats && ST.vstats.needMail) || 0);
+  setBadge('navFeed', dmg.filter(d => ['violation', 'other'].includes(d.category) && d.status !== 'done').length);
   updateNotif();
 }
 /* ---- Trung tâm thông báo (chuông) ---- */
@@ -419,10 +453,10 @@ function notifItems() {
   const pCout = ST.couts.filter(c => c.status === 'pending').length;
   const needMail = (ST.vstats && ST.vstats.needMail) || 0;
   const refund = ST.students.filter(s => liveStatus(s) === 'left' && s.deposit_status === 'held').length;
-  if (pApps) items.push({ n: pApps, ic: IC.filePen, tx: `${pApps} đơn đăng ký chờ duyệt`, act: `reqTab='apps';adminGo('requests')` });
-  if (pDmg) items.push({ n: pDmg, ic: IC.wrench, tx: `${pDmg} báo hư hỏng chưa xử lý`, act: `reqTab='reports';adminGo('requests')` });
-  if (pCout) items.push({ n: pCout, ic: IC.logOut, tx: `${pCout} đơn xin trả phòng`, act: `reqTab='cout';adminGo('requests')` });
-  if (needMail) items.push({ n: needMail, ic: IC.alert, tx: `${needMail} học viên vi phạm cần báo nhà trường`, act: `reqTab='reports';adminGo('requests')` });
+  if (pApps) items.push({ n: pApps, ic: IC.filePen, tx: `${pApps} đơn đăng ký chờ duyệt`, act: `adminGo('reg')` });
+  if (pDmg) items.push({ n: pDmg, ic: IC.wrench, tx: `${pDmg} báo hư hỏng chưa xử lý`, act: `adminGo('repair')` });
+  if (pCout) items.push({ n: pCout, ic: IC.logOut, tx: `${pCout} đơn xin trả phòng`, act: `adminGo('checkout')` });
+  if (needMail) items.push({ n: needMail, ic: IC.alert, tx: `${needMail} học viên vi phạm cần báo nhà trường`, act: `adminGo('violations')` });
   if (refund) items.push({ n: refund, ic: IC.handCoins, tx: `${refund} khoản cọc chờ hoàn (đã trả phòng)`, act: `quyCoc()` });
   return items;
 }
@@ -457,6 +491,7 @@ function closeSide() {
   if (s) s.classList.remove('open'); if (b) b.classList.remove('show');
 }
 function adminGo(view) {
+  if (view === 'requests') view = 'reg'; // alias cũ → trang Đăng ký ở nội trú
   // Chặn nhân viên (staff) truy cập các mục dành riêng quản trị (kể cả deep-link)
   if (ADMIN_ONLY_VIEWS.includes(view) && Auth.user.role !== 'admin') view = 'dashboard';
   ST.view = view; closeSide();
@@ -464,7 +499,7 @@ function adminGo(view) {
   el('pgTitle').textContent = AdminTitles[view][0];
   el('pgSub').textContent = AdminTitles[view][1];
   el('topActions').innerHTML = '';
-  ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, vehicles: viewVehicles, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, requests: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
+  ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, vehicles: viewVehicles, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, reg: viewRequests, checkout: viewRequests, repair: viewRequests, violations: viewRequests, feedback: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
 }
 const roomById = id => ST.rooms.find(r => r.id === id);
 const studentById = id => ST.students.find(s => s.id === id);
@@ -524,6 +559,26 @@ async function viewExec() {
   const chartRows = rev.map(m => ({ month: m.month, label: m.month.slice(5), total: +m.total || 0, paid: +m.paid || 0 }));
   const female = ST.students.filter(s => isOccupying(s) && s.gender === 'female').length;
   const male = occ - female;
+  // --- Vận hành & tuân thủ (điểm 3): máy giặt · hợp đồng · hư hỏng · vi phạm ---
+  const occStu = ST.students.filter(isOccupying);
+  const signedC = s => ['done', 'scanned'].includes(s.contract_status);
+  const cSigned = occStu.filter(signedC).length, cUnsigned = occStu.length - cSigned;
+  const cPct = occStu.length ? Math.round(cSigned / occStu.length * 100) : 0;
+  const cSignedF = occStu.filter(s => s.gender === 'female' && signedC(s)).length;
+  const cSignedM = occStu.filter(s => s.gender === 'male' && signedC(s)).length;
+  const cOverdue = occStu.filter(contractOverdue).length;
+  const washUsers = occStu.filter(s => s.uses_washing).length;
+  const washRev = sum(rev, 'washing');
+  const dmg = (ST.damage || []).filter(d => (d.category || 'damage') === 'damage');
+  const dmgDone = dmg.filter(d => d.status === 'done').length;
+  const dmgBlocked = dmg.filter(d => d.status === 'blocked').length;
+  const dmgOpen = Math.max(0, dmg.length - dmgDone - dmgBlocked);
+  const dmgPct = dmg.length ? Math.round(dmgDone / dmg.length * 100) : 0;
+  const vio = ST.vstats || {};
+  const vioTotal = vio.total || 0, vioNeedMail = vio.needMail || 0;
+  const sevMap = { light: 'Nhẹ', medium: 'Trung bình', heavy: 'Nặng' };
+  const vioSev = (vio.bySeverity || []).map(x => `${sevMap[x.severity] || x.severity}: ${x.c}`).join(' · ');
+  const es = (ico, cls, title, main, sub, bar) => `<div class="es"><div class="es-h"><span class="es-ic ${cls}">${ico}</span>${title}</div><div class="es-v">${main}</div>${bar != null ? `<div class="es-bar"><div style="width:${bar}%"></div></div>` : ''}<div class="es-sub">${sub}</div></div>`;
   const kpi = (ic, cls, val, label, sub) => `<div class="kpi"><span class="ic ${cls}">${ic}</span><div><div class="v">${val}</div><div class="l">${label}${sub ? ` · ${sub}` : ''}</div></div></div>`;
 
   el('content').innerHTML = `<div id="printArea">
@@ -554,6 +609,14 @@ async function viewExec() {
         </div>
       </div></div>
     </div>
+    <div class="panel"><div class="hd"><h2>${IC.shield} Vận hành &amp; Tuân thủ — ${year}</h2></div><div class="pad">
+      <div class="exec-stats">
+        ${es(IC.washer, 'ic-blue', 'Máy giặt', `${washUsers}<span> HV đang dùng</span>`, `Doanh thu năm: <strong>${money(washRev)}</strong>`, null)}
+        ${es(IC.fileText, 'ic-brand', 'Hợp đồng', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá 7 ngày</strong>` : ''}`, cPct)}
+        ${es(IC.wrench, 'ic-gray', 'Hư hỏng', `${dmg.length}<span> lượt báo</span>`, `Đã xử lý ${dmgDone} · đang xử lý ${dmgOpen} · chưa xử lý được ${dmgBlocked}`, dmgPct)}
+        ${es(IC.alert, 'ic-red', 'Vi phạm', `${vioTotal}<span> lượt</span>`, `${vioNeedMail} HV cần báo trường${vioSev ? ' · ' + vioSev : ''}`, null)}
+      </div>
+    </div></div>
   </div>`;
 }
 
@@ -573,6 +636,8 @@ async function viewDashboard() {
   const depYear = ST.students.filter(s => isDeparture(s) && s.check_out_date.slice(0, 4) === curMonth().slice(0, 4)).length;
   const noResidency = occ.filter(s => s.residency_status !== 'registered').length;
   const noContract = occ.filter(s => ['unsigned', 'none'].includes(s.contract_status)).length;
+  const ghepOverdue = occ.filter(contractOverdue).length; // thuê ghép >7 ngày chưa ký HĐ
+  const handoverTodo = occ.filter(handoverPending).length; // ngắn hạn chưa ký bàn giao
   const totalVehicles = occ.reduce((a, s) => a + (+s.vehicle_count || 0), 0);
   const heldDeposit = ST.students.filter(s => s.deposit_status === 'held').reduce((a, s) => a + (+s.deposit_amount || 0), 0);
   const refundPending = ST.students.filter(s => liveStatus(s) === 'left' && s.deposit_status === 'held').length;
@@ -587,7 +652,8 @@ async function viewDashboard() {
   const paidThisMonth = invAll.filter(i => i.status === 'paid' && i.month === curMonth()).reduce((a, i) => a + (+i.total || 0), 0);
 
   const kpi = (cls, ico, val, label) => `<div class="kpi"><span class="ic ${cls}">${ico}</span><div><div class="v">${val}</div><div class="l">${label}</div></div></div>`;
-  const todo = (ico, tx, n, view, cls) => `<div class="todo ${n ? cls : 'calm'}" ${view && n ? `onclick="adminGo('${view}')"` : ''}><span class="ic">${ico}</span><span class="tx">${tx}</span><span class="n">${n}</span></div>`;
+  // act = biểu thức onclick đầy đủ (đặt đúng bộ lọc / tab rồi mới điều hướng) → bấm vào đúng danh sách cần xử lý
+  const todo = (ico, tx, n, act, cls) => `<div class="todo ${n ? cls : 'calm'}" ${act && n ? `onclick="${act}"` : ''}><span class="ic">${ico}</span><span class="tx">${tx}</span><span class="n">${n}</span></div>`;
 
   const signed = s => ['done', 'scanned'].includes(s.contract_status);
   const zone = g => { const arr = occ.filter(s => s.gender === g); const sg = arr.filter(signed).length; return { sg, un: arr.length - sg, wash: arr.filter(s => s.uses_washing).length, veh: arr.reduce((a, s) => a + (+s.vehicle_count || 0), 0), total: arr.length }; };
@@ -605,15 +671,17 @@ async function viewDashboard() {
 
     <div class="panel"><div class="hd"><h2>${IC.zap} Cần xử lý</h2></div><div class="pad">
       <div class="todo-grid">
-        ${todo(IC.filePen, 'Đơn đăng ký chờ duyệt', pApps, 'requests', 'on')}
-        ${todo(IC.wrench, 'Hư hỏng chưa xử lý', pDmg, 'requests', 'warn')}
-        ${todo(IC.logOut, 'Đơn xin trả phòng', pCout, 'requests', 'bad')}
-        ${todo(IC.flag, 'Chưa đăng ký tạm trú', noResidency, 'students', 'warn')}
-        ${todo(IC.fileText, 'Hợp đồng chưa ký', noContract, 'students', 'warn')}
+        ${todo(IC.filePen, 'Đơn đăng ký chờ duyệt', pApps, "adminGo('reg')", 'on')}
+        ${todo(IC.wrench, 'Hư hỏng chưa xử lý', pDmg, "adminGo('repair')", 'warn')}
+        ${todo(IC.logOut, 'Đơn xin trả phòng', pCout, "adminGo('checkout')", 'bad')}
+        ${todo(IC.flag, 'Chưa đăng ký tạm trú', noResidency, "stuFilter='noresi';adminGo('students')", 'warn')}
+        ${todo(IC.fileText, 'Hợp đồng chưa ký', noContract, "stuFilter='nocontract';adminGo('students')", 'warn')}
+        ${todo(IC.alert, 'Thuê ghép >7 ngày chưa ký HĐ', ghepOverdue, "stuFilter='contract_overdue';adminGo('students')", 'bad')}
+        ${todo(IC.fileText, 'Ngắn hạn chưa ký bàn giao', handoverTodo, "stuFilter='handover_pending';adminGo('students')", 'warn')}
         <div class="todo ${refundPending ? 'bad' : 'calm'}" ${refundPending ? 'onclick="quyCoc()"' : ''}><span class="ic">${IC.handCoins}</span><span class="tx">Cọc chờ hoàn (đã trả)</span><span class="n">${refundPending}</span></div>
-        ${todo(IC.lock, 'Chưa đóng cọc', occ.filter(s => s.deposit_status === 'none').length, 'students', 'warn')}
-        ${todo(IC.doorOpen, 'Phòng còn trống', emptyRooms, 'rooms', 'on')}
-        <div class="todo ${needMail ? 'bad' : 'calm'}" ${needMail ? `onclick="reqTab='violations';adminGo('requests')"` : ''}><span class="ic">${IC.alert}</span><span class="tx">Vi phạm cần báo nhà trường</span><span class="n">${needMail}</span></div>
+        ${todo(IC.lock, 'Chưa đóng cọc', occ.filter(s => s.deposit_status === 'none').length, "stuFilter='nodeposit';adminGo('students')", 'warn')}
+        ${todo(IC.doorOpen, 'Phòng còn trống', emptyRooms, "adminGo('rooms')", 'on')}
+        <div class="todo ${needMail ? 'bad' : 'calm'}" ${needMail ? `onclick="adminGo('violations')"` : ''}><span class="ic">${IC.alert}</span><span class="tx">Vi phạm cần báo nhà trường</span><span class="n">${needMail}</span></div>
       </div>
     </div></div>
 
@@ -740,7 +808,7 @@ function stuSortVal(s) {
   }
 }
 function viewStudents() {
-  el('topActions').innerHTML = `<button class="btn" onclick="showDeletedStudents()">${IC.trash} Đã xóa</button><button class="btn pri" onclick="reqTab='apps';adminGo('requests')">${IC.filePen} Đăng ký / duyệt đơn</button>`;
+  el('topActions').innerHTML = `<button class="btn" onclick="renumberContractsModal()" title="Đánh số HĐ tự động theo pháp nhân & ngày ký">${IC.fileText} Đánh số HĐ</button><button class="btn" onclick="showDeletedStudents()">${IC.trash} Đã xóa</button><button class="btn pri" onclick="adminGo('reg')">${IC.filePen} Đăng ký / duyệt đơn</button>`;
   let list = ST.students.slice();
   if (stuFilter === 'in') list = list.filter(isOccupying);
   if (stuFilter === 'upcoming') list = list.filter(s => liveStatus(s) === 'upcoming');
@@ -749,6 +817,8 @@ function viewStudents() {
   if (stuFilter === 'nocontract') list = list.filter(s => isOccupying(s) && ['unsigned', 'none'].includes(s.contract_status));
   if (stuFilter === 'washing') list = list.filter(s => isOccupying(s) && s.uses_washing);
   if (stuFilter === 'nodeposit') list = list.filter(s => isOccupying(s) && s.deposit_status === 'none');
+  if (stuFilter === 'contract_overdue') list = list.filter(contractOverdue);
+  if (stuFilter === 'handover_pending') list = list.filter(handoverPending);
   // Tìm kiếm áp dụng bằng ẩn/hiện hàng (attachRowSearch) — không lọc dựng lại ở đây
   const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
   const cnt = f => ST.students.filter(f).length;
@@ -764,13 +834,14 @@ function viewStudents() {
       <button class="btn sm ${stuFilter === 'nocontract' ? 'pri' : ''}" onclick="stuFilter='nocontract';viewStudents()">${IC.filePen} HĐ chưa ký (${cnt(s => isOccupying(s) && ['unsigned', 'none'].includes(s.contract_status))})</button>
       <button class="btn sm ${stuFilter === 'washing' ? 'pri' : ''}" onclick="stuFilter='washing';viewStudents()">${IC.washer} Máy giặt (${cnt(s => isOccupying(s) && s.uses_washing)})</button>
       <button class="btn sm ${stuFilter === 'nodeposit' ? 'pri' : ''}" onclick="stuFilter='nodeposit';viewStudents()">${IC.lock} Chưa đóng cọc (${cnt(s => isOccupying(s) && s.deposit_status === 'none')})</button>
+      <button class="btn sm ${stuFilter === 'contract_overdue' ? 'pri' : ''}" onclick="stuFilter='contract_overdue';viewStudents()">${IC.alert} Ghép >7 ngày chưa ký HĐ (${cnt(contractOverdue)})</button>
     </div>
     <div class="panel"><div class="hd"><h2>Học viên (<span id="stuCount">${list.length}</span>)</h2>
       <div class="search"><span class="i">${IC.search}</span><input id="ss" placeholder="Tìm tên, mã, lớp, SĐT, số phòng..." value="${esc(stuSearch)}"></div>
     </div><div class="table-wrap">
-      ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}${sTh('debt', 'Còn nợ', 'num')}${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
+      ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}${sTh('debt', 'Còn nợ', 'num')}<th>Dự kiến XC</th>${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
       ${list.map(s => {
-        const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.alert}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
+        const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.alert}</span>` : ''}${contractOverdue(s) ? `<span title="Thuê ghép >7 ngày chưa ký HĐ" style="color:var(--red-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
         const ds = esc((s.name + ' ' + (s.code || '') + ' ' + (s.phone || '') + ' ' + (s.class_name || '') + ' ' + (s.room_name || '')).toLowerCase());
         return `<tr data-s="${ds}">
         <td><div class="flex"><span class="avatar">${esc(initials(s.name))}</span><div>
@@ -781,12 +852,13 @@ function viewStudents() {
         <td><span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span></td>
         <td>${depositBadge(s)}${s.deposit_status === 'none' && isOccupying(s) ? ` <button class="btn sm ghost" title="Ghi nhận đóng cọc" onclick="depositForm(${s.id})">＋</button>` : ''}</td>
         <td class="num">${s.debt ? `<span class="badge red">${money(s.debt)}</span>` : '<span class="muted">—</span>'}</td>
+        <td class="muted" style="font-size:12px;white-space:nowrap">${s.expected_departure ? fmtDate(s.expected_departure) : '—'}</td>
         <td>${statusBadge(s)}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${isOccupying(s) ? `<button class="btn sm danger" onclick="checkOutForm(${s.id})">Check-out</button>` : `<button class="btn sm green" onclick="checkInForm(${s.id})">Check-in</button>`}
           <button class="btn sm pri" onclick="studentDetail(${s.id})">Chi tiết</button>
         </div></td></tr>`; }).join('')}
-      <tr class="no-result" style="display:none"><td colspan="7"><div class="empty">Không tìm thấy học viên phù hợp.</div></td></tr>
+      <tr class="no-result" style="display:none"><td colspan="8"><div class="empty">Không tìm thấy học viên phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có học viên phù hợp.</div>`}
     </div></div>`;
   const ss = el('ss'); if (ss) { ss.addEventListener('input', () => stuSearch = ss.value); attachRowSearch(ss, 'stuCount'); }
@@ -821,7 +893,7 @@ function previewCccd(input) {
   r.readAsDataURL(f);
 }
 async function studentForm(id) {
-  const s = id ? await guard(() => API.student(id)) : { name: '', code: '', gender: 'female', phone: '', id_card: '', room_id: '', check_in_date: today(), note: '', uses_washing: false, rental_type: 'ghep', residency_status: 'unregistered', contract_status: 'unsigned', class_name: '', birth_date: '', contract_no: '', contract_date: '' };
+  const s = id ? await guard(() => API.student(id)) : { name: '', code: '', gender: 'female', phone: '', id_card: '', room_id: '', check_in_date: today(), note: '', uses_washing: false, rental_type: 'ghep', residency_status: 'unregistered', contract_status: 'unsigned', class_name: '', birth_date: '', contract_no: '', contract_date: '', class_start_date: '', expected_departure: '', parent_phone: '' };
   _cccdData = s.cccd_image || null; _cccdChanged = false;
   const opt = (val, cur, label) => `<option value="${val}" ${cur === val ? 'selected' : ''}>${label}</option>`;
   openModal(`
@@ -841,6 +913,11 @@ async function studentForm(id) {
         <div class="field"><label>Số điện thoại</label><input id="f_phone" value="${esc(s.phone || '')}"></div>
       </div>
       <div class="grid2">
+        <div class="field"><label>Ngày khai giảng</label><input id="f_cstart"></div>
+        <div class="field"><label>Dự kiến xuất cảnh</label><input id="f_departure"></div>
+      </div>
+      <div class="field"><label>SĐT phụ huynh <span class="opt">(liên hệ khẩn cấp)</span></label><input id="f_pphone" value="${esc(s.parent_phone || '')}"></div>
+      <div class="grid2">
         <div class="field"><label>Phòng</label><select id="f_room">${roomOptions(s.room_id, s.gender)}</select></div>
         <div class="field"><label>Hình thức thuê</label><select id="f_rental">
           ${opt('ghep', s.rental_type, 'Thuê ghép (giá/người)')}${opt('phong', s.rental_type, 'Thuê nguyên phòng (giá theo hạng)')}</select></div>
@@ -854,11 +931,14 @@ async function studentForm(id) {
       <div style="background:var(--bg2);padding:12px;border-radius:10px;margin-bottom:14px">
         <div style="font-weight:600;font-size:13px;margin-bottom:10px">${IC.fileText} Hợp đồng</div>
         <div class="grid2">
-          <div class="field" style="margin:0 0 12px"><label>Số HĐ</label><input id="f_cno" value="${esc(s.contract_no || '')}" placeholder="03/2026/HDKTX-E2"></div>
+          <div class="field" style="margin:0 0 12px"><label>Số HĐ <span class="opt">(tự động theo pháp nhân + ngày ký)</span></label>
+            <div class="flex" style="gap:6px"><input id="f_cno" value="${esc(s.contract_no || '')}" placeholder="03/2026/HDKTX-E2" style="flex:1">
+            <button type="button" class="btn sm" onclick="suggestContractNo()" title="Tạo số HĐ tự động">${IC.zap}</button></div></div>
           <div class="field" style="margin:0 0 12px"><label>Ngày ký HĐ</label><input id="f_cdate" type="date" value="${esc((s.contract_date || '').slice(0, 10))}"></div>
         </div>
         <div class="field" style="margin:0 0 12px"><label>Tình trạng HĐ</label><select id="f_cstatus">
-          ${['done', 'scanned', 'unsigned', 'none'].map(k => opt(k, s.contract_status || 'unsigned', CONTRACT_LABEL[k])).join('')}</select></div>
+          ${['done', 'scanned', 'unsigned', 'none', 'handover'].map(k => opt(k, s.contract_status || 'unsigned', CONTRACT_LABEL[k])).join('')}</select></div>
+        <div class="hint" style="margin:0;font-size:11.5px">${IC.info} Thuê ghép <strong>dài hạn</strong> bắt buộc ký HĐ; quá 7 ngày chưa ký sẽ bị báo động. Thuê ghép <strong>ngắn hạn</strong> (dưới 2 tháng, có ngày trả) chỉ cần <strong>ký phiếu bàn giao</strong>.</div>
         <div class="field" style="margin:0"><label>Ảnh CCCD <span class="opt">(chụp/chọn ảnh)</span></label>
           <input type="file" id="f_cccd" accept="image/*" onchange="previewCccd(this)">
           <div id="cccdPrev" style="margin-top:8px">${s.cccd_image ? `<img src="${s.cccd_image}" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--line)">` : ''}</div>
@@ -882,6 +962,8 @@ async function studentForm(id) {
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveStudent(${id || 0})">Lưu</button></div>`, true);
   attachDate(el('f_birth'), s.birth_date);
+  attachDate(el('f_cstart'), s.class_start_date);
+  attachDate(el('f_departure'), s.expected_departure);
   setTimeout(() => el('f_name').focus(), 50);
 }
 async function saveStudent(id) {
@@ -891,6 +973,8 @@ async function saveStudent(id) {
     room_id: el('f_room').value || null, rental_type: el('f_rental').value, check_in_date: el('f_in').value,
     residency_status: el('f_residency').value, contract_no: el('f_cno').value.trim(),
     contract_date: el('f_cdate').value || null, contract_status: el('f_cstatus').value,
+    class_start_date: el('f_cstart').dataset.iso || null, expected_departure: el('f_departure').dataset.iso || null,
+    parent_phone: el('f_pphone').value.trim(),
     note: el('f_note').value.trim(), uses_washing: el('f_wash').checked,
   };
   if (!body.name) return toast('Nhập họ tên', 'err');
@@ -903,6 +987,37 @@ async function saveStudent(id) {
   }
   await guard(() => id ? API.updateStudent(id, body) : API.createStudent(body));
   await refreshCache(); closeModal(); toast('Đã lưu học viên'); viewStudents();
+}
+// Gợi ý số HĐ tự động theo pháp nhân + ngày ký (điểm 7)
+async function suggestContractNo() {
+  const gender = el('f_gender') ? el('f_gender').value : 'female';
+  const date = (el('f_cdate') && el('f_cdate').value) || today();
+  const r = await guard(() => API.contractNoNext(gender, date));
+  if (r && r.contract_no) { el('f_cno').value = r.contract_no; toast('Số HĐ đề xuất: ' + r.contract_no); }
+}
+async function suggestApCno(gender) {
+  const date = (el('ap_cdate') && el('ap_cdate').value) || today();
+  const r = await guard(() => API.contractNoNext(gender, date));
+  if (r && r.contract_no) { el('ap_cno').value = r.contract_no; toast('Số HĐ đề xuất: ' + r.contract_no); }
+}
+// Đánh số lại toàn bộ HĐ theo ngày ký (ban thư ký) — xem trước rồi áp dụng
+async function renumberContractsModal() {
+  const r = await guard(() => API.renumberContracts(true));
+  if (!r) return;
+  const rows = r.plan.filter(p => p.changed);
+  openModal(`
+    <div class="mh"><h3>${IC.fileText} Đánh số hợp đồng theo ngày ký</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <div class="hint">${IC.info} Số HĐ chạy tự động theo <strong>pháp nhân</strong> (${legalEntity('female')} · ${legalEntity('male')}) và <strong>ngày ký</strong>, đánh lại từ đầu mỗi năm. Tổng ${r.total} HĐ đã ký · <strong>${r.changed}</strong> sẽ thay đổi số.</div>
+      ${rows.length ? `<div class="table-wrap" style="max-height:50vh;overflow:auto"><table><thead><tr><th>Học viên</th><th>Ngày ký</th><th>Số cũ</th><th>Số mới</th></tr></thead><tbody>
+        ${rows.map(p => `<tr><td>${esc(p.name)}</td><td>${fmtDate(p.date)}</td><td class="muted">${esc(p.old || '—')}</td><td><strong>${esc(p.new)}</strong></td></tr>`).join('')}
+      </tbody></table></div>` : '<div class="empty">Không có thay đổi — số HĐ đã đúng thứ tự theo ngày ký.</div>'}
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button>${rows.length ? `<button class="btn pri" onclick="applyRenumber()">Áp dụng (${r.changed})</button>` : ''}</div>`, true);
+}
+async function applyRenumber() {
+  const r = await guard(() => API.renumberContracts(false));
+  await refreshCache(); closeModal(); toast(`Đã đánh số ${r.changed} hợp đồng`); if (ST.view === 'students') viewStudents();
 }
 async function studentDetail(id) {
   const s = await guard(() => API.student(id));
@@ -922,13 +1037,16 @@ async function studentDetail(id) {
         <div class="stat"><div class="l">Còn nợ</div><div class="v sm" style="color:${s.debt ? 'var(--red)' : 'var(--green)'}">${money(s.debt)}</div></div>
       </div>
       <p><strong>Mã HV:</strong> ${esc(s.code || '—')} &nbsp;•&nbsp; <strong>Lớp:</strong> ${esc(s.class_name || '—')} &nbsp;•&nbsp; <strong>Ngày sinh:</strong> ${fmtDate(s.birth_date)}</p>
-      <p><strong>SĐT:</strong> ${esc(s.phone || '—')} &nbsp;•&nbsp; <strong>Tạm trú:</strong> ${s.residency_status === 'registered' ? '<span class="badge green">Đã đăng ký</span>' : '<span class="badge amber">Chưa đăng ký</span>'}</p>
+      <p><strong>SĐT:</strong> ${esc(s.phone || '—')} &nbsp;•&nbsp; <strong>SĐT phụ huynh:</strong> ${esc(s.parent_phone || '—')} &nbsp;•&nbsp; <strong>Tạm trú:</strong> ${s.residency_status === 'registered' ? '<span class="badge green">Đã đăng ký</span>' : '<span class="badge amber">Chưa đăng ký</span>'}</p>
+      <p><strong>Khai giảng:</strong> ${fmtDate(s.class_start_date)} &nbsp;•&nbsp; <strong>Dự kiến xuất cảnh:</strong> ${fmtDate(s.expected_departure)}</p>
       <p><strong>Ngày vào:</strong> ${fmtDate(s.check_in_date)} ${s.check_out_date ? ` &nbsp;•&nbsp; <strong>Ngày trả:</strong> ${fmtDate(s.check_out_date)}` : ''}</p>
       <p><strong>Tài khoản:</strong> ${s.login_username ? `<span class="badge blue">${IC.key} ${esc(s.login_username)}</span>` : '<span class="muted">Chưa có</span>'}
         <button class="btn sm" style="margin-left:8px" onclick='accountForm(${s.id}, ${JSON.stringify(s.code || "")})'>${s.login_username ? 'Đặt lại MK' : 'Tạo tài khoản'}</button></p>
 
       <div class="panel" style="margin-top:12px"><div class="hd"><h2 style="font-size:14px">${IC.fileText} Hợp đồng</h2></div><div class="pad">
         <p style="margin:0">Số HĐ: <strong>${esc(s.contract_no || '—')}</strong> · Ngày ký: ${fmtDate(s.contract_date)} · <span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span></p>
+        ${contractOverdue(s) ? `<div class="hint" style="margin:10px 0 0;background:var(--red-bg);border-color:#e3b8ad;color:var(--red-ink)">${IC.alert} <strong>Báo động:</strong> thuê ghép dài hạn đã vào ở ${stayDays(s)} ngày (>7) mà chưa ký hợp đồng.</div>`
+          : handoverPending(s) ? `<div class="hint" style="margin:10px 0 0">${IC.info} Thuê ghép ngắn hạn (dưới 2 tháng) — cần <strong>ký phiếu bàn giao phòng</strong> (đặt tình trạng HĐ = "Đã ký phiếu bàn giao").</div>` : ''}
         ${(s.cccd_front || s.cccd_back || s.cccd_image) ? `<div style="margin-top:10px"><div class="muted" style="font-size:12px;margin-bottom:4px">Ảnh CCCD:</div><div style="display:flex;gap:8px;flex-wrap:wrap">
           ${s.cccd_front ? `<img src="${s.cccd_front}" title="Mặt trước" style="max-width:48%;max-height:180px;border-radius:8px;border:1px solid var(--line)">` : ''}
           ${s.cccd_back ? `<img src="${s.cccd_back}" title="Mặt sau" style="max-width:48%;max-height:180px;border-radius:8px;border:1px solid var(--line)">` : ''}
@@ -1164,7 +1282,7 @@ async function saveApp() {
     wants_washing: el('ap_wash').checked, wants_parking: el('ap_park').checked, plate: el('ap_plate').value.trim(),
   };
   await guard(() => API.publicApply(body));
-  await refreshCache(); closeModal(); toast('Đã tạo đơn đăng ký (chờ duyệt)'); reqTab = 'apps'; viewRequests();
+  await refreshCache(); closeModal(); toast('Đã tạo đơn đăng ký (chờ duyệt)'); adminGo('reg');
 }
 function accountForm(id, code) {
   openModal(`
@@ -1425,23 +1543,18 @@ async function viewAudit() {
 /* ---------- TRUNG TÂM HỖ TRỢ ---------- */
 const SUPCAT = { damage: ['Hư hỏng phòng', 'gray', IC.wrench], violation: ['Báo vi phạm', 'amber', IC.flag], other: ['Khác — cần hỗ trợ', 'blue', IC.info] };
 const supCatBadge = c => { const [l, cl] = SUPCAT[c] || SUPCAT.damage; return `<span class="badge ${cl}">${l}</span>`; };
-let reqTab = 'apps';
+// Mỗi trang là 1 mục nav riêng (điểm 1 — Sếp): reg · checkout · repair · violations · feedback
 async function viewRequests() {
-  if (reqTab === 'violations' || reqTab === 'damage') reqTab = 'reports';
+  const view = ST.view;
   el('content').innerHTML = '<div class="spinner"></div>';
   let apps = [], damage = [], couts = [], vios = [], vstats = null;
   try { [apps, damage, couts, vios, vstats] = await Promise.all([API.applications(), API.damageAll(), API.checkoutReqs(), API.violations(), API.violationStats().catch(() => null)]); }
   catch (e) { return toast(e.message, 'err'); }
   Object.assign(ST, { applications: apps, damage, couts, vstats }); updateNavBadges();
-  const pApps = apps.filter(a => a.status === 'pending').length;
-  const pDmg = damage.filter(d => d.status !== 'done').length;
-  const pCout = couts.filter(c => c.status === 'pending').length;
   const threshold = (vstats && vstats.threshold) || 3;
-  const nRep = pDmg + ((vstats && vstats.needMail) || 0);
-  const tabBtn = (k, ico, label, n) => `<button class="btn sm ${reqTab === k ? 'pri' : ''}" onclick="reqTab='${k}';viewRequests()">${ico} ${label}${n ? ` (${n})` : ''}</button>`;
 
   let body = '';
-  if (reqTab === 'apps') {
+  if (view === 'reg') {
     const addBtn = `<div class="rowbtns" style="justify-content:space-between;align-items:center;margin-bottom:10px"><span class="muted" style="font-size:12.5px">${IC.info} Mọi học viên đều vào qua đơn đăng ký rồi duyệt. Học viên tự đăng ký tại trang công khai, hoặc admin tạo đơn hộ tại đây.</span><button class="btn pri" onclick="appForm()">${IC.plus} Tạo đơn đăng ký</button></div>`;
     body = addBtn + (apps.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày gửi</th><th>Họ tên</th><th>SĐT</th><th>GT</th><th>Hình thức</th><th>Nguyện vọng</th><th>Trạng thái</th><th></th></tr></thead><tbody>
       ${apps.map(a => `<tr>
@@ -1457,11 +1570,25 @@ async function viewRequests() {
           <button class="btn sm ghost" onclick="delApp(${a.id})">${IC.trash}</button>
         </div></td></tr>`).join('')}
     </tbody></table></div>` : '<div class="empty">Chưa có đơn đăng ký nào.</div>');
-  } else if (reqTab === 'reports') {
-    const dmgTable = damage.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày</th><th>Loại</th><th>Học viên</th><th>Phòng</th><th>Nội dung</th><th>Trạng thái</th><th></th></tr></thead><tbody>
-      ${damage.map(d => `<tr>
+  } else if (view === 'checkout') {
+    body = couts.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày gửi</th><th>Học viên</th><th>Phòng</th><th>Ngày muốn trả</th><th>Lý do</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+      ${couts.map(c => `<tr>
+        <td>${fmtDate(String(c.created_at).slice(0, 10))}</td>
+        <td>${esc(c.student_name || '—')}</td><td>${esc(c.room_name || '—')}</td>
+        <td>${fmtDate(c.desired_date)}</td>
+        <td>${REASON_LABEL[c.reason] || 'Khác'}${c.note ? `<div class="muted" style="font-size:12px">${esc(c.note)}</div>` : ''}${noteLine(c.admin_note)}</td>
+        <td>${c.status === 'done' ? '<span class="badge green">Đã trả phòng</span>' : c.status === 'rejected' ? '<span class="badge gray">Từ chối</span>' : '<span class="badge amber">Chờ duyệt</span>'}</td>
+        <td class="num"><div class="rowbtns" style="justify-content:flex-end">
+          ${c.status === 'pending' ? `<button class="btn sm danger" onclick="confirmCout(${c.id})">Xác nhận trả phòng</button><button class="btn sm" onclick="rejectCout(${c.id})">Từ chối</button>` : ''}
+          <button class="btn sm ghost" title="Ghi chú" onclick="noteForm('cout', ${c.id})">${IC.filePen}</button>
+        </div></td></tr>`).join('')}
+    </tbody></table></div>` : '<div class="empty">Chưa có đơn trả phòng.</div>';
+  } else if (view === 'repair') {
+    // Chỉ báo hư hỏng cơ sở vật chất (category=damage) → duyệt & chuyển bảo trì
+    const ds = damage.filter(d => (d.category || 'damage') === 'damage');
+    const tbl = ds.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày</th><th>Học viên</th><th>Phòng</th><th>Nội dung</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+      ${ds.map(d => `<tr>
         <td>${fmtDate(String(d.created_at).slice(0, 10))}</td>
-        <td>${supCatBadge(d.category)}</td>
         <td>${esc(d.student_name || '—')}</td><td>${esc(d.room_name || '—')}</td>
         <td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}${noteLine(d.admin_note)}</td>
         <td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>'
@@ -1469,13 +1596,12 @@ async function viewRequests() {
           : d.assigned_at ? `<span class="badge blue">${IC.wrench} Đã chuyển bảo trì</span>`
           : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
-          ${d.category === 'damage' && !d.assigned_at && d.status !== 'done' ? `<button class="btn sm pri" onclick="assignMaint(${d.id})">${IC.wrench} Duyệt & chuyển bảo trì</button>` : ''}
-          ${d.category !== 'damage' && d.status === 'new' ? `<button class="btn sm" onclick="setDamage(${d.id},'processing')">Đang xử lý</button>` : ''}
-          ${d.category !== 'damage' && d.status !== 'done' ? `<button class="btn sm green" onclick="setDamage(${d.id},'done')">${IC.check} Xong</button>` : ''}
-          ${d.status === 'done' ? `<button class="btn sm" onclick="setDamage(${d.id},'new')">Mở lại</button>` : ''}
+          ${!d.assigned_at && d.status !== 'done' ? `<button class="btn sm pri" onclick="assignMaint(${d.id})">${IC.wrench} Duyệt & chuyển bảo trì</button>` : ''}
           <button class="btn sm ghost" title="Ghi chú" onclick="noteForm('damage', ${d.id})">${IC.filePen}</button>
         </div></td></tr>`).join('')}
-    </tbody></table></div>` : '<div class="empty">Chưa có yêu cầu hỗ trợ.</div>';
+    </tbody></table></div>` : '<div class="empty">Chưa có báo hư hỏng cơ sở vật chất nào.</div>';
+    body = `<div class="panel"><div class="hd"><h2>${IC.wrench} Báo hư hỏng cơ sở vật chất</h2><span class="muted" style="font-size:12px">Duyệt & chuyển bộ phận bảo trì xử lý</span></div>${tbl}</div>`;
+  } else if (view === 'violations') {
     const vioRows = vios.map(v => `<tr>
       <td>${fmtDate(v.date)}</td>
       <td><a href="#" onclick="studentDetail(${v.student_id});return false"><strong>${esc(v.student_name)}</strong></a>${v.student_code ? `<div class="muted" style="font-size:11px">${esc(v.student_code)}</div>` : ''}${v.room_name ? `<div class="muted" style="font-size:11px">${esc(v.room_name)}</div>` : ''}</td>
@@ -1489,51 +1615,33 @@ async function viewRequests() {
       </div></td></tr>`).join('');
     body = `
       ${(vstats && vstats.needMail) ? `<div class="hint" style="background:var(--red-bg);border-color:#e3b8ad;color:var(--red-ink)">${IC.alert} <strong>${vstats.needMail} học viên</strong> vi phạm ≥ ${threshold} lần cần báo nhà trường. Cấu hình SMTP trong <a href="#" onclick="adminGo('settings');return false">Cài đặt</a> để gửi email tự động, hoặc bấm <strong>Gửi mail</strong> ở từng dòng.</div>` : ''}
-      <div class="panel"><div class="hd"><h2>${IC.alert} Vi phạm / Nhắc nhở</h2>
+      <div class="panel"><div class="hd"><h2>${IC.alert} Quản lý vi phạm</h2>
         <div class="toolbar">
           <button class="btn sm" onclick="violationStatsModal()">${IC.trendingUp} Thống kê</button>
           <button class="btn sm pri" onclick="violationForm()">${IC.plus} Ghi nhận vi phạm</button>
         </div></div>
         ${vios.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày</th><th>Học viên</th><th>Loại vi phạm</th><th>Mức độ</th><th class="num">Lần</th><th>Nhà trường</th><th></th></tr></thead><tbody>${vioRows}</tbody></table></div>` : '<div class="empty">Chưa ghi nhận vi phạm nào. Bấm <strong>Ghi nhận vi phạm</strong> hoặc mở chi tiết học viên.</div>'}
-      </div>
-      <div class="panel"><div class="hd"><h2>${IC.handCoins} Yêu cầu hỗ trợ học viên</h2><span class="muted" style="font-size:12px">Hư hỏng phòng · Báo vi phạm · Khác</span></div>${dmgTable}</div>`;
-  } else if (reqTab === 'history') {
-    const hist = [];
-    apps.filter(a => a.status !== 'pending').forEach(a => hist.push({ date: (a.reviewed_at || a.created_at), type: 'Đăng ký nội trú', who: a.name, detail: a.status === 'approved' ? 'Đã thêm vào phòng' : 'Từ chối', ok: a.status === 'approved', note: a.admin_note }));
-    damage.filter(d => d.status === 'done').forEach(d => hist.push({ date: (d.resolved_at || d.created_at), type: 'Hư hỏng', who: d.student_name, detail: (d.title || '') + ' — đã xử lý', ok: true, note: d.admin_note }));
-    couts.filter(c => c.status !== 'pending').forEach(c => hist.push({ date: (c.handled_at || c.created_at), type: 'Trả phòng', who: c.student_name, detail: c.status === 'done' ? 'Đã trả phòng' : 'Từ chối', ok: c.status === 'done', note: c.admin_note }));
-    hist.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-    body = hist.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày xử lý</th><th>Loại</th><th>Học viên</th><th>Kết quả</th><th>Ghi chú</th></tr></thead><tbody>
-      ${hist.map(h => `<tr>
-        <td>${fmtDate(String(h.date).slice(0, 10))}</td>
-        <td>${esc(h.type)}</td>
-        <td>${esc(h.who || '—')}</td>
-        <td><span class="badge ${h.ok ? 'green' : 'gray'}">${esc(h.detail)}</span></td>
-        <td class="muted" style="white-space:pre-wrap">${esc(h.note || '—')}</td>
-      </tr>`).join('')}
-    </tbody></table></div>` : '<div class="empty">Chưa có lịch sử xử lý.</div>';
+      </div>`;
   } else {
-    body = couts.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày gửi</th><th>Học viên</th><th>Phòng</th><th>Ngày muốn trả</th><th>Lý do</th><th>Trạng thái</th><th></th></tr></thead><tbody>
-      ${couts.map(c => `<tr>
-        <td>${fmtDate(String(c.created_at).slice(0, 10))}</td>
-        <td>${esc(c.student_name || '—')}</td><td>${esc(c.room_name || '—')}</td>
-        <td>${fmtDate(c.desired_date)}</td>
-        <td>${REASON_LABEL[c.reason] || 'Khác'}${c.note ? `<div class="muted" style="font-size:12px">${esc(c.note)}</div>` : ''}${noteLine(c.admin_note)}</td>
-        <td>${c.status === 'done' ? '<span class="badge green">Đã trả phòng</span>' : c.status === 'rejected' ? '<span class="badge gray">Từ chối</span>' : '<span class="badge amber">Chờ duyệt</span>'}</td>
+    // Hộp thư góp ý: học viên báo vi phạm / cần hỗ trợ khác (category violation, other)
+    const fb = damage.filter(d => ['violation', 'other'].includes(d.category));
+    const tbl = fb.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày</th><th>Loại</th><th>Học viên</th><th>Phòng</th><th>Nội dung</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+      ${fb.map(d => `<tr>
+        <td>${fmtDate(String(d.created_at).slice(0, 10))}</td>
+        <td>${supCatBadge(d.category)}</td>
+        <td>${esc(d.student_name || '—')}</td><td>${esc(d.room_name || '—')}</td>
+        <td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}${noteLine(d.admin_note)}</td>
+        <td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>' : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
-          ${c.status === 'pending' ? `<button class="btn sm danger" onclick="confirmCout(${c.id})">Xác nhận trả phòng</button><button class="btn sm" onclick="rejectCout(${c.id})">Từ chối</button>` : ''}
-          <button class="btn sm ghost" title="Ghi chú" onclick="noteForm('cout', ${c.id})">${IC.filePen}</button>
+          ${d.status === 'new' ? `<button class="btn sm" onclick="setDamage(${d.id},'processing')">Đang xử lý</button>` : ''}
+          ${d.status !== 'done' ? `<button class="btn sm green" onclick="setDamage(${d.id},'done')">${IC.check} Xong</button>` : `<button class="btn sm" onclick="setDamage(${d.id},'new')">Mở lại</button>`}
+          <button class="btn sm ghost" title="Ghi chú" onclick="noteForm('damage', ${d.id})">${IC.filePen}</button>
         </div></td></tr>`).join('')}
-    </tbody></table></div>` : '<div class="empty">Chưa có đơn trả phòng.</div>';
+    </tbody></table></div>` : '<div class="empty">Chưa có góp ý / yêu cầu hỗ trợ nào.</div>';
+    body = `<div class="panel"><div class="hd"><h2>${IC.inbox} Hộp thư góp ý</h2><span class="muted" style="font-size:12px">Học viên báo vi phạm · cần hỗ trợ khác</span></div>${tbl}</div>`;
   }
-  el('content').innerHTML = `
-    <div class="pill-row">
-      ${tabBtn('apps', IC.filePen, 'Đăng ký ở nội trú', pApps)}
-      ${tabBtn('reports', IC.wrench, 'Hỗ trợ học viên', nRep)}
-      ${tabBtn('cout', IC.logOut, 'Đăng ký trả phòng', pCout)}
-      ${tabBtn('history', IC.history, 'Lịch sử xử lý', 0)}
-    </div>
-    ${reqTab === 'reports' ? body : `<div class="panel">${body}</div>`}`;
+  const bare = view === 'repair' || view === 'violations' || view === 'feedback';
+  el('content').innerHTML = bare ? body : `<div class="panel">${body}</div>`;
 }
 /* ---- Ghi chú xử lý cho đơn hỗ trợ ---- */
 function noteForm(type, id) {
@@ -1638,11 +1746,13 @@ function approveForm(a) {
       <div style="background:var(--bg2);padding:12px;border-radius:10px;margin-bottom:12px">
         <div style="font-weight:600;font-size:13px;margin-bottom:10px">${IC.fileText} Hợp đồng thuê</div>
         <div class="grid2">
-          <div class="field" style="margin:0 0 12px"><label>Số HĐ</label><input id="ap_cno" placeholder="03/2026/HDKTX-${legalEntity(a.gender)}"></div>
+          <div class="field" style="margin:0 0 12px"><label>Số HĐ</label>
+            <div class="flex" style="gap:6px"><input id="ap_cno" placeholder="03/2026/HDKTX-${legalEntity(a.gender)}" style="flex:1">
+            <button type="button" class="btn sm" onclick="suggestApCno('${a.gender}')" title="Tạo số HĐ tự động">${IC.zap}</button></div></div>
           <div class="field" style="margin:0 0 12px"><label>Ngày ký HĐ</label><input id="ap_cdate" type="date" value="${today()}"></div>
         </div>
         <div class="field" style="margin:0"><label>Tình trạng HĐ</label><select id="ap_cstatus">
-          ${['done', 'scanned', 'unsigned', 'none'].map(k => `<option value="${k}">${CONTRACT_LABEL[k]}</option>`).join('')}
+          ${['done', 'scanned', 'unsigned', 'none', 'handover'].map(k => `<option value="${k}">${CONTRACT_LABEL[k]}</option>`).join('')}
         </select></div>
       </div>
       <div style="background:var(--bg2);padding:12px;border-radius:10px;margin-bottom:12px">
@@ -2222,7 +2332,7 @@ function viewSettings() {
     <div class="panel"><div class="hd"><h2>${IC.shield} Người dùng & phân quyền</h2><button class="btn sm" onclick="userForm()">${IC.plus} Thêm nhân viên</button></div>
       <div class="table-wrap"><table><thead><tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Vai trò</th><th></th></tr></thead>
         <tbody id="usrRows"><tr><td colspan="4"><div class="spinner"></div></td></tr></tbody></table></div>
-      <div class="pad muted" style="font-size:12.5px">${IC.bulb} <strong>Quản trị viên</strong> có toàn quyền (kể cả Điều hành, Doanh thu, Nhật ký, Cài đặt). <strong>Nhân viên</strong> chỉ thao tác nghiệp vụ (Học viên, Phòng, Xe, Check-in/out, Tiền phòng, Trung tâm hỗ trợ) và đều được ghi vào Nhật ký.</div>
+      <div class="pad muted" style="font-size:12.5px">${IC.bulb} <strong>Quản trị viên</strong> có toàn quyền (kể cả Điều hành, Doanh thu, Nhật ký, Cài đặt). <strong>Nhân viên</strong> chỉ thao tác nghiệp vụ (Học viên, Phòng, Xe, Check-in/out, Tiền phòng, Tiếp nhận & Hỗ trợ) và đều được ghi vào Nhật ký.</div>
     </div>
 
     <div class="panel"><div class="hd"><h2>${IC.key} Tài khoản của bạn</h2></div><div class="pad">
