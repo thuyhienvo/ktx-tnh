@@ -292,6 +292,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);b
 .es-bar{height:7px;border-radius:99px;background:var(--bg2);overflow:hidden;margin:6px 0 8px}
 .es-bar>div{height:100%;background:var(--brand)}
 .es-sub{font-size:12.5px;color:var(--muted);line-height:1.5}
+/* Ô thống kê bấm được (drill-through tới danh sách) */
+.kpi.clickable,.es.clickable{cursor:pointer}
+.es.clickable{transition:transform .16s,box-shadow .16s,border-color .16s}
+.es.clickable:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(40,34,22,.09);border-color:var(--brand)}
 .todo .ic .ic-svg{width:19px;height:19px;color:var(--ink2)}
 .todo.on .ic .ic-svg{color:var(--brand-d)}
 .todo.warn .ic .ic-svg{color:var(--amber-ink)}

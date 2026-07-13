@@ -581,17 +581,17 @@ async function viewExec() {
   const vioTotal = vio.total || 0, vioNeedMail = vio.needMail || 0;
   const sevMap = { light: 'Nhẹ', medium: 'Trung bình', heavy: 'Nặng' };
   const vioSev = (vio.bySeverity || []).map(x => `${sevMap[x.severity] || x.severity}: ${x.c}`).join(' · ');
-  const es = (ico, cls, title, main, sub, bar) => `<div class="es"><div class="es-h"><span class="es-ic ${cls}">${ico}</span>${title}</div><div class="es-v">${main}</div>${bar != null ? `<div class="es-bar"><div style="width:${bar}%"></div></div>` : ''}<div class="es-sub">${sub}</div></div>`;
-  const kpi = (ic, cls, val, label, sub) => `<div class="kpi"><span class="ic ${cls}">${ic}</span><div><div class="v">${val}</div><div class="l">${label}${sub ? ` · ${sub}` : ''}</div></div></div>`;
+  const es = (ico, cls, title, main, sub, bar, act) => `<div class="es${act ? ' clickable' : ''}" ${act ? `onclick="${act}"` : ''}><div class="es-h"><span class="es-ic ${cls}">${ico}</span>${title}</div><div class="es-v">${main}</div>${bar != null ? `<div class="es-bar"><div style="width:${bar}%"></div></div>` : ''}<div class="es-sub">${sub}</div></div>`;
+  const kpi = (ic, cls, val, label, sub, act) => `<div class="kpi${act ? ' clickable' : ''}" ${act ? `onclick="${act}"` : ''}><span class="ic ${cls}">${ic}</span><div><div class="v">${val}</div><div class="l">${label}${sub ? ` · ${sub}` : ''}</div></div></div>`;
 
   el('content').innerHTML = `<div id="printArea">
     <div class="print-only" style="margin-bottom:14px"><h2 style="font-family:var(--serif);margin:0">${esc(ST.settings.dorm_name || 'Ký túc xá')} — Báo cáo điều hành ${year}</h2><div class="muted">Xuất ngày ${fmtDate(today())}</div></div>
     <div class="kpis">
-      ${kpi(IC.userCheck, 'ic-green', occRate + '%', 'Tỉ lệ lấp đầy', occ + '/' + capacity + ' giường')}
-      ${kpi(IC.percent, 'ic-brand', collection + '%', 'Tỉ lệ thu năm ' + year)}
-      ${kpi(IC.banknote, 'ic-brand', money(totalYear), 'Doanh thu năm', yoy != null ? (yoy >= 0 ? '▲' : '▼') + Math.abs(yoy) + '% vs ' + (+year - 1) : '')}
-      ${kpi(IC.wallet, 'ic-red', money(outstanding), 'Còn phải thu')}
-      ${kpi(IC.planeTakeoff, 'ic-gray', dep, 'Xuất cảnh năm ' + year)}
+      ${kpi(IC.userCheck, 'ic-green', occRate + '%', 'Tỉ lệ lấp đầy', occ + '/' + capacity + ' giường', "stuFilter='in';adminGo('students')")}
+      ${kpi(IC.percent, 'ic-brand', collection + '%', 'Tỉ lệ thu năm ' + year, '', "adminGo('revenue')")}
+      ${kpi(IC.banknote, 'ic-brand', money(totalYear), 'Doanh thu năm', yoy != null ? (yoy >= 0 ? '▲' : '▼') + Math.abs(yoy) + '% vs ' + (+year - 1) : '', "adminGo('revenue')")}
+      ${kpi(IC.wallet, 'ic-red', money(outstanding), 'Còn phải thu', '', "adminGo('invoices')")}
+      ${kpi(IC.planeTakeoff, 'ic-gray', dep, 'Xuất cảnh năm ' + year, '', "stuFilter='departure';adminGo('students')")}
     </div>
     <div class="panel"><div class="hd"><h2>${IC.trendingUp} Doanh thu theo tháng — ${year}</h2>
       <div class="flex" style="gap:14px;font-size:12px"><span class="flex" style="gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:var(--brand);display:inline-block"></span>Đã thu</span><span class="flex" style="gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:var(--line2);display:inline-block"></span>Chưa thu</span></div>
@@ -614,10 +614,10 @@ async function viewExec() {
     </div>
     <div class="panel"><div class="hd"><h2>${IC.shield} Vận hành &amp; Tuân thủ — ${year}</h2></div><div class="pad">
       <div class="exec-stats">
-        ${es(IC.washer, 'ic-blue', 'Máy giặt', `${washUsers}<span> HV đang dùng</span>`, `Doanh thu năm: <strong>${money(washRev)}</strong>`, null)}
-        ${es(IC.fileText, 'ic-brand', 'Hợp đồng', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá 7 ngày</strong>` : ''}`, cPct)}
-        ${es(IC.wrench, 'ic-gray', 'Hư hỏng', `${dmg.length}<span> lượt báo</span>`, `Đã xử lý ${dmgDone} · đang xử lý ${dmgOpen} · chưa xử lý được ${dmgBlocked}`, dmgPct)}
-        ${es(IC.alert, 'ic-red', 'Vi phạm', `${vioTotal}<span> lượt</span>`, `${vioNeedMail} HV cần báo trường${vioSev ? ' · ' + vioSev : ''}`, null)}
+        ${es(IC.washer, 'ic-blue', 'Máy giặt', `${washUsers}<span> HV đang dùng</span>`, `Doanh thu năm: <strong>${money(washRev)}</strong>`, null, "stuFilter='washing';adminGo('students')")}
+        ${es(IC.fileText, 'ic-brand', 'Hợp đồng', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá 7 ngày</strong>` : ''}`, cPct, "stuFilter='nocontract';adminGo('students')")}
+        ${es(IC.wrench, 'ic-gray', 'Hư hỏng', `${dmg.length}<span> lượt báo</span>`, `Đã xử lý ${dmgDone} · đang xử lý ${dmgOpen} · chưa xử lý được ${dmgBlocked}`, dmgPct, "adminGo('repair')")}
+        ${es(IC.alert, 'ic-red', 'Vi phạm', `${vioTotal}<span> lượt</span>`, `${vioNeedMail} HV cần báo trường${vioSev ? ' · ' + vioSev : ''}`, null, "adminGo('violations')")}
       </div>
     </div></div>
   </div>`;
@@ -654,7 +654,8 @@ async function viewDashboard() {
   const unpaid = invAll.filter(i => i.status !== 'paid').reduce((a, i) => a + (+i.total || 0), 0);
   const paidThisMonth = invAll.filter(i => i.status === 'paid' && i.month === curMonth()).reduce((a, i) => a + (+i.total || 0), 0);
 
-  const kpi = (cls, ico, val, label) => `<div class="kpi"><span class="ic ${cls}">${ico}</span><div><div class="v">${val}</div><div class="l">${label}</div></div></div>`;
+  // act = onclick đầy đủ → mọi ô KPI đều drill-through tới đúng danh sách đằng sau con số
+  const kpi = (cls, ico, val, label, act) => `<div class="kpi${act ? ' clickable' : ''}" ${act ? `onclick="${act}"` : ''}><span class="ic ${cls}">${ico}</span><div><div class="v">${val}</div><div class="l">${label}</div></div></div>`;
   // act = biểu thức onclick đầy đủ (đặt đúng bộ lọc / tab rồi mới điều hướng) → bấm vào đúng danh sách cần xử lý
   const todo = (ico, tx, n, act, cls) => `<div class="todo ${n ? cls : 'calm'}" ${act && n ? `onclick="${act}"` : ''}><span class="ic">${ico}</span><span class="tx">${tx}</span><span class="n">${n}</span></div>`;
 
@@ -665,11 +666,11 @@ async function viewDashboard() {
 
   el('content').innerHTML = `
     <div class="kpis">
-      ${kpi('ic-green', IC.userCheck, inCount, 'Học viên đang ở')}
-      ${kpi('ic-blue', IC.bed, `${beds}<span class="muted" style="font-size:15px;font-weight:600"> / ${capacity}</span>`, 'Giường còn trống')}
-      ${kpi('ic-brand', IC.planeTakeoff, `${depMonth}<span class="muted" style="font-size:15px;font-weight:600"> · năm ${depYear}</span>`, 'Xuất cảnh tháng này')}
-      ${kpi('ic-brand', IC.banknote, money(paidThisMonth), 'Đã thu tháng này')}
-      ${kpi('ic-red', IC.wallet, money(unpaid), 'Còn nợ tiền phòng')}
+      ${kpi('ic-green', IC.userCheck, inCount, 'Học viên đang ở', "stuFilter='in';adminGo('students')")}
+      ${kpi('ic-blue', IC.bed, `${beds}<span class="muted" style="font-size:15px;font-weight:600"> / ${capacity}</span>`, 'Giường còn trống', "adminGo('rooms')")}
+      ${kpi('ic-brand', IC.planeTakeoff, `${depMonth}<span class="muted" style="font-size:15px;font-weight:600"> · năm ${depYear}</span>`, 'Xuất cảnh tháng này', "stuFilter='departure';adminGo('students')")}
+      ${kpi('ic-brand', IC.banknote, money(paidThisMonth), 'Đã thu tháng này', "adminGo('invoices')")}
+      ${kpi('ic-red', IC.wallet, money(unpaid), 'Còn nợ tiền phòng', "adminGo('invoices')")}
     </div>
 
     <div class="panel"><div class="hd"><h2>${IC.zap} Cần xử lý</h2></div><div class="pad">
@@ -691,9 +692,9 @@ async function viewDashboard() {
     <div class="grid2" style="align-items:start">
       <div class="panel" style="margin:0"><div class="hd"><h2>${IC.dashboard} Tình hình hôm nay</h2></div><div class="pad">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-blue">${IC.dot}</span> Sắp vào</div><div style="font-size:22px;font-weight:800">${upcoming}</div></div>
-          <div><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-amber">${IC.dot}</span> Sắp trả</div><div style="font-size:22px;font-weight:800">${leaving}</div></div>
-          <div><div class="muted" style="font-size:12.5px">${IC.bike} Xe đang gửi</div><div style="font-size:22px;font-weight:800">${totalVehicles}</div></div>
+          <div style="cursor:pointer" onclick="stuFilter='upcoming';adminGo('students')"><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-blue">${IC.dot}</span> Sắp vào ›</div><div style="font-size:22px;font-weight:800">${upcoming}</div></div>
+          <div style="cursor:pointer" onclick="stuFilter='leaving';adminGo('students')"><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-amber">${IC.dot}</span> Sắp trả ›</div><div style="font-size:22px;font-weight:800">${leaving}</div></div>
+          <div style="cursor:pointer" onclick="adminGo('vehicles')"><div class="muted" style="font-size:12.5px">${IC.bike} Xe đang gửi ›</div><div style="font-size:22px;font-weight:800">${totalVehicles}</div></div>
           <div style="cursor:pointer" onclick="quyCoc()"><div class="muted" style="font-size:12.5px">${IC.lock} Cọc đang giữ ›</div><div style="font-size:18px;font-weight:800">${money(heldDeposit)}</div></div>
         </div>
         <div class="rowbtns" style="margin-top:18px">
@@ -822,6 +823,8 @@ function viewStudents() {
   if (stuFilter === 'nodeposit') list = list.filter(s => isOccupying(s) && s.deposit_status === 'none');
   if (stuFilter === 'contract_overdue') list = list.filter(contractOverdue);
   if (stuFilter === 'handover_pending') list = list.filter(handoverPending);
+  if (stuFilter === 'leaving') list = list.filter(s => liveStatus(s) === 'leaving');
+  if (stuFilter === 'departure') list = list.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason));
   // Tìm kiếm áp dụng bằng ẩn/hiện hàng (attachRowSearch) — không lọc dựng lại ở đây
   const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
   const cnt = f => ST.students.filter(f).length;
@@ -832,7 +835,9 @@ function viewStudents() {
       <button class="btn sm ${stuFilter === 'all' ? 'pri' : ''}" onclick="stuFilter='all';viewStudents()">Tất cả (${ST.students.length})</button>
       <button class="btn sm ${stuFilter === 'in' ? 'pri' : ''}" onclick="stuFilter='in';viewStudents()"><span class="dot-svg dot-green">${IC.dot}</span> Đang ở (${cnt(isOccupying)})</button>
       <button class="btn sm ${stuFilter === 'upcoming' ? 'pri' : ''}" onclick="stuFilter='upcoming';viewStudents()"><span class="dot-svg dot-blue">${IC.dot}</span> Sắp vào (${cnt(s => liveStatus(s) === 'upcoming')})</button>
+      <button class="btn sm ${stuFilter === 'leaving' ? 'pri' : ''}" onclick="stuFilter='leaving';viewStudents()"><span class="dot-svg dot-amber">${IC.dot}</span> Sắp trả (${cnt(s => liveStatus(s) === 'leaving')})</button>
       <button class="btn sm ${stuFilter === 'out' ? 'pri' : ''}" onclick="stuFilter='out';viewStudents()"><span class="dot-svg dot-gray">${IC.dot}</span> Đã trả (${cnt(s => liveStatus(s) === 'left')})</button>
+      <button class="btn sm ${stuFilter === 'departure' ? 'pri' : ''}" onclick="stuFilter='departure';viewStudents()">${IC.planeTakeoff} Xuất cảnh (${cnt(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason))})</button>
       <button class="btn sm ${stuFilter === 'noresi' ? 'pri' : ''}" onclick="stuFilter='noresi';viewStudents()">${IC.flag} Chưa tạm trú (${cnt(s => isOccupying(s) && s.residency_status !== 'registered')})</button>
       <button class="btn sm ${stuFilter === 'nocontract' ? 'pri' : ''}" onclick="stuFilter='nocontract';viewStudents()">${IC.filePen} HĐ chưa ký (${cnt(s => isOccupying(s) && ['unsigned', 'none'].includes(s.contract_status))})</button>
       <button class="btn sm ${stuFilter === 'washing' ? 'pri' : ''}" onclick="stuFilter='washing';viewStudents()">${IC.washer} Máy giặt (${cnt(s => isOccupying(s) && s.uses_washing)})</button>
