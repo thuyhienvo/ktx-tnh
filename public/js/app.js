@@ -375,6 +375,16 @@ const contractOverdue = s => contractRequired(s) && !contractSigned(s) && stayDa
 // Ngắn hạn nhưng chưa ký phiếu bàn giao
 const handoverPending = s => isOccupying(s) && isShortTermGhep(s) && !['handover', 'done', 'scanned'].includes(s.contract_status);
 
+// ---- Sắp xuất cảnh — điều phối phòng (giường sắp trống) ----
+// Lấy ngày xuất cảnh: ưu tiên ngày dự kiến (Kaizen) + lịch trả phòng do xuất cảnh; chọn ngày TƯƠNG LAI gần nhất.
+function nextDepartureDate(s) {
+  const t = today();
+  const cands = [s.expected_departure, (['departure', 'urgent_visa'].includes(s.checkout_reason) ? s.check_out_date : null)]
+    .filter(Boolean).map(d => String(d).slice(0, 10)).filter(d => d >= t).sort();
+  return cands[0] || '';
+}
+const willDepartSoon = s => isOccupying(s) && !!nextDepartureDate(s);
+
 function renderAdmin() {
   const isAdmin = Auth.user.role === 'admin';
   el('app').innerHTML = `
@@ -643,6 +653,7 @@ async function viewDashboard() {
   const noContract = occ.filter(s => ['unsigned', 'none'].includes(s.contract_status)).length;
   const ghepOverdue = occ.filter(contractOverdue).length; // thuê ghép >7 ngày chưa ký HĐ
   const handoverTodo = occ.filter(handoverPending).length; // ngắn hạn chưa ký bàn giao
+  const depExpected = occ.filter(willDepartSoon).length; // dự kiến xuất cảnh (điều phối phòng)
   const totalVehicles = occ.reduce((a, s) => a + (+s.vehicle_count || 0), 0);
   const heldDeposit = ST.students.filter(s => s.deposit_status === 'held').reduce((a, s) => a + (+s.deposit_amount || 0), 0);
   const refundPending = ST.students.filter(s => liveStatus(s) === 'left' && s.deposit_status === 'held').length;
@@ -687,6 +698,7 @@ async function viewDashboard() {
         <div class="todo ${refundPending ? 'bad' : 'calm'}" ${refundPending ? 'onclick="quyCoc()"' : ''}><span class="ic">${IC.handCoins}</span><span class="tx">Cọc chờ hoàn (đã trả)</span><span class="n">${refundPending}</span></div>
         ${todo(IC.lock, 'Chưa đóng cọc', occ.filter(s => s.deposit_status === 'none').length, "stuFilter='nodeposit';adminGo('students')", 'warn')}
         ${todo(IC.doorOpen, 'Phòng còn trống', emptyRooms, "adminGo('rooms')", 'on')}
+        ${todo(IC.planeTakeoff, 'Dự kiến xuất cảnh (điều phối phòng)', depExpected, "stuFilter='departure_expected';adminGo('students')", 'on')}
         <div class="todo ${needMail ? 'bad' : 'calm'}" ${needMail ? `onclick="adminGo('violations')"` : ''}><span class="ic">${IC.alert}</span><span class="tx">Vi phạm cần báo nhà trường</span><span class="n">${needMail}</span></div>
       </div>
     </div></div>
@@ -827,6 +839,7 @@ function viewStudents() {
   if (stuFilter === 'handover_pending') list = list.filter(handoverPending);
   if (stuFilter === 'leaving') list = list.filter(s => liveStatus(s) === 'leaving');
   if (stuFilter === 'departure') list = list.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason));
+  if (stuFilter === 'departure_expected') { list = list.filter(willDepartSoon).sort((a, b) => nextDepartureDate(a).localeCompare(nextDepartureDate(b))); }
   // Tìm kiếm áp dụng bằng ẩn/hiện hàng (attachRowSearch) — không lọc dựng lại ở đây
   const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
   const cnt = f => ST.students.filter(f).length;
@@ -840,6 +853,7 @@ function viewStudents() {
       <button class="btn sm ${stuFilter === 'leaving' ? 'pri' : ''}" onclick="stuFilter='leaving';viewStudents()"><span class="dot-svg dot-amber">${IC.dot}</span> Sắp trả (${cnt(s => liveStatus(s) === 'leaving')})</button>
       <button class="btn sm ${stuFilter === 'out' ? 'pri' : ''}" onclick="stuFilter='out';viewStudents()"><span class="dot-svg dot-gray">${IC.dot}</span> Đã trả (${cnt(s => liveStatus(s) === 'left')})</button>
       <button class="btn sm ${stuFilter === 'departure' ? 'pri' : ''}" onclick="stuFilter='departure';viewStudents()">${IC.planeTakeoff} Xuất cảnh (${cnt(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason))})</button>
+      <button class="btn sm ${stuFilter === 'departure_expected' ? 'pri' : ''}" onclick="stuFilter='departure_expected';viewStudents()">${IC.planeTakeoff} Dự kiến XC (${cnt(willDepartSoon)})</button>
       <button class="btn sm ${stuFilter === 'noresi' ? 'pri' : ''}" onclick="stuFilter='noresi';viewStudents()">${IC.flag} Chưa tạm trú (${cnt(s => isOccupying(s) && s.residency_status !== 'registered')})</button>
       <button class="btn sm ${stuFilter === 'nocontract' ? 'pri' : ''}" onclick="stuFilter='nocontract';viewStudents()">${IC.filePen} HĐ chưa ký (${cnt(s => isOccupying(s) && ['unsigned', 'none'].includes(s.contract_status))})</button>
       <button class="btn sm ${stuFilter === 'washing' ? 'pri' : ''}" onclick="stuFilter='washing';viewStudents()">${IC.washer} Máy giặt (${cnt(s => isOccupying(s) && s.uses_washing)})</button>
@@ -862,7 +876,7 @@ function viewStudents() {
         <td><span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span></td>
         <td>${depositBadge(s)}${s.deposit_status === 'none' && isOccupying(s) ? ` <button class="btn sm ghost" title="Ghi nhận đóng cọc" onclick="depositForm(${s.id})">＋</button>` : ''}</td>
         <td class="num">${s.debt ? `<span class="badge red">${money(s.debt)}</span>` : '<span class="muted">—</span>'}</td>
-        <td class="muted" style="font-size:12px;white-space:nowrap">${s.expected_departure ? fmtDate(s.expected_departure) : '—'}</td>
+        <td class="muted" style="font-size:12px;white-space:nowrap">${s.expected_departure ? fmtDate(s.expected_departure) : (['departure', 'urgent_visa'].includes(s.checkout_reason) && s.check_out_date ? fmtDate(s.check_out_date) : '—')}</td>
         <td>${statusBadge(s)}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${isOccupying(s) ? `<button class="btn sm danger" onclick="checkOutForm(${s.id})">Check-out</button>` : `<button class="btn sm green" onclick="checkInForm(${s.id})">Check-in</button>`}
