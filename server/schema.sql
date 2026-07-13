@@ -24,6 +24,8 @@ ALTER TABLE rooms ADD COLUMN IF NOT EXISTS floor INTEGER DEFAULT 1;
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT 'male';
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS hang TEXT DEFAULT 'B';   -- hạng phòng A/B/C/D
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;  -- xóa mềm (khôi phục được)
+-- Loại phòng: 'shared' (cho thuê ghép) | 'whole' (thuê nguyên phòng) | 'security' (an ninh, ko cho thuê) | 'staff' (nhân viên công tác, ko HĐ)
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS room_type TEXT DEFAULT 'shared';
 
 CREATE TABLE IF NOT EXISTS students (
   id                  SERIAL PRIMARY KEY,

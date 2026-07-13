@@ -29,16 +29,20 @@ router.get('/info', async (req, res, next) => {
     const s = await getSettings();
     const facilities = (await query('SELECT id, name, address FROM facilities ORDER BY id')).rows;
     const fac = facilities[0] || {};
-    const rooms = (await query('SELECT COUNT(*)::int c FROM rooms')).rows[0].c;
-    const occupancy = (await query(
-      `SELECT COUNT(*)::int c FROM students s
-       WHERE s.check_in_date <= CURRENT_DATE AND (s.check_out_date IS NULL OR s.check_out_date > CURRENT_DATE)`)).rows[0].c;
-    const beds = (await query('SELECT COALESCE(SUM(capacity),0)::int c FROM rooms')).rows[0].c;
+    // Chỉ tính phòng CHO THUÊ GHÉP (bỏ nguyên phòng / an ninh / nhân viên) cho số liệu công khai
+    const rooms = (await query("SELECT COUNT(*)::int c FROM rooms WHERE COALESCE(room_type,'shared')='shared' AND deleted_at IS NULL")).rows[0].c;
+    const beds = (await query("SELECT COALESCE(SUM(capacity),0)::int c FROM rooms WHERE COALESCE(room_type,'shared')='shared' AND deleted_at IS NULL")).rows[0].c;
+    const bedFree = (await query(
+      `SELECT COALESCE(SUM(GREATEST(0, r.capacity -
+          (SELECT COUNT(*) FROM students s WHERE s.room_id=r.id AND s.deleted_at IS NULL
+             AND s.check_in_date<=CURRENT_DATE AND (s.check_out_date IS NULL OR s.check_out_date>CURRENT_DATE)))),0)::int c
+       FROM rooms r WHERE COALESCE(r.room_type,'shared')='shared' AND r.deleted_at IS NULL`)).rows[0].c;
+    const occupancy = Math.max(0, beds - bedFree);
     res.json({
       dorm_name: s.dorm_name, hotline: s.hotline,
       address: fac.address || '', facility_name: fac.name || '',
       facilities: facilities.map(f => ({ id: f.id, name: f.name, address: f.address })),
-      room_count: rooms, bed_count: beds, occupancy, bed_free: Math.max(0, beds - occupancy),
+      room_count: rooms, bed_count: beds, occupancy, bed_free: bedFree,
       room_fee: s.room_fee, deposit_fee: s.deposit_fee,
       electric_unit: s.electric_unit, water_fee: s.water_fee, service_fee: s.service_fee,
       washing_fee: s.washing_fee, parking_fee: s.parking_fee,
@@ -70,7 +74,7 @@ router.get('/available-rooms', async (req, res, next) => {
       SELECT r.name, r.floor, r.gender, r.hang, r.capacity,
         (SELECT COUNT(*) FROM students s WHERE s.room_id=r.id
            AND s.check_in_date <= CURRENT_DATE AND (s.check_out_date IS NULL OR s.check_out_date > CURRENT_DATE))::int AS occupancy
-      FROM rooms r ORDER BY r.floor, r.name`);
+      FROM rooms r WHERE COALESCE(r.room_type,'shared')='shared' AND r.deleted_at IS NULL ORDER BY r.floor, r.name`);
     const avail = rows.map(r => ({ ...r, free: Math.max(0, (r.capacity || 0) - r.occupancy) })).filter(r => r.free > 0);
     res.json(avail);
   } catch (e) { next(e); }

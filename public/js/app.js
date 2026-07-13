@@ -311,6 +311,15 @@ const legalEntity = g => g === 'female' ? (ST.settings.legal_female || 'E2') : (
 const HANGS = ['A', 'B', 'C', 'D'];
 // Công suất phòng (số giường) theo hạng
 const HANG_CAP = { A: 5, B: 4, C: 4, D: 3 };
+// Loại phòng: shared=cho thuê ghép · whole=thuê nguyên phòng · security=an ninh · staff=nhân viên công tác
+const ROOM_TYPE = { shared: ['Cho thuê ghép', 'green'], whole: ['Thuê nguyên phòng', 'blue'], security: ['Phòng an ninh', 'amber'], staff: ['Nhân viên công tác', 'amber'] };
+const roomType = r => (ROOM_TYPE[r.room_type] ? r.room_type : 'shared');
+const roomIsShared = r => roomType(r) === 'shared';          // chỉ phòng ghép mới tính giường trống
+const roomForRent = r => ['shared', 'whole'].includes(roomType(r)); // thuộc quỹ cho thuê (có doanh thu)
+const roomTypeBadge = r => { const [l, c] = ROOM_TYPE[roomType(r)]; return `<span class="badge ${c}">${l}</span>`; };
+// Giường trống chỉ đến từ phòng CHO THUÊ GHÉP còn slot (bỏ nguyên phòng / an ninh / nhân viên)
+const availBedsOf = rooms => rooms.filter(roomIsShared).reduce((a, r) => a + Math.max(0, (+r.capacity || 0) - (+r.occupancy || 0)), 0);
+const rentCapOf = rooms => rooms.filter(roomForRent).reduce((a, r) => a + (+r.capacity || 0), 0);
 const RENTAL_LABEL = { ghep: 'Thuê ghép', phong: 'Thuê nguyên phòng' };
 const CONTRACT_LABEL = { done: 'Đã hoàn tất', scanned: 'Đã scan HĐ', unsigned: 'Chưa ký HĐ', none: 'Không ký HĐ', handover: 'Đã ký phiếu bàn giao' };
 const CONTRACT_BADGE = { done: 'green', scanned: 'blue', unsigned: 'amber', none: 'gray', handover: 'blue' };
@@ -370,8 +379,10 @@ function isShortTermGhep(s) {
   return d > 0 && d < 60;
 }
 const contractSigned = s => ['done', 'scanned'].includes(s.contract_status);
-// Thuê ghép dài hạn đang ở → bắt buộc ký HĐ
-const contractRequired = s => isOccupying(s) && s.rental_type === 'ghep' && !isShortTermGhep(s);
+// HV ở phòng an ninh / nhân viên công tác (không cho thuê) → không cần ký HĐ ghép
+const studentRoomShared = s => { if (!s.room_id) return true; const r = roomById(s.room_id); return r ? roomIsShared(r) : true; };
+// Thuê ghép dài hạn đang ở trong phòng cho thuê ghép → bắt buộc ký HĐ
+const contractRequired = s => isOccupying(s) && s.rental_type === 'ghep' && !isShortTermGhep(s) && studentRoomShared(s);
 // Báo động: bắt buộc HĐ, đã vào ở > 7 ngày mà vẫn chưa ký
 const contractOverdue = s => contractRequired(s) && !contractSigned(s) && stayDays(s) > 7;
 // Ngắn hạn nhưng chưa ký phiếu bàn giao
@@ -563,8 +574,9 @@ async function viewExec() {
   // Chỉ so cùng kỳ khi năm trước có dữ liệu đủ ý nghĩa (>=5% năm nay), tránh % ảo
   const yoy = (prevYear > totalYear * 0.05) ? Math.round((totalYear - prevYear) / prevYear * 100) : null;
   const occ = ST.students.filter(isOccupying).length;
-  const capacity = ST.rooms.reduce((a, r) => a + (+r.capacity || 0), 0);
-  const occRate = capacity ? Math.round(occ / capacity * 100) : 0;
+  const capacity = rentCapOf(ST.rooms);               // giường thuộc quỹ cho thuê (ghép + nguyên phòng)
+  const availBeds = availBedsOf(ST.rooms);            // giường trống: chỉ phòng ghép còn slot
+  const occRate = capacity ? Math.round((capacity - availBeds) / capacity * 100) : 0;
   const outstanding = totalYear - paidYear;
   const dep = ST.students.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason) && String(s.check_out_date).slice(0, 4) === year).length;
   const svcs = [
@@ -620,7 +632,7 @@ async function viewExec() {
         <div style="height:12px;border-radius:99px;background:var(--bg2);overflow:hidden;margin:10px 0 18px"><div style="height:100%;width:${occRate}%;background:var(--brand)"></div></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
           <div><div class="muted" style="font-size:12.5px">Đang ở</div><div style="font-size:22px;font-weight:800">${occ}</div></div>
-          <div><div class="muted" style="font-size:12.5px">Giường trống</div><div style="font-size:22px;font-weight:800">${Math.max(0, capacity - occ)}</div></div>
+          <div><div class="muted" style="font-size:12.5px">Giường trống</div><div style="font-size:22px;font-weight:800">${availBeds}</div></div>
           <div><div class="muted" style="font-size:12.5px">Nữ · ${legalEntity('female')}</div><div style="font-size:19px;font-weight:700">${female}</div></div>
           <div><div class="muted" style="font-size:12.5px">Nam · ${legalEntity('male')}</div><div style="font-size:19px;font-weight:700">${male}</div></div>
         </div>
@@ -643,10 +655,10 @@ async function viewDashboard() {
   const inCount = occ.length;
   const upcoming = ST.students.filter(s => liveStatus(s) === 'upcoming').length;
   const leaving = ST.students.filter(s => liveStatus(s) === 'leaving').length;
-  const capacity = ST.rooms.reduce((a, r) => a + (+r.capacity || 0), 0);
-  const beds = Math.max(0, capacity - inCount);
-  const fullRooms = ST.rooms.filter(r => r.occupancy >= r.capacity && r.capacity > 0).length;
-  const emptyRooms = ST.rooms.filter(r => r.occupancy === 0).length;
+  const capacity = rentCapOf(ST.rooms);           // tổng giường thuộc quỹ cho thuê (ghép + nguyên phòng)
+  const beds = availBedsOf(ST.rooms);             // giường trống: CHỈ phòng cho thuê ghép còn slot
+  const fullRooms = ST.rooms.filter(r => roomIsShared(r) && r.occupancy >= r.capacity && r.capacity > 0).length;
+  const emptyRooms = ST.rooms.filter(r => roomIsShared(r) && r.occupancy === 0).length;
   const leftThisMonth = ST.students.filter(s => s.check_out_date && s.check_out_date.slice(0, 7) === curMonth()).length;
   const isDeparture = s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason);
   const depMonth = ST.students.filter(s => isDeparture(s) && s.check_out_date.slice(0, 7) === curMonth()).length;
@@ -762,8 +774,8 @@ async function viewRooms() {
       ${list.length ? `<table><thead><tr><th>Phòng</th><th>Loại</th><th class="num">Đang ở</th><th class="num">Giá thuê</th><th></th></tr></thead><tbody>
       ${list.map(r => { const full = r.occupancy >= r.capacity && r.capacity > 0; return `<tr data-s="${esc((r.name + ' ' + genderLabel(r.gender) + ' tầng' + r.floor + ' hạng' + (r.hang || 'b')).toLowerCase())}">
         <td><strong>${esc(r.name)}</strong>${r.upcoming ? ` <span class="badge blue" title="Sắp vào">+${r.upcoming}</span>` : ''}<div class="sub2">Tầng ${r.floor || '—'} · ${esc(legalEntity(r.gender))}</div>${r.note ? `<div class="sub2" style="white-space:pre-wrap;margin-top:3px">${esc(r.note)}</div>` : ''}</td>
-        <td>${r.gender === 'female' ? '<span class="badge red">Nữ</span>' : '<span class="badge blue">Nam</span>'} <span class="badge gray">Hạng ${esc(r.hang || 'B')}</span></td>
-        <td class="num"><span class="badge ${full ? 'red' : r.occupancy ? 'green' : 'gray'}">${r.occupancy}/${r.capacity || 0}</span></td>
+        <td>${r.gender === 'female' ? '<span class="badge red">Nữ</span>' : '<span class="badge blue">Nam</span>'} <span class="badge gray">Hạng ${esc(r.hang || 'B')}</span>${!roomIsShared(r) ? ' ' + roomTypeBadge(r) : ''}</td>
+        <td class="num">${roomIsShared(r) ? `<span class="badge ${full ? 'red' : r.occupancy ? 'green' : 'gray'}">${r.occupancy}/${r.capacity || 0}</span>` : `<span class="badge gray">${r.occupancy} người</span>`}</td>
         <td class="num">${money(r.monthly_fee)}<span class="muted">/người</span><div class="sub2">Nguyên phòng: ${money(ST.settings['room_price_' + (r.hang || 'B')])}</div></td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${del ? `<button class="btn sm green" onclick="restoreRoom(${r.id})">${IC.undo} Khôi phục</button>`
@@ -798,6 +810,9 @@ function roomForm(id) {
         <div class="field"><label>Sức chứa (giường) <span class="opt">(tự điền theo hạng)</span></label><input id="f_cap" type="number" min="0" value="${esc(r.capacity)}"></div>
       </div>
       <div class="field"><label>Giá thuê ghép / người / tháng <span class="opt">(đồng)</span></label><input id="f_mfee" type="number" min="0" value="${esc(r.monthly_fee)}"></div>
+      <div class="field"><label>Loại phòng</label><select id="f_rtype">
+        ${Object.keys(ROOM_TYPE).map(k => `<option value="${k}" ${roomType(r) === k ? 'selected' : ''}>${ROOM_TYPE[k][0]}</option>`).join('')}
+      </select><div class="muted" style="font-size:11.5px;margin-top:4px">${IC.info} "Thuê nguyên phòng / An ninh / Nhân viên công tác" sẽ <strong>không tính vào giường trống</strong> cho thuê ghép.</div></div>
       <div class="field"><label>Ghi chú <span class="opt">(mỗi dòng một ghi chú)</span></label><textarea id="f_note" rows="3">${esc(r.note || '')}</textarea></div>
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveRoom(${id || 0})">Lưu</button></div>`);
@@ -805,7 +820,7 @@ function roomForm(id) {
 }
 async function saveRoom(id) {
   const body = { name: el('f_name').value.trim(), facility_id: +el('f_fac').value || null,
-    gender: el('f_gender').value, hang: el('f_hang').value, capacity: +el('f_cap').value || 0, monthly_fee: +el('f_mfee').value || 0, note: el('f_note').value.trim() };
+    gender: el('f_gender').value, hang: el('f_hang').value, capacity: +el('f_cap').value || 0, monthly_fee: +el('f_mfee').value || 0, note: el('f_note').value.trim(), room_type: el('f_rtype').value };
   if (!body.name) return toast('Nhập tên phòng', 'err');
   await guard(() => id ? API.updateRoom(id, body) : API.createRoom(body));
   await refreshCache(); closeModal(); toast('Đã lưu phòng'); viewRooms();
@@ -904,7 +919,8 @@ function depositBadge(s) {
   return '<span class="muted">—</span>';
 }
 function roomOptions(sel, gender) {
-  const rooms = ST.rooms.filter(r => !gender || r.gender === gender);
+  // Chỉ xếp học viên vào phòng CHO THUÊ GHÉP (giữ lại phòng đang chọn nếu là phòng đặc biệt)
+  const rooms = ST.rooms.filter(r => (!gender || r.gender === gender) && (roomIsShared(r) || r.id === sel));
   return `<option value="">— Chưa xếp phòng —</option>` + rooms.map(r => {
     const full = r.occupancy >= r.capacity && sel !== r.id;
     return `<option value="${r.id}" ${sel === r.id ? 'selected' : ''} ${full ? 'disabled' : ''}>${esc(r.name)} · Tầng ${r.floor} (${r.occupancy}/${r.capacity || 0})${full ? ' - đầy' : ''}</option>`;

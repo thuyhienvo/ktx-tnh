@@ -25,18 +25,19 @@ router.get('/', async (req, res, next) => {
 });
 
 const HANG = h => (['A', 'B', 'C', 'D'].includes(h) ? h : 'B');
+const RTYPE = t => (['shared', 'whole', 'security', 'staff'].includes(t) ? t : 'shared');
 // Tầng suy ra từ chữ số đầu tiên của tên phòng (VD 104 -> 1, A203 -> 2)
 const floorOf = name => { const m = String(name || '').match(/\d/); return m ? +m[0] : 1; };
 
 router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
-    const { facility_id, name, gender, hang, capacity, monthly_fee, note } = req.body;
+    const { facility_id, name, gender, hang, capacity, monthly_fee, note, room_type } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Nhập tên phòng' });
     const { rows } = await query(
-      `INSERT INTO rooms (facility_id, name, floor, gender, hang, capacity, monthly_fee, note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      `INSERT INTO rooms (facility_id, name, floor, gender, hang, capacity, monthly_fee, note, room_type)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [facility_id || null, name.trim(), floorOf(name), gender === 'female' ? 'female' : 'male',
-       HANG(hang), +capacity || 0, +monthly_fee || 0, note || '']
+       HANG(hang), +capacity || 0, +monthly_fee || 0, note || '', RTYPE(room_type)]
     );
     res.status(201).json(rows[0]);
   } catch (e) { next(e); }
@@ -44,13 +45,13 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
 
 router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
-    const { facility_id, name, gender, hang, capacity, monthly_fee, note } = req.body;
+    const { facility_id, name, gender, hang, capacity, monthly_fee, note, room_type } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Nhập tên phòng' });
     const { rows } = await query(
-      `UPDATE rooms SET facility_id=$1, name=$2, floor=$3, gender=$4, hang=$5, capacity=$6, monthly_fee=$7, note=$8
-       WHERE id=$9 RETURNING *`,
+      `UPDATE rooms SET facility_id=$1, name=$2, floor=$3, gender=$4, hang=$5, capacity=$6, monthly_fee=$7, note=$8, room_type=$9
+       WHERE id=$10 RETURNING *`,
       [facility_id || null, name.trim(), floorOf(name), gender === 'female' ? 'female' : 'male',
-       HANG(hang), +capacity || 0, +monthly_fee || 0, note || '', req.params.id]
+       HANG(hang), +capacity || 0, +monthly_fee || 0, note || '', RTYPE(room_type), req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy phòng' });
     res.json(rows[0]);
