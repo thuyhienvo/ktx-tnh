@@ -309,6 +309,8 @@ const G = { male: 'Nam', female: 'Nữ' };
 const genderLabel = g => G[g] || g;
 const legalEntity = g => g === 'female' ? (ST.settings.legal_female || 'E2') : (ST.settings.legal_male || 'S2');
 const HANGS = ['A', 'B', 'C', 'D'];
+// Công suất phòng (số giường) theo hạng
+const HANG_CAP = { A: 5, B: 4, C: 4, D: 3 };
 const RENTAL_LABEL = { ghep: 'Thuê ghép', phong: 'Thuê nguyên phòng' };
 const CONTRACT_LABEL = { done: 'Đã hoàn tất', scanned: 'Đã scan HĐ', unsigned: 'Chưa ký HĐ', none: 'Không ký HĐ', handover: 'Đã ký phiếu bàn giao' };
 const CONTRACT_BADGE = { done: 'green', scanned: 'blue', unsigned: 'amber', none: 'gray', handover: 'blue' };
@@ -776,7 +778,7 @@ function facilityOptions(sel) {
   return ST.facilities.map(f => `<option value="${f.id}" ${sel === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('');
 }
 function roomForm(id) {
-  const r = id ? roomById(id) : { name: '', floor: 1, gender: 'female', capacity: 4, monthly_fee: ST.settings.room_fee || 1200000, note: '', facility_id: (ST.facilities[0] || {}).id };
+  const r = id ? roomById(id) : { name: '', floor: 1, gender: 'female', hang: 'B', capacity: HANG_CAP.B, monthly_fee: ST.settings.room_fee || 1200000, note: '', facility_id: (ST.facilities[0] || {}).id };
   openModal(`
     <div class="mh"><h3>${id ? 'Sửa phòng' : 'Thêm phòng'}</h3><button class="x" onclick="closeModal()">×</button></div>
     <div class="mb">
@@ -792,8 +794,8 @@ function roomForm(id) {
         </select><div class="muted" id="lgHint" style="font-size:12px;margin-top:4px">Pháp nhân: ${esc(legalEntity(r.gender))}</div></div>
       </div>
       <div class="grid2">
-        <div class="field"><label>Hạng phòng</label><select id="f_hang">${HANGS.map(hh => `<option value="${hh}" ${(r.hang || 'B') === hh ? 'selected' : ''}>Hạng ${hh} — thuê nguyên phòng ${money(ST.settings['room_price_' + hh])}</option>`).join('')}</select></div>
-        <div class="field"><label>Sức chứa (giường)</label><input id="f_cap" type="number" min="0" value="${esc(r.capacity)}"></div>
+        <div class="field"><label>Hạng phòng</label><select id="f_hang" onchange="el('f_cap').value=HANG_CAP[this.value]||el('f_cap').value">${HANGS.map(hh => `<option value="${hh}" ${(r.hang || 'B') === hh ? 'selected' : ''}>Hạng ${hh} — ${HANG_CAP[hh]} giường · nguyên phòng ${money(ST.settings['room_price_' + hh])}</option>`).join('')}</select></div>
+        <div class="field"><label>Sức chứa (giường) <span class="opt">(tự điền theo hạng)</span></label><input id="f_cap" type="number" min="0" value="${esc(r.capacity)}"></div>
       </div>
       <div class="field"><label>Giá thuê ghép / người / tháng <span class="opt">(đồng)</span></label><input id="f_mfee" type="number" min="0" value="${esc(r.monthly_fee)}"></div>
       <div class="field"><label>Ghi chú <span class="opt">(mỗi dòng một ghi chú)</span></label><textarea id="f_note" rows="3">${esc(r.note || '')}</textarea></div>
