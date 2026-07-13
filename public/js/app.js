@@ -18,7 +18,8 @@ async function renderPublicRegister() {
   const dorm = esc(info.dorm_name || 'Ký túc xá Học viên');
   const imgCard = (key, def) => { const label = esc(info['imgcap_' + key] || def); return `<figure class="ph-img"><img src="/api/public/image/${key}" alt="${label}" loading="lazy" onerror="this.remove()"><span class="ph-ico">${IC.building}</span><figcaption>${label}</figcaption></figure>`; };
   const amen = (ico, label) => `<div class="amen-item"><span class="amen-ic">${ico}</span><span>${label}</span></div>`;
-  const priceRow = (label, val, unit) => `<tr><td>${label}</td><td class="num"><strong>${money(val)}</strong><span class="muted">${unit}</span></td></tr>`;
+  const priceRow = (label, val, unit, note) => `<tr><td>${label}${note ? `<div class="price-sub">${note}</div>` : ''}</td><td class="num"><strong>${money(val)}</strong><span class="muted"> ${unit}</span></td></tr>`;
+  const priceRowOpt = (label, val, unit) => `<tr><td>${label} <span class="price-opt">tùy chọn</span><div class="price-sub">Chỉ tính khi đăng ký sử dụng</div></td><td class="num"><strong>${money(val)}</strong><span class="muted"> ${unit}</span></td></tr>`;
   const T = (k, def) => esc(info[k] || def); // nội dung trang giới thiệu (admin chỉnh trong Cài đặt)
   el('app').innerHTML = `
   <div class="intro">
@@ -78,18 +79,20 @@ async function renderPublicRegister() {
         <p>${T('intro_price_desc', 'Minh bạch theo từng khoản. Tiền điện tính theo công-tơ, chia đều số người ở phòng.')}</p></div>
       <div class="intro-price">
         <div class="price-form-tag">${IC.users} Hình thức: <strong>Thuê phòng ở ghép</strong> — nhiều học viên ở chung một phòng, chia sẻ chi phí</div>
-        <table>
-        <thead><tr><th>Khoản chi phí</th><th class="num">Mức phí</th></tr></thead>
-        <tbody>
-          ${priceRow('Tiền phòng (thuê ghép)', info.room_fee, ' /người/tháng')}
-          ${priceRow('Tiền điện', info.electric_unit, ' /kWh')}
-          ${priceRow('Tiền nước', info.water_fee, ' /người/tháng')}
-          ${priceRow('Dịch vụ chung (wifi, rác, an ninh)', info.service_fee, ' /người/tháng')}
-          ${priceRow('Máy giặt', info.washing_fee, ' /tháng')}
-          ${priceRow('Gửi xe máy', info.parking_fee, ' /xe/tháng')}
-          <tr class="price-hi"><td><strong>Cọc khi nhận phòng</strong></td><td class="num"><strong>${money(info.deposit_fee)}</strong></td></tr>
-        </tbody>
-      </table></div>
+        <table><tbody>
+          <tr class="price-grp"><td colspan="2">${IC.calendar} Chi phí hằng tháng</td></tr>
+          ${priceRow('Tiền phòng', info.room_fee, '/người/tháng')}
+          ${priceRow('Tiền điện', info.electric_unit, '/kWh', 'Theo công-tơ, chia đều số người ở phòng')}
+          ${priceRow('Tiền nước', info.water_fee, '/người/tháng')}
+          ${priceRow('Dịch vụ chung', info.service_fee, '/người/tháng', 'Wifi, rác, an ninh 24/7')}
+          ${priceRowOpt('Máy giặt', info.washing_fee, '/tháng')}
+          ${priceRowOpt('Gửi xe máy', info.parking_fee, '/xe/tháng')}
+          <tr class="price-grp"><td colspan="2">${IC.lock} Đóng một lần khi nhận phòng</td></tr>
+          <tr class="price-hi"><td><strong>Tiền cọc</strong><div class="price-sub">${IC.checkCircle} Được hoàn lại khi trả phòng đúng quy định</div></td><td class="num"><strong>${money(info.deposit_fee)}</strong></td></tr>
+        </tbody></table>
+        <div class="price-callout">${IC.info} <strong>Khi nhận phòng, bạn đóng:</strong> tiền cọc <strong>${money(info.deposit_fee)}</strong> (được hoàn lại khi trả phòng) <strong>+ chi phí tháng đầu</strong> (tiền phòng, điện, nước, dịch vụ). Máy giặt và gửi xe chỉ tính khi bạn đăng ký sử dụng.</div>
+        ${info.hotline ? `<a class="price-hotline" href="tel:${esc(String(info.hotline).replace(/\s/g, ''))}">${IC.phone}<span>Còn thắc mắc về chi phí? Gọi hotline <strong>${esc(info.hotline)}</strong></span></a>` : ''}
+      </div>
     </section>
 
     <section class="intro-sec" id="dangky">

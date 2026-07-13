@@ -360,6 +360,24 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);b
 .price-form-tag{display:flex;align-items:center;gap:9px;padding:13px 22px;background:var(--brand-soft);border-bottom:1px solid var(--line);font-size:13.5px;color:var(--brand-d);line-height:1.45}
 .price-form-tag svg{width:18px;height:18px;flex:none}
 .price-form-tag strong{color:var(--brand-d)}
+/* Cân dòng cho tiêu đề/mô tả trang giới thiệu → tránh chữ mồ côi rớt dòng */
+.intro-hero h1,.intro-hero p,.intro-head h2,.intro-head p{text-wrap:balance}
+/* Bảng giá: nhóm mục, ghi chú, nhãn tùy chọn, ô tóm tắt, hotline */
+.price-sub{font-size:12px;color:var(--muted);font-weight:400;margin-top:3px;line-height:1.4}
+.price-sub svg{width:14px;height:14px;vertical-align:-.16em;color:var(--green-ink)}
+.intro-price .price-grp td{background:var(--bg2);padding:9px 22px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--brand-d);font-weight:800}
+.intro-price .price-grp td svg{width:14px;height:14px;vertical-align:-.16em;margin-right:5px}
+.price-opt{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--brand-d);background:var(--brand-soft);padding:2px 7px;border-radius:99px;vertical-align:1px}
+.price-callout{padding:15px 22px;background:var(--brand-soft);border-top:1px solid var(--line);font-size:13.5px;line-height:1.6;color:var(--brand-d)}
+.price-callout svg{width:16px;height:16px;vertical-align:-.18em;margin-right:4px}
+.price-hotline{display:flex;align-items:center;gap:10px;padding:14px 22px;border-top:1px solid var(--line);font-size:14px;color:var(--ink);text-decoration:none;line-height:1.4}
+.price-hotline svg{width:19px;height:19px;flex:none;color:var(--brand-d)}
+.price-hotline:hover{background:var(--bg2)}
+/* Cột giá luôn vừa màn hình: nhãn xuống dòng, số giữ nguyên, đơn vị nằm dưới số (chống tràn/mất chữ trên mobile) */
+.intro-price td:first-child{white-space:normal}
+.intro-price td.num{white-space:nowrap;vertical-align:top}
+.intro-price td.num strong{white-space:nowrap}
+.intro-price td.num .muted{display:block;font-weight:400;font-size:12px;margin-top:1px}
 .intro-form{max-width:640px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:28px;box-shadow:var(--shadow)}
 .intro-foot{text-align:center;color:var(--muted);font-size:13px;padding:28px 0 0;border-top:1px solid var(--line);margin-top:22px}
 /* Liên hệ + bản đồ (trang giới thiệu) */
@@ -429,6 +447,8 @@ th.sortable.asc .sort-ar,th.sortable.desc .sort-ar{opacity:1;color:var(--brand-d
   .intro-stats{gap:22px}
   .intro-sec.alt{margin:0 -14px;padding:40px 16px}
   .intro-form{padding:20px}
+  .intro-price td,.intro-price th,.price-form-tag,.price-callout,.price-hotline,.intro-price .price-grp td{padding-left:15px;padding-right:15px}
+  .intro-price table{font-size:14px}
 }
 
 /* Nút menu (hamburger) — chỉ hiện trên mobile */
