@@ -271,6 +271,16 @@ router.post('/:id/restore', requireRole('admin', 'staff'), async (req, res, next
   catch (e) { next(e); }
 });
 
+// Bật/tắt dịch vụ máy giặt cho học viên (tab Máy giặt)
+router.post('/:id/washing', requireRole('admin', 'staff'), async (req, res, next) => {
+  try {
+    const on = !!req.body.on;
+    const { rows } = await query('UPDATE students SET uses_washing=$1 WHERE id=$2 AND deleted_at IS NULL RETURNING id', [on, req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    res.json({ ok: true, on });
+  } catch (e) { next(e); }
+});
+
 // Check-in
 router.post('/:id/checkin', requireRole('admin', 'staff'), async (req, res, next) => {
   try {

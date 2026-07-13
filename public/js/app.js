@@ -289,6 +289,7 @@ const AdminTitles = {
   students: ['Học viên', 'Hồ sơ, hợp đồng, tạm trú'],
   rooms: ['Phòng', 'Danh sách phòng theo tầng / hạng / giới tính'],
   vehicles: ['Xe', 'Danh sách xe học viên gửi'],
+  washing: ['Máy giặt', 'Học viên đăng ký dùng máy giặt'],
   checkin: ['Check-in / Check-out', 'Lịch sử ra / vào ký túc xá'],
   invoices: ['Tiền phòng', 'Hóa đơn hàng tháng, điện nước, cọc'],
   revenue: ['Doanh thu', 'Báo cáo doanh thu theo tháng / năm, đối chiếu Bravo'],
@@ -296,9 +297,9 @@ const AdminTitles = {
   checkout: ['Đăng ký trả phòng', 'Duyệt đơn xin trả phòng'],
   repair: ['Báo hư hỏng CSVC', 'Hư hỏng cơ sở vật chất → chuyển bảo trì'],
   violations: ['Quản lý vi phạm', 'Ghi nhận & theo dõi vi phạm học viên'],
-  feedback: ['Hộp thư góp ý', 'Học viên báo vi phạm · cần hỗ trợ khác'],
+  feedback: ['Hộp thư hỗ trợ / góp ý', 'Học viên báo vi phạm · cần hỗ trợ khác'],
   requests: ['Đăng ký ở nội trú', 'Duyệt đơn đăng ký vào ở'],
-  audit: ['Nhật ký hệ thống', 'Lịch sử thao tác của quản lý & nhân viên'],
+  audit: ['Lịch sử hệ thống', 'Lịch sử thao tác của quản lý & nhân viên'],
   settings: ['Cài đặt', 'Đơn giá, hạng phòng, cơ sở'],
 };
 const ADMIN_ONLY_VIEWS = ['exec', 'revenue', 'audit', 'settings'];
@@ -387,6 +388,7 @@ function renderAdmin() {
           <button data-v="students"><span class="ico">${IC.users}</span><span class="lbl">Học viên</span></button>
           <button data-v="rooms"><span class="ico">${IC.doorOpen}</span><span class="lbl">Phòng</span></button>
           <button data-v="vehicles"><span class="ico">${IC.bike}</span><span class="lbl">Xe</span></button>
+          <button data-v="washing"><span class="ico">${IC.washer}</span><span class="lbl">Máy giặt</span></button>
           <div class="grp">Vận hành</div>
           <button data-v="checkin"><span class="ico">${IC.key}</span><span class="lbl">Check-in / out</span></button>
           <button data-v="invoices"><span class="ico">${IC.wallet}</span><span class="lbl">Tiền phòng</span></button>
@@ -396,9 +398,9 @@ function renderAdmin() {
           <button data-v="checkout"><span class="ico">${IC.logOut}</span><span class="lbl">Đăng ký trả phòng</span><span class="cnt" id="navCheckout" style="display:none"></span></button>
           <button data-v="repair"><span class="ico">${IC.wrench}</span><span class="lbl">Báo hư hỏng CSVC</span><span class="cnt" id="navRepair" style="display:none"></span></button>
           <button data-v="violations"><span class="ico">${IC.alert}</span><span class="lbl">Quản lý vi phạm</span><span class="cnt" id="navViol" style="display:none"></span></button>
-          <button data-v="feedback"><span class="ico">${IC.inbox}</span><span class="lbl">Hộp thư góp ý</span><span class="cnt" id="navFeed" style="display:none"></span></button>
+          <button data-v="feedback"><span class="ico">${IC.inbox}</span><span class="lbl">Hộp thư hỗ trợ/góp ý</span><span class="cnt" id="navFeed" style="display:none"></span></button>
           ${isAdmin ? `<div class="grp">Hệ thống</div>
-          <button data-v="audit"><span class="ico">${IC.history}</span><span class="lbl">Nhật ký</span></button>
+          <button data-v="audit"><span class="ico">${IC.history}</span><span class="lbl">Lịch sử</span></button>
           <button data-v="settings"><span class="ico">${IC.settings}</span><span class="lbl">Cài đặt</span></button>` : ''}
         </nav>
         <div class="foot">
@@ -425,7 +427,7 @@ function renderAdmin() {
   startTableResize();
   const qp = new URLSearchParams(location.search);
   const startView = qp.get('view');
-  const views = ['exec', 'dashboard', 'students', 'rooms', 'vehicles', 'checkin', 'invoices', 'revenue', 'reg', 'checkout', 'repair', 'violations', 'feedback', 'requests', 'audit', 'settings'];
+  const views = ['exec', 'dashboard', 'students', 'rooms', 'vehicles', 'washing', 'checkin', 'invoices', 'revenue', 'reg', 'checkout', 'repair', 'violations', 'feedback', 'requests', 'audit', 'settings'];
   refreshCache().then(() => adminGo(views.includes(startView) ? startView : 'dashboard')).catch(e => toast(e.message, 'err'));
 }
 
@@ -502,7 +504,7 @@ function adminGo(view) {
   el('pgTitle').textContent = AdminTitles[view][0];
   el('pgSub').textContent = AdminTitles[view][1];
   el('topActions').innerHTML = '';
-  ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, vehicles: viewVehicles, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, reg: viewRequests, checkout: viewRequests, repair: viewRequests, violations: viewRequests, feedback: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
+  ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, vehicles: viewVehicles, washing: viewWashing, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, reg: viewRequests, checkout: viewRequests, repair: viewRequests, violations: viewRequests, feedback: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
 }
 const roomById = id => ST.rooms.find(r => r.id === id);
 const studentById = id => ST.students.find(s => s.id === id);
@@ -1362,6 +1364,48 @@ function quyCoc() {
 
 /* ---------- XE ---------- */
 let vehSearch = '';
+/* ---------- MÁY GIẶT ---------- */
+function viewWashing() {
+  const fee = +ST.settings.washing_fee || 0;
+  const users = ST.students.filter(s => s.uses_washing && isOccupying(s)).sort((a, b) => (a.room_name || '').localeCompare(b.room_name || '', 'vi'));
+  const total = users.length * fee;
+  el('topActions').innerHTML = `<button class="btn pri" onclick="addWashingForm()">${IC.plus} Thêm HV dùng máy giặt</button>`;
+  el('content').innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><span class="ic ic-blue">${IC.washer}</span><div><div class="v">${users.length}</div><div class="l">HV đang dùng máy giặt</div></div></div>
+      <div class="kpi"><span class="ic ic-brand">${IC.banknote}</span><div><div class="v">${money(total)}</div><div class="l">Doanh thu máy giặt / tháng</div></div></div>
+      <div class="kpi"><span class="ic ic-gray">${IC.receipt}</span><div><div class="v">${money(fee)}</div><div class="l">Đơn giá / tháng</div></div></div>
+    </div>
+    <div class="panel"><div class="hd"><h2>${IC.washer} Học viên dùng máy giặt (${users.length})</h2></div>
+    <div class="table-wrap">${users.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Phí / tháng</th><th></th></tr></thead><tbody>
+      ${users.map(s => `<tr>
+        <td><a href="#" onclick="studentDetail(${s.id});return false"><strong>${esc(s.name)}</strong></a>${s.code ? `<div class="muted" style="font-size:11px">${esc(s.code)}</div>` : ''}</td>
+        <td>${esc(s.room_name || '—')}</td>
+        <td class="num">${money(fee)}</td>
+        <td class="num"><button class="btn sm ghost" onclick="toggleWashing(${s.id}, false)">${IC.trash} Ngưng</button></td>
+      </tr>`).join('')}
+    </tbody></table>` : '<div class="empty">Chưa có học viên nào đăng ký máy giặt. Bấm "Thêm HV dùng máy giặt".</div>'}</div></div>`;
+}
+function addWashingForm() {
+  const avail = ST.students.filter(s => !s.uses_washing && isOccupying(s)).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'));
+  if (!avail.length) return toast('Mọi học viên đang ở đều đã dùng máy giặt', 'err');
+  const opts = avail.map(s => `<option value="${s.id}">${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}${s.room_name ? ' — ' + esc(s.room_name) : ''}</option>`).join('');
+  openModal(`
+    <div class="mh"><h3>${IC.washer} Thêm HV dùng máy giặt</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <div class="field"><label>Chọn học viên</label><select id="wash_stu">${opts}</select></div>
+      <div class="hint">${IC.info} Phí máy giặt ${money(+ST.settings.washing_fee || 0)}/tháng sẽ được tính vào hóa đơn từ kỳ kế tiếp.</div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="toggleWashing(+el('wash_stu').value, true)">Thêm</button></div>`);
+}
+async function toggleWashing(id, on) {
+  if (!id) return;
+  if (!on && !confirm('Ngưng dịch vụ máy giặt cho học viên này?')) return;
+  await guard(() => API.setWashing(id, on));
+  await refreshCache(); closeModal();
+  toast(on ? 'Đã thêm HV dùng máy giặt' : 'Đã ngưng máy giặt');
+  if (ST.view === 'washing') viewWashing();
+}
 async function viewVehicles() {
   el('content').innerHTML = '<div class="spinner"></div>';
   const all = await guard(() => API.vehicles());
@@ -1646,7 +1690,7 @@ async function viewRequests() {
           <button class="btn sm ghost" title="Ghi chú" onclick="noteForm('damage', ${d.id})">${IC.filePen}</button>
         </div></td></tr>`).join('')}
     </tbody></table></div>` : '<div class="empty">Chưa có góp ý / yêu cầu hỗ trợ nào.</div>';
-    body = `<div class="panel"><div class="hd"><h2>${IC.inbox} Hộp thư góp ý</h2><span class="muted" style="font-size:12px">Học viên báo vi phạm · cần hỗ trợ khác</span></div>${tbl}</div>`;
+    body = `<div class="panel"><div class="hd"><h2>${IC.inbox} Hộp thư hỗ trợ / góp ý</h2><span class="muted" style="font-size:12px">Học viên báo vi phạm · cần hỗ trợ khác</span></div>${tbl}</div>`;
   }
   const bare = view === 'repair' || view === 'violations' || view === 'feedback';
   el('content').innerHTML = bare ? body : `<div class="panel">${body}</div>`;

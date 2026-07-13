@@ -15,7 +15,17 @@ types.setTypeParser(1700, v => (v == null ? null : parseFloat(v)));
 
 // SSL: bật cho DB cloud (Supabase...). Đặt PGSSL=disable cho Postgres nội bộ (container local).
 const ssl = process.env.PGSSL === 'disable' ? false : { rejectUnauthorized: false };
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl, max: 10 });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl,
+  max: 10,
+  idleTimeoutMillis: 30000,        // đóng client rảnh sau 30s
+  connectionTimeoutMillis: 10000,  // lỗi nếu không lấy được kết nối trong 10s
+  statement_timeout: 15000,        // hủy query chạy quá 15s (chống treo connection)
+  query_timeout: 15000,
+});
+// Bắt lỗi client rảnh bị rớt (pooler đóng, mạng chập) — KHÔNG để văng 'error' làm sập process
+pool.on('error', (err) => console.error('❌ Lỗi pool PostgreSQL (client rảnh):', err.message));
 
 async function query(text, params) {
   return pool.query(text, params);

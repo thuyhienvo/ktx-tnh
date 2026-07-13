@@ -1,13 +1,35 @@
 require('./load-env'); // nạp .env khi chạy local (phải trước khi đọc process.env)
 const path = require('path');
 const express = require('express');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const db = require('./db');
 const { generateIcons } = require('./gen-icons');
 
 try { generateIcons(); } catch (e) { console.warn('Không sinh được icon:', e.message); }
 
 const app = express();
-app.use(express.json({ limit: '20mb' })); // đủ lớn để nhận ảnh CCCD base64
+app.set('trust proxy', 1); // sau proxy Render → lấy đúng IP client cho rate-limit
+
+// Security headers. CSP tạm tắt (app dùng inline onclick/style) — sẽ bật CSP riêng ở giai đoạn sau.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: false,
+}));
+
+// Body JSON: route nhận ảnh base64 (CCCD/giới thiệu) cần body lớn; các route còn lại siết nhỏ để giảm DoS.
+// Parser lớn chạy TRƯỚC cho các path upload → parser nhỏ phía sau tự bỏ qua (body đã parse).
+const jsonBig = express.json({ limit: '16mb' });
+app.use(['/api/public', '/api/students', '/api/applications', '/api/media', '/api/invoices', '/api/settings'], jsonBig);
+app.use(express.json({ limit: '2mb' }));
+
+// Rate-limit: chặn brute-force login + lạm dụng API
+const apiLimiter = rateLimit({ windowMs: 60 * 1000, max: 600, standardHeaders: true, legacyHeaders: false, message: { error: 'Quá nhiều yêu cầu, vui lòng thử lại sau ít phút.' } });
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false, message: { error: 'Đăng nhập sai quá nhiều lần. Vui lòng đợi vài phút rồi thử lại.' } });
+app.use('/api', apiLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/change-password', authLimiter);
 
 // Log gọn các request API
 app.use('/api', (req, res, next) => {
@@ -82,7 +104,14 @@ const PORT = process.env.PORT || 3000;
 
 db.init()
   .then(() => {
-    app.listen(PORT, () => console.log(`🚀 Ứng dụng chạy tại http://localhost:${PORT}`));
+    const server = app.listen(PORT, () => console.log(`🚀 Ứng dụng chạy tại http://localhost:${PORT}`));
+    // Graceful shutdown: ngừng nhận request mới, đóng pool, thoát sạch (khi Render redeploy/SIGTERM)
+    const shutdown = (sig) => {
+      console.log(`\n${sig} — đang tắt máy chủ...`);
+      server.close(() => { db.pool.end().catch(() => {}).finally(() => process.exit(0)); });
+      setTimeout(() => process.exit(1), 10000).unref(); // ép thoát nếu treo quá 10s
+    };
+    ['SIGTERM', 'SIGINT'].forEach(s => process.on(s, () => shutdown(s)));
   })
   .catch(err => {
     console.error('Không khởi động được:', err);
