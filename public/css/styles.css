@@ -19,8 +19,14 @@
   /* Charcoal — thanh bên & lớp nền tối */
   --dark:#22252e; --dark2:#2b2f39; --dark-line:#343845; --dark-ink:#c6c1b6; --dark-ink2:#87887f;
   /* Serif hiển thị thanh lịch — Cormorant, fallback Palatino cho offline */
-  --serif:"Playfair Display","Palatino Linotype","Book Antiqua",Palatino,Georgia,"Times New Roman",serif;
+  --serif:"ClearDigits","Playfair Display","Palatino Linotype","Book Antiqua",Palatino,Georgia,"Times New Roman",serif;
   --sans:"Inter","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+}
+/* Chữ SỐ (và . , /) trong tiêu đề serif render bằng font sans cho RÕ RÀNG; chữ cái vẫn giữ serif */
+@font-face{
+  font-family:"ClearDigits";
+  src:local("Inter"),local("Segoe UI"),local("Helvetica Neue"),local("Arial");
+  unicode-range:U+0030-0039, U+002C, U+002E, U+002F;
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;overflow-x:hidden}
