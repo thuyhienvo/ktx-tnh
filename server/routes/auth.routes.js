@@ -21,6 +21,11 @@ router.post('/login', async (req, res, next) => {
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
       return res.status(401).json({ error: 'Sai tên đăng nhập hoặc mật khẩu' });
     }
+    // Học viên đã bị xoá hồ sơ (deleted_at) thì không cho đăng nhập nữa
+    if (user.role === 'student' && user.student_id) {
+      const s = (await query('SELECT 1 FROM students WHERE id=$1 AND deleted_at IS NULL', [user.student_id])).rows[0];
+      if (!s) return res.status(401).json({ error: 'Tài khoản không còn hiệu lực' });
+    }
     setAuthCookie(res, signToken(user));
     res.json({ user: publicUser(user) });
   } catch (e) { next(e); }

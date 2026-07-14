@@ -2,6 +2,7 @@ const express = require('express');
 const { query, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { cccdUrls } = require('../cccd-url');
+const { isValidYmd } = require('../valid');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('student'));
@@ -12,7 +13,7 @@ router.get('/profile', async (req, res, next) => {
     const { rows } = await query(`
       SELECT s.*, r.name AS room_name, r.floor AS room_floor, r.monthly_fee
       FROM students s LEFT JOIN rooms r ON r.id = s.room_id
-      WHERE s.id = $1`, [req.user.student_id]);
+      WHERE s.id = $1 AND s.deleted_at IS NULL`, [req.user.student_id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy hồ sơ học viên' });
     // Kèm đơn giá máy giặt/gửi xe để hiển thị dịch vụ tự đăng ký (HV không được gọi /settings)
     const s = await getSettings();
@@ -37,6 +38,11 @@ router.get('/roommates', async (req, res, next) => {
 // Tự đăng ký / hủy dịch vụ máy giặt (khi vào ở mới phát sinh nhu cầu)
 router.post('/washing', async (req, res, next) => {
   try {
+    // Chỉ HV đang ở mới được thay đổi dịch vụ (đã trả phòng thì không)
+    const st = (await query('SELECT status, check_out_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.user.student_id])).rows[0];
+    const today = new Date().toISOString().slice(0, 10);
+    const occupying = st && st.status === 'in' && (!st.check_out_date || String(st.check_out_date).slice(0, 10) > today);
+    if (!occupying) return res.status(400).json({ error: 'Bạn không còn ở ký túc xá nên không thể thay đổi dịch vụ.' });
     const on = req.body.on !== false; // mặc định = đăng ký (true)
     await query('UPDATE students SET uses_washing=$1 WHERE id=$2 AND deleted_at IS NULL', [on, req.user.student_id]);
     res.json({ ok: true, uses_washing: on });
@@ -97,7 +103,8 @@ router.get('/checkout-request', async (req, res, next) => {
 router.post('/checkout-request', async (req, res, next) => {
   try {
     const { desired_date, reason, note } = req.body;
-    if (desired_date && !/^\d{4}-\d{2}-\d{2}$/.test(String(desired_date))) return res.status(400).json({ error: 'Ngày trả phòng không hợp lệ' });
+    if (desired_date && !isValidYmd(desired_date)) return res.status(400).json({ error: 'Ngày trả phòng không hợp lệ' });
+    if (desired_date && desired_date < new Date().toISOString().slice(0, 10)) return res.status(400).json({ error: 'Ngày trả phòng phải từ hôm nay trở đi' });
     // Chặn HV chưa nhận phòng (ngày vào ở tương lai) — chưa ở thì không thể "trả phòng"
     const st = (await query('SELECT check_in_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.user.student_id])).rows[0];
     const today = new Date().toISOString().slice(0, 10);

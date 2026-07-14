@@ -2,6 +2,7 @@ const express = require('express');
 const { query } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { recalcInvoice } = require('../invoice-calc');
+const { isValidYmd } = require('../valid');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('maintenance', 'admin'));
@@ -55,9 +56,14 @@ router.post('/handovers/:id/checkin', async (req, res, next) => {
 router.post('/handovers/:id/checkout', async (req, res, next) => {
   try {
     const note = (req.body.note || '').trim();
-    const actual = /^\d{4}-\d{2}-\d{2}$/.test(req.body.actual_date) ? req.body.actual_date : null;
-    if (!actual) return res.status(400).json({ error: 'Chọn ngày trả phòng thực tế' });
+    const actual = isValidYmd(req.body.actual_date) ? req.body.actual_date : null;
+    if (!actual) return res.status(400).json({ error: 'Chọn ngày trả phòng thực tế hợp lệ' });
     const today = new Date().toISOString().slice(0, 10);
+    // Ngày trả không thể TRƯỚC ngày nhận phòng (tránh phiếu tính sai / âm ngày)
+    const cur = (await query('SELECT check_in_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    if (!cur) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    if (cur.check_in_date && actual < String(cur.check_in_date).slice(0, 10))
+      return res.status(400).json({ error: 'Ngày trả không thể trước ngày nhận phòng' });
     const status = actual <= today ? 'out' : 'in';
     const { rows } = await query(
       `UPDATE students SET checkout_confirmed_at=now(), checkout_actual_date=$1, checkout_confirm_note=$2,

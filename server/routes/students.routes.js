@@ -6,6 +6,8 @@ const { depositRefundEligible } = require('../billing');
 const { recalcInvoice } = require('../invoice-calc');
 const storage = require('../storage');
 const { cccdUrls, SIDE_COL } = require('../cccd-url');
+const { isValidYmd } = require('../valid');
+const DATE_FIELDS = ['birth_date', 'check_in_date', 'check_out_date', 'contract_date', 'deposit_date', 'class_start_date', 'expected_departure', 'checkout_notice_date'];
 
 const router = express.Router();
 router.use(requireAuth);
@@ -160,6 +162,18 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
     const b = req.body;
     // ---- KIỂM TRA trước khi mở transaction (tránh rò transaction khi return sớm) ----
     if (!b.name || !b.name.trim()) return res.status(400).json({ error: 'Nhập họ tên học viên' });
+    // Chặn ngày ảo (đúng format nhưng không có thật) → tránh sập 500
+    for (const k of DATE_FIELDS) if (b[k] != null && b[k] !== '' && !isValidYmd(b[k])) return res.status(400).json({ error: `Ngày không hợp lệ (${k})` });
+    if (isValidYmd(b.check_in_date) && isValidYmd(b.check_out_date) && b.check_out_date < b.check_in_date)
+      return res.status(400).json({ error: 'Ngày trả phòng không thể trước ngày nhận phòng' });
+    // Chặn xếp vượt công suất phòng ghép
+    if (b.room_id) {
+      const rq = (await query(`SELECT capacity, COALESCE(room_type,'shared') AS rt,
+        (SELECT COUNT(*) FROM students s WHERE s.room_id=r.id AND s.deleted_at IS NULL AND s.status='in')::int AS occ
+        FROM rooms r WHERE id=$1 AND deleted_at IS NULL`, [b.room_id])).rows[0];
+      if (rq && rq.rt === 'shared' && rq.capacity > 0 && rq.occ >= rq.capacity)
+        return res.status(400).json({ error: `Phòng đã đủ chỗ (${rq.occ}/${rq.capacity}), không thể xếp thêm.` });
+    }
     let uname = null, pass = null;
     if (b.create_login) {
       uname = (b.login_username || b.code || '').trim();
@@ -234,6 +248,10 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
     if (!cur) return res.status(404).json({ error: 'Không tìm thấy học viên' });
     const b = { ...cur };
     for (const k of Object.keys(raw)) if (raw[k] !== undefined) b[k] = raw[k];
+    // Chặn ngày ảo trong dữ liệu GỬI LÊN → tránh sập 500; và ngày trả < ngày vào
+    for (const k of DATE_FIELDS) if (raw[k] != null && raw[k] !== '' && !isValidYmd(raw[k])) return res.status(400).json({ error: `Ngày không hợp lệ (${k})` });
+    if (isValidYmd(b.check_in_date) && isValidYmd(b.check_out_date) && String(b.check_out_date).slice(0, 10) < String(b.check_in_date).slice(0, 10))
+      return res.status(400).json({ error: 'Ngày trả phòng không thể trước ngày nhận phòng' });
     const f = studentFields(b);
     const cols = `code=$1, name=$2, gender=$3, phone=$4, id_card=$5, birth_date=$6, class_name=$7, room_id=$8,
       check_in_date=$9, note=$10, uses_washing=$11, rental_type=$12, residency_status=$13,

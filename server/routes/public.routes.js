@@ -1,6 +1,7 @@
 const express = require('express');
 const { query, getSettings } = require('../db');
 const storage = require('../storage');
+const { isValidYmd, isValidPhone } = require('../valid');
 
 const router = express.Router(); // KHÔNG yêu cầu đăng nhập
 
@@ -86,8 +87,10 @@ router.post('/apply', async (req, res, next) => {
     const b = req.body;
     if (!b.name || !b.name.trim()) return res.status(400).json({ error: 'Vui lòng nhập họ tên' });
     if (!b.phone || !b.phone.trim()) return res.status(400).json({ error: 'Vui lòng nhập số điện thoại' });
-    // Ngày sinh: chỉ nhận YYYY-MM-DD; sai định dạng -> bỏ qua (null) thay vì lỗi 500
-    const birthDate = /^\d{4}-\d{2}-\d{2}$/.test(String(b.birth_date || '')) ? b.birth_date : null;
+    if (!isValidPhone(b.phone)) return res.status(400).json({ error: 'Số điện thoại không hợp lệ (chỉ chữ số, 8–15 số)' });
+    // Ngày sinh: phải là ngày CÓ THẬT và không ở tương lai; sai -> bỏ qua (null) thay vì lỗi 500
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const birthDate = (isValidYmd(b.birth_date) && b.birth_date <= todayStr) ? b.birth_date : null;
     // Chèn đơn trước (chưa có ảnh) để lấy id
     const { rows } = await query(
       `INSERT INTO applications (name, phone, gender, birth_date, code, class_name, rental_type, pref, note, wants_washing, wants_parking, plate, facility_id)
