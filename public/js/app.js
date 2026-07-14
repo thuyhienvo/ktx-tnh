@@ -713,27 +713,15 @@ async function viewDashboard() {
   el('content').innerHTML = '<div class="spinner"></div>';
   const occ = ST.students.filter(isOccupying);
   const inCount = occ.length;
-  const upcoming = ST.students.filter(s => liveStatus(s) === 'upcoming').length;
-  const leaving = ST.students.filter(s => liveStatus(s) === 'leaving').length;
   const checkinToday = ST.students.filter(s => s.check_in_date && s.check_in_date.slice(0, 10) === today()).length;   // nhận phòng hôm nay
   const checkoutToday = ST.students.filter(s => s.check_out_date && s.check_out_date.slice(0, 10) === today()).length; // trả phòng hôm nay
   const capacity = rentCapOf(ST.rooms);           // tổng giường thuộc quỹ cho thuê (ghép + nguyên phòng)
   const beds = availBedsOf(ST.rooms);             // giường trống: CHỈ phòng cho thuê ghép còn slot
-  const fullRooms = ST.rooms.filter(r => roomIsShared(r) && r.occupancy >= r.capacity && r.capacity > 0).length;
-  const emptyRooms = ST.rooms.filter(r => roomIsShared(r) && r.occupancy === 0).length;
-  const leftThisMonth = ST.students.filter(s => s.check_out_date && s.check_out_date.slice(0, 7) === curMonth()).length;
-  const isDeparture = s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason);
-  const depMonth = ST.students.filter(s => isDeparture(s) && s.check_out_date.slice(0, 7) === curMonth()).length;
-  const depYear = ST.students.filter(s => isDeparture(s) && s.check_out_date.slice(0, 4) === curMonth().slice(0, 4)).length;
-  const noResidency = occ.filter(s => s.residency_status !== 'registered').length;
   const resiOverdue = occ.filter(s => s.residency_status === 'unregistered' && stayDays(s) > 7).length; // chưa ĐK tạm trú, đã ở >7 ngày
-  const ghepOverdue = occ.filter(contractOverdue).length; // thuê ghép >7 ngày chưa ký HĐ
-  const handoverTodo = occ.filter(handoverPending).length; // ngắn hạn chưa ký bàn giao
-  // Gộp 3 loại "hợp đồng chưa hoàn thiện" (đếm không trùng)
+  // Gộp 3 loại "hợp đồng chưa hoàn thiện" (đếm không trùng): cần ký chưa ký + ngắn hạn chưa ký bàn giao
   const contractIncomplete = occ.filter(s => (contractRequired(s) && !contractSigned(s)) || handoverPending(s)).length;
   const depExpected = occ.filter(willDepartSoon).length; // dự kiến xuất cảnh (điều phối phòng)
   const totalVehicles = occ.reduce((a, s) => a + (+s.vehicle_count || 0), 0);
-  const heldDeposit = ST.students.filter(s => s.deposit_status === 'held').reduce((a, s) => a + (+s.deposit_amount || 0), 0);
   const refundPending = ST.students.filter(s => liveStatus(s) === 'left' && s.deposit_status === 'held').length;
   const needMail = (ST.vstats && ST.vstats.needMail) || 0;
   const logs = ST.logs, apps = ST.applications, damage = ST.damage, couts = ST.couts;
