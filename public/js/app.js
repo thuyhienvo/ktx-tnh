@@ -702,16 +702,13 @@ async function viewDashboard() {
 
     <div class="panel"><div class="hd"><h2>${IC.zap} Cần xử lý</h2></div><div class="pad">
       <div class="todo-grid">
-        ${todo(IC.filePen, 'Đơn đăng ký chờ duyệt', pApps, "adminGo('reg')", 'on')}
+        ${todo(IC.filePen, 'Đơn đăng ký / trả phòng chờ duyệt', pApps + pCout, pApps ? "adminGo('reg')" : "adminGo('checkout')", 'on')}
         ${todo(IC.wrench, 'Hư hỏng chưa xử lý', pDmg, "adminGo('repair')", 'warn')}
-        ${todo(IC.logOut, 'Đơn xin trả phòng', pCout, "adminGo('checkout')", 'bad')}
         ${todo(IC.flag, 'Chưa đăng ký tạm trú', noResidency, "stuFilter='noresi';adminGo('students')", 'warn')}
-        ${todo(IC.fileText, 'Hợp đồng chưa ký', noContract, "stuFilter='nocontract';adminGo('students')", 'warn')}
+        ${todo(IC.fileText, 'Chưa ký HĐ / bàn giao', noContract, "stuFilter='nocontract';adminGo('students')", 'warn')}
         ${todo(IC.alert, 'Thuê ghép >7 ngày chưa ký HĐ', ghepOverdue, "stuFilter='contract_overdue';adminGo('students')", 'bad')}
-        ${todo(IC.fileText, 'Ngắn hạn chưa ký bàn giao', handoverTodo, "stuFilter='handover_pending';adminGo('students')", 'warn')}
-        <div class="todo ${refundPending ? 'bad' : 'calm'}" ${refundPending ? 'onclick="quyCoc()"' : ''}><span class="ic">${IC.handCoins}</span><span class="tx">Cọc chờ hoàn (đã trả)</span><span class="n">${refundPending}</span></div>
+        <div class="todo ${refundPending ? 'bad' : 'calm'}" ${refundPending ? 'onclick="quyCoc()"' : ''}><span class="ic">${IC.handCoins}</span><span class="tx">Hoàn cọc</span><span class="n">${refundPending}</span></div>
         ${todo(IC.lock, 'Chưa đóng cọc', occ.filter(s => s.deposit_status === 'none').length, "stuFilter='nodeposit';adminGo('students')", 'warn')}
-        ${todo(IC.doorOpen, 'Phòng còn trống', emptyRooms, "adminGo('rooms')", 'on')}
         ${todo(IC.planeTakeoff, 'Dự kiến xuất cảnh (điều phối phòng)', depExpected, "stuFilter='departure_expected';adminGo('students')", 'on')}
         <div class="todo ${needMail ? 'bad' : 'calm'}" ${needMail ? `onclick="adminGo('violations')"` : ''}><span class="ic">${IC.alert}</span><span class="tx">Vi phạm cần báo nhà trường</span><span class="n">${needMail}</span></div>
       </div>
