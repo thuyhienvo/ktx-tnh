@@ -41,7 +41,11 @@ app.use('/api', (req, res, next) => {
 app.use('/api', (req, res, next) => {
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && !/^\/auth\//.test(req.path)) {
     res.on('finish', () => {
-      if (res.statusCode >= 400 || !req.user || req.user.role === 'student') return;
+      const denied = res.statusCode === 401 || res.statusCode === 403;
+      if (!req.user) return;                                   // chưa đăng nhập -> không có ai để ghi
+      if (req.body && req.body.preview === true) return;       // xem trước hóa đơn (ROLLBACK) -> không ghi
+      // Ghi: (a) thao tác THÀNH CÔNG của admin/staff/maintenance; (b) MỌI lần BỊ TỪ CHỐI (phát hiện lạm quyền)
+      if (!denied && (res.statusCode >= 400 || req.user.role === 'student')) return;
       let detail = '';
       try {
         const b = req.body || {}, c = {};
@@ -50,7 +54,7 @@ app.use('/api', (req, res, next) => {
           else if (typeof b[k] === 'string' && b[k].length > 100) c[k] = b[k].slice(0, 100) + '…';
           else c[k] = b[k];
         }
-        detail = JSON.stringify(c).slice(0, 500);
+        detail = (denied ? `[TỪ CHỐI ${res.statusCode}] ` : '') + JSON.stringify(c).slice(0, 460);
       } catch (e) {}
       db.pool.query(
         'INSERT INTO audit_log (user_id, username, role, method, path, detail) VALUES ($1,$2,$3,$4,$5,$6)',

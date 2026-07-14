@@ -432,7 +432,7 @@ function renderAdmin() {
           <div class="u">${esc(Auth.user.full_name || Auth.user.username)}</div>
           <div class="r muted" style="font-size:11px">${isAdmin ? 'Quản trị viên' : 'Nhân viên'}</div>
           <button onclick="changePwd()">${IC.key} Đổi mật khẩu</button>
-          <button onclick="Auth.logout()">${IC.undo} Đăng xuất</button>
+          <button onclick="Auth.logout()">${IC.logOut} Đăng xuất</button>
         </div>
       </aside>
       <div class="side-backdrop" id="sideBackdrop" onclick="toggleSide()"></div>
@@ -479,7 +479,7 @@ function updateNavBadges() {
 function notifItems() {
   const items = [];
   const pApps = ST.applications.filter(a => a.status === 'pending').length;
-  const pDmg = ST.damage.filter(d => d.status !== 'done').length;
+  const pDmg = ST.damage.filter(d => (d.category || 'damage') === 'damage' && d.status !== 'done').length;
   const pCout = ST.couts.filter(c => c.status === 'pending').length;
   const needMail = (ST.vstats && ST.vstats.needMail) || 0;
   const refund = ST.students.filter(s => liveStatus(s) === 'left' && s.deposit_status === 'held').length;
@@ -609,7 +609,7 @@ async function viewExec() {
   const dmgPct = dmg.length ? Math.round(dmgDone / dmg.length * 100) : 0;
   const vio = ST.vstats || {};
   const vioTotal = vio.total || 0, vioNeedMail = vio.needMail || 0;
-  const sevMap = { light: 'Nhẹ', medium: 'Trung bình', heavy: 'Nặng' };
+  const sevMap = { minor: 'Nhẹ', major: 'Nặng', severe: 'Nghiêm trọng' };
   const vioSev = (vio.bySeverity || []).map(x => `${sevMap[x.severity] || x.severity}: ${x.c}`).join(' · ');
   const es = (ico, cls, title, main, sub, bar, act) => `<div class="es${act ? ' clickable' : ''}" ${act ? `onclick="${act}"` : ''}><div class="es-h"><span class="es-ic ${cls}">${ico}</span>${title}</div><div class="es-v">${main}</div>${bar != null ? `<div class="es-bar"><div style="width:${bar}%"></div></div>` : ''}<div class="es-sub">${sub}</div></div>`;
   const kpi = (ic, cls, val, label, sub, act) => `<div class="kpi${act ? ' clickable' : ''}" ${act ? `onclick="${act}"` : ''}><span class="ic ${cls}">${ic}</span><div><div class="v">${val}</div><div class="l">${label}${sub ? ` · ${sub}` : ''}</div></div></div>`;
@@ -707,6 +707,7 @@ function depositModal() {
     <div class="mf"><button class="btn" onclick="closeModal()">Đóng</button></div>`);
 }
 async function viewDashboard() {
+  el('content').innerHTML = '<div class="spinner"></div>';
   const occ = ST.students.filter(isOccupying);
   const inCount = occ.length;
   const upcoming = ST.students.filter(s => liveStatus(s) === 'upcoming').length;
@@ -2088,7 +2089,7 @@ async function viewInvoices() {
         ${all.length ? `<button class="btn sm" onclick='exportCSV(${JSON.stringify(list).replace(/'/g, "&#39;")})'>${IC.download} Xuất Excel (CSV)</button>` : ''}</div></div>
       <div class="table-wrap">
       ${all.length === 0 ? `<div class="empty">Chưa có hóa đơn nào cho kỳ này.<br><br><button class="btn pri" onclick="generateForm()">${IC.receipt} Tạo hóa đơn</button></div>` :
-      list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Tổng</th><th></th></tr></thead><tbody>
+      list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Tổng</th><th></th></tr></thead><tbody>
         ${list.map(i => `<tr data-s="${esc(((i.student_name || '') + ' ' + (i.student_code || '') + ' ' + (i.room_name || '')).toLowerCase())}">
           <td><strong>${esc(i.student_name)}</strong>${i.student_code ? `<div class="muted" style="font-size:11px">${esc(i.student_code)}</div>` : ''}</td>
           <td>${esc(i.room_name || '—')}</td>
@@ -2106,7 +2107,7 @@ async function viewInvoices() {
             <button class="btn sm ghost" onclick='invoiceForm(${i.id}, ${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.pencil}</button>
             <button class="btn sm ghost" onclick="delInvoice(${i.id})">${IC.trash}</button>
           </div></td></tr>`).join('')}
-        <tr class="no-result" style="display:none"><td colspan="12"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
+        <tr class="no-result" style="display:none"><td colspan="11"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có hóa đơn ${invFilter === 'paid' ? 'đã đóng' : 'chưa đóng'} trong kỳ này.</div>`}
     </div></div>
     ${elecPanel}`;
@@ -2718,12 +2719,17 @@ function changePwd() {
     <div class="mh"><h3>${IC.key} Đổi mật khẩu</h3><button class="x" onclick="closeModal()">×</button></div>
     <div class="mb">
       <div class="field"><label>Mật khẩu hiện tại</label><input id="cp_old" type="password"></div>
-      <div class="field"><label>Mật khẩu mới</label><input id="cp_new" type="password"></div>
+      <div class="field"><label>Mật khẩu mới <span class="opt">(tối thiểu 6 ký tự)</span></label><input id="cp_new" type="password"></div>
+      <div class="field"><label>Nhập lại mật khẩu mới</label><input id="cp_new2" type="password"></div>
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="doChangePwd()">Đổi mật khẩu</button></div>`);
 }
 async function doChangePwd() {
-  await guard(() => API.changePassword(el('cp_old').value, el('cp_new').value));
+  const oldP = el('cp_old').value, n1 = el('cp_new').value, n2 = el('cp_new2').value;
+  if (!oldP) return toast('Nhập mật khẩu hiện tại', 'err');
+  if (n1.length < 6) return toast('Mật khẩu mới tối thiểu 6 ký tự', 'err');
+  if (n1 !== n2) return toast('Nhập lại mật khẩu không khớp', 'err');
+  await guard(() => API.changePassword(oldP, n1));
   closeModal(); toast('Đã đổi mật khẩu');
 }
 
@@ -2735,7 +2741,7 @@ async function renderStudent() {
     <div class="app"><div class="main" style="margin:0 auto;max-width:760px;width:100%">
       <div class="top">
         <div><h1>${IC.home} Ký túc xá của tôi</h1><div class="sub">Xin chào, ${esc(Auth.user.full_name || Auth.user.username)}</div></div>
-        <div class="toolbar"><button class="btn sm" onclick="changePwd()">${IC.key} Đổi mật khẩu</button><button class="btn sm" onclick="Auth.logout()">${IC.undo} Đăng xuất</button></div>
+        <div class="toolbar"><button class="btn sm" onclick="changePwd()">${IC.key} Đổi mật khẩu</button><button class="btn sm" onclick="Auth.logout()">${IC.logOut} Đăng xuất</button></div>
       </div>
       <div class="content" id="content"><div class="spinner"></div></div>
     </div></div>`;
@@ -2749,7 +2755,9 @@ async function loadStudentPortal() {
   const billNow = invs.filter(i => i.month === curMonth()).reduce((a, i) => a + (+i.total || 0), 0);
   const depTxt = { held: 'Đang giữ', refunded: 'Đã hoàn', forfeited: 'Không hoàn', none: '—' }[profile.deposit_status] || '—';
   const pendingCout = coutReqs.find(c => c.status === 'pending');
+  const notMovedIn = profile.check_in_date && String(profile.check_in_date).slice(0, 10) > today();
   el('content').innerHTML = `
+    ${notMovedIn ? `<div class="hint">${IC.hourglass} Bạn sẽ nhận phòng vào <strong>${fmtDate(profile.check_in_date)}</strong> — vui lòng đến đúng hẹn để bàn giao phòng. Hiện chưa thể gửi đơn trả phòng.</div>` : ''}
     <div class="cards">
       <div class="stat"><div class="l">${IC.doorOpen} Phòng của tôi</div><div class="v sm">${esc(profile.room_name || 'Chưa xếp')}</div></div>
       <div class="stat"><div class="l">${IC.receipt} Phiếu tháng này</div><div class="v sm">${money(billNow)}</div></div>
@@ -2769,7 +2777,7 @@ async function loadStudentPortal() {
     </div></div>` : ''}
 
     <div class="panel"><div class="hd"><h2>${IC.receipt} Phiếu báo tiền phòng</h2></div><div class="table-wrap">
-      ${invs.length ? `<table><thead><tr><th>Kỳ</th><th class="num">Phòng</th><th class="num">Điện</th><th class="num">Khác</th><th class="num">Tổng</th></tr></thead><tbody>
+      ${invs.length ? `<table><thead><tr><th>Kỳ</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Khác</th><th class="num">Tổng</th></tr></thead><tbody>
         ${invs.map(i => `<tr><td>${monthLabel(i.month)}</td><td class="num">${money(i.room_charge)}</td><td class="num">${money(i.electric_charge)}</td><td class="num">${money((+i.water_charge) + (+i.service_charge) + (+i.washing_charge) + (+i.parking_charge))}</td><td class="num"><strong>${money(i.total)}</strong></td></tr>`).join('')}
       </tbody></table>` : '<div class="empty">Chưa có phiếu báo.</div>'}
       <div class="pad muted" style="font-size:12.5px">${IC.creditCard} Đóng tiền qua mã QR quản lý gửi trên Zalo theo hạn hằng tháng.</div>
@@ -2781,8 +2789,9 @@ async function loadStudentPortal() {
       </tbody></table>` : '<div class="empty">Chưa có yêu cầu nào.</div>'}
     </div></div>
 
-    <div class="panel"><div class="hd"><h2>${IC.logOut} Đăng ký trả phòng</h2>${!pendingCout && profile.status === 'in' ? '<button class="btn sm danger" onclick="checkoutReqForm()">Xin trả phòng</button>' : ''}</div><div class="pad">
+    <div class="panel"><div class="hd"><h2>${IC.logOut} Đăng ký trả phòng</h2>${!pendingCout && profile.status === 'in' && !notMovedIn ? '<button class="btn sm danger" onclick="checkoutReqForm()">Xin trả phòng</button>' : ''}</div><div class="pad">
       ${pendingCout ? `<div class="hint">${IC.hourglass} Bạn đã gửi đơn trả phòng ngày <strong>${fmtDate(pendingCout.desired_date)}</strong> — đang chờ quản lý duyệt.</div>` :
+      notMovedIn ? '<p class="muted" style="margin:0">Bạn chưa tới ngày nhận phòng nên chưa thể gửi đơn trả phòng.</p>' :
       profile.status !== 'in' ? '<p class="muted" style="margin:0">Bạn đã trả phòng.</p>' :
       `<p class="muted" style="margin:0">Cần báo trước 1 tháng để được hoàn cọc (trừ trường hợp xuất cảnh đột xuất).</p>`}
       ${coutReqs.filter(c => c.status !== 'pending').length ? `<div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Ngày gửi</th><th>Ngày muốn trả</th><th>Trạng thái</th></tr></thead><tbody>
@@ -2823,7 +2832,7 @@ function checkoutReqForm() {
   openModal(`
     <div class="mh"><h3>${IC.logOut} Đăng ký trả phòng</h3><button class="x" onclick="closeModal()">×</button></div>
     <div class="mb">
-      <div class="field"><label>Ngày dự kiến trả phòng</label><input id="co_date" type="date" value="${today()}"></div>
+      <div class="field"><label>Ngày dự kiến trả phòng</label><input id="co_date"></div>
       <div class="field"><label>Lý do</label><select id="co_reason">
         ${CHECKOUT_REASONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
       </select></div>
@@ -2831,9 +2840,12 @@ function checkoutReqForm() {
       <div class="hint">${IC.info} Đơn sẽ được gửi tới quản lý để duyệt. Cần báo trước 1 tháng để được hoàn cọc.</div>
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn danger" onclick="submitCheckoutReq()">Gửi đơn</button></div>`);
+  attachDate(el('co_date'), today());
 }
 async function submitCheckoutReq() {
-  await guard(() => API.createMeCheckoutReq({ desired_date: el('co_date').value, reason: el('co_reason').value, note: el('co_note').value.trim() }));
+  const d = el('co_date').dataset.iso;
+  if (!d) return toast('Chọn ngày dự kiến trả phòng', 'err');
+  await guard(() => API.createMeCheckoutReq({ desired_date: d, reason: el('co_reason').value, note: el('co_note').value.trim() }));
   closeModal(); toast('Đã gửi đơn trả phòng'); loadStudentPortal();
 }
 
@@ -2845,7 +2857,7 @@ async function renderMaintenance() {
     <div class="app"><div class="main" style="margin:0 auto;max-width:940px;width:100%">
       <div class="top">
         <div><h1>${IC.wrench} Bảo trì ký túc xá</h1><div class="sub">Xin chào, ${esc(Auth.user.full_name || Auth.user.username)}</div></div>
-        <div class="toolbar"><button class="btn sm" onclick="loadMaintenance()">${IC.refresh} Tải lại</button><button class="btn sm" onclick="changePwd()">${IC.key} Đổi mật khẩu</button><button class="btn sm" onclick="Auth.logout()">${IC.undo} Đăng xuất</button></div>
+        <div class="toolbar"><button class="btn sm" onclick="loadMaintenance()">${IC.refresh} Tải lại</button><button class="btn sm" onclick="changePwd()">${IC.key} Đổi mật khẩu</button><button class="btn sm" onclick="Auth.logout()">${IC.logOut} Đăng xuất</button></div>
       </div>
       <div class="content" id="content"><div class="spinner"></div></div>
     </div></div>`;
@@ -2864,7 +2876,7 @@ async function loadMaintenance() {
       <div class="stat"><div class="l">${IC.checkCircle} Đã hoàn thành</div><div class="v sm">${done.length}</div></div>
     </div>
     <div id="handoverArea"><div class="spinner"></div></div>
-    ${pending.length ? `<div class="hint" style="border-color:var(--amber-ink)">${IC.bell} Bạn có <strong>${pending.length}</strong> công việc bảo trì cần xử lý.</div>` : `<div class="hint">${IC.checkCircle} Không có công việc nào đang chờ.</div>`}
+    ${pending.length ? `<div class="hint" style="border-color:var(--amber-ink)">${IC.bell} Bạn có <strong>${pending.length}</strong> công việc bảo trì cần xử lý.</div>` : ''}
     <div class="panel"><div class="hd"><h2>${IC.wrench} Công việc cần xử lý</h2></div><div class="table-wrap">
       ${pending.length ? `<table><thead><tr><th>Chuyển lúc</th><th>Phòng</th><th>Nội dung</th><th>Người báo</th><th>Trạng thái</th><th></th></tr></thead><tbody>
         ${pending.map(t => `<tr>

@@ -147,8 +147,17 @@ router.put('/:id', async (req, res, next) => {
 
 // Xóa mềm
 router.delete('/:id', async (req, res, next) => {
-  try { await query('UPDATE violations SET deleted_at=now() WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
-  catch (e) { next(e); }
+  try {
+    const row = (await query('SELECT student_id FROM violations WHERE id=$1', [req.params.id])).rows[0];
+    await query('UPDATE violations SET deleted_at=now() WHERE id=$1', [req.params.id]);
+    // Đánh lại "lần thứ N" cho các vi phạm còn lại của HV theo thứ tự ngày (tránh level lệch sau khi xóa)
+    if (row && row.student_id) {
+      await query(`UPDATE violations v SET level = sub.rn
+        FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY date, id) AS rn FROM violations WHERE student_id=$1 AND deleted_at IS NULL) sub
+        WHERE v.id = sub.id`, [row.student_id]);
+    }
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
 // Gửi (lại) mail nhà trường thủ công cho 1 học viên

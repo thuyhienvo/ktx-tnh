@@ -72,6 +72,7 @@ router.get('/checkout-request', async (req, res, next) => {
 router.post('/checkout-request', async (req, res, next) => {
   try {
     const { desired_date, reason, note } = req.body;
+    if (desired_date && !/^\d{4}-\d{2}-\d{2}$/.test(String(desired_date))) return res.status(400).json({ error: 'Ngày trả phòng không hợp lệ' });
     // Chặn HV chưa nhận phòng (ngày vào ở tương lai) — chưa ở thì không thể "trả phòng"
     const st = (await query('SELECT check_in_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.user.student_id])).rows[0];
     const today = new Date().toISOString().slice(0, 10);
