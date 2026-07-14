@@ -138,10 +138,11 @@ async function renderPublicRegister() {
         <div id="plateBox" style="display:none;margin-top:8px"><input id="a_plate" placeholder="Biển số xe (VD: 63-B4 508.58)"></div>
       </div>
       <div class="field"><label>Ảnh CCCD (2 mặt)</label>
+        <div class="muted" style="font-size:12px;margin:-2px 0 8px">${IC.info} Chụp <strong>ngang</strong>, đủ sáng, thấy rõ 4 góc. Ảnh sẽ tự xoay đúng chiều khi tải lên.</div>
         <div class="grid2">
-          <div><div class="muted" style="font-size:12px;margin-bottom:4px">Mặt trước</div>
+          <div><div class="muted" style="font-size:12px;margin-bottom:4px"><strong>Mặt trước</strong> — có ảnh chân dung & số CCCD</div>
             <input type="file" id="a_cccd_front" accept="image/*" onchange="pubCccd(this,'front')"><div id="cccdFrontPrev" style="margin-top:6px"></div></div>
-          <div><div class="muted" style="font-size:12px;margin-bottom:4px">Mặt sau</div>
+          <div><div class="muted" style="font-size:12px;margin-bottom:4px"><strong>Mặt sau</strong> — có đặc điểm nhận dạng & ngày cấp</div>
             <input type="file" id="a_cccd_back" accept="image/*" onchange="pubCccd(this,'back')"><div id="cccdBackPrev" style="margin-top:6px"></div></div>
         </div>
       </div>
@@ -170,12 +171,30 @@ async function renderPublicRegister() {
     } catch (err) { toast(err.message, 'err'); btn.disabled = false; btn.textContent = 'Gửi đăng ký'; }
   });
 }
-function pubCccd(input, side) {
+// Nạp ảnh về đúng CHIỀU (theo cờ EXIF của điện thoại) rồi thu nhỏ → JPEG chuẩn, tránh ảnh bị xoay ngang/lộn ngược.
+function loadImgEl(file) { return new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = URL.createObjectURL(file); }); }
+async function normalizeImage(file, maxDim = 1600, quality = 0.85) {
+  let src, w, h;
+  try { src = await createImageBitmap(file, { imageOrientation: 'from-image' }); w = src.width; h = src.height; } // trình duyệt tự xoay đúng theo EXIF
+  catch (e) { src = await loadImgEl(file); w = src.naturalWidth || src.width; h = src.naturalHeight || src.height; }
+  const scale = Math.min(1, maxDim / Math.max(w, h));
+  const cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+  const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+  c.getContext('2d').drawImage(src, 0, 0, cw, ch);
+  if (src.close) src.close();
+  return { dataUrl: c.toDataURL('image/jpeg', quality), portrait: ch > cw };
+}
+async function pubCccd(input, side) {
   const f = input.files[0]; if (!f) return;
-  if (f.size > 6 * 1024 * 1024) { input.value = ''; return toast('Ảnh quá lớn (tối đa 6MB)', 'err'); }
-  const r = new FileReader();
-  r.onload = () => { window._pubCccd[side] = r.result; el(side === 'front' ? 'cccdFrontPrev' : 'cccdBackPrev').innerHTML = `<img src="${r.result}" style="max-width:100%;max-height:130px;border-radius:8px;border:1px solid var(--line)">`; };
-  r.readAsDataURL(f);
+  if (f.size > 12 * 1024 * 1024) { input.value = ''; return toast('Ảnh quá lớn (tối đa 12MB)', 'err'); }
+  const box = el(side === 'front' ? 'cccdFrontPrev' : 'cccdBackPrev');
+  box.innerHTML = '<span class="muted" style="font-size:12px">Đang xử lý ảnh…</span>';
+  try {
+    const { dataUrl, portrait } = await normalizeImage(f);
+    window._pubCccd[side] = dataUrl;
+    box.innerHTML = `<img src="${dataUrl}" style="max-width:100%;max-height:130px;border-radius:8px;border:1px solid var(--line)">`
+      + (portrait ? `<div class="muted" style="font-size:11.5px;color:var(--amber-ink);margin-top:4px">${IC.alert} Ảnh đang dọc — CCCD nên chụp NGANG, thẳng, đủ 4 góc.</div>` : '');
+  } catch (e) { input.value = ''; window._pubCccd[side] = null; box.innerHTML = ''; toast('Không đọc được ảnh, vui lòng chụp lại', 'err'); }
 }
 
 /* ================= ĐĂNG NHẬP ================= */

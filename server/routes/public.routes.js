@@ -86,11 +86,13 @@ router.post('/apply', async (req, res, next) => {
     const b = req.body;
     if (!b.name || !b.name.trim()) return res.status(400).json({ error: 'Vui lòng nhập họ tên' });
     if (!b.phone || !b.phone.trim()) return res.status(400).json({ error: 'Vui lòng nhập số điện thoại' });
+    // Ngày sinh: chỉ nhận YYYY-MM-DD; sai định dạng -> bỏ qua (null) thay vì lỗi 500
+    const birthDate = /^\d{4}-\d{2}-\d{2}$/.test(String(b.birth_date || '')) ? b.birth_date : null;
     // Chèn đơn trước (chưa có ảnh) để lấy id
     const { rows } = await query(
       `INSERT INTO applications (name, phone, gender, birth_date, code, class_name, rental_type, pref, note, wants_washing, wants_parking, plate, facility_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
-      [b.name.trim(), b.phone.trim(), b.gender === 'male' ? 'male' : 'female', b.birth_date || null,
+      [b.name.trim(), b.phone.trim(), b.gender === 'male' ? 'male' : 'female', birthDate,
        b.code || '', b.class_name || '', b.rental_type === 'phong' ? 'phong' : 'ghep', b.pref || '', b.note || '',
        !!b.wants_washing, !!b.wants_parking, b.plate || '', +b.facility_id || null]
     );
