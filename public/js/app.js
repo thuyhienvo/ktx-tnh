@@ -292,7 +292,7 @@ const AdminTitles = {
   washing: ['Máy giặt', 'Học viên đăng ký dùng máy giặt'],
   checkin: ['Check-in / Check-out', 'Lịch sử ra / vào ký túc xá'],
   invoices: ['Tiền phòng', 'Hóa đơn hàng tháng, điện nước, cọc'],
-  revenue: ['Doanh thu', 'Báo cáo doanh thu theo tháng / năm, đối chiếu Bravo'],
+  revenue: ['Dự báo doanh thu', 'Dự báo từ phiếu báo tiền phòng · đối chiếu Bravo (thu thật do Bravo quản lý)'],
   reg: ['Đăng ký ở nội trú', 'Duyệt đơn đăng ký vào ở'],
   checkout: ['Đăng ký trả phòng', 'Duyệt đơn xin trả phòng'],
   repair: ['Báo hư hỏng CSVC', 'Hư hỏng cơ sở vật chất → chuyển bảo trì'],
@@ -415,7 +415,7 @@ function renderAdmin() {
           <div class="grp">Vận hành</div>
           <button data-v="checkin"><span class="ico">${IC.key}</span><span class="lbl">Check-in / out</span></button>
           <button data-v="invoices"><span class="ico">${IC.wallet}</span><span class="lbl">Tiền phòng</span></button>
-          ${isAdmin ? `<button data-v="revenue"><span class="ico">${IC.trendingUp}</span><span class="lbl">Doanh thu</span></button>` : ''}
+          ${isAdmin ? `<button data-v="revenue"><span class="ico">${IC.trendingUp}</span><span class="lbl">Dự báo doanh thu</span></button>` : ''}
           <div class="grp">Tiếp nhận & Hỗ trợ</div>
           <button data-v="reg"><span class="ico">${IC.filePen}</span><span class="lbl">Đăng ký ở nội trú</span><span class="cnt" id="navReg" style="display:none"></span></button>
           <button data-v="checkout"><span class="ico">${IC.logOut}</span><span class="lbl">Đăng ký trả phòng</span><span class="cnt" id="navCheckout" style="display:none"></span></button>
@@ -544,7 +544,7 @@ function svgBars(rows) {
   const g = rows.map((r, i) => {
     const x = pl + cw * i + (cw - bw) / 2, yt = yOf(r.total), yp = yOf(r.paid);
     return `<g><rect x="${x}" y="${yt}" width="${bw}" height="${(pt + ch - yt).toFixed(1)}" rx="3" fill="var(--line2)"><title>${monthLabel(r.month)} · Tổng ${money(r.total)}</title></rect>` +
-      `<rect x="${x}" y="${yp}" width="${bw}" height="${(pt + ch - yp).toFixed(1)}" rx="3" fill="var(--brand)"><title>${monthLabel(r.month)} · Đã thu ${money(r.paid)}</title></rect>` +
+      `<rect x="${x}" y="${yp}" width="${bw}" height="${(pt + ch - yp).toFixed(1)}" rx="3" fill="var(--brand)"><title>${monthLabel(r.month)} · Dự báo ${money(r.paid)}</title></rect>` +
       `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${r.label}</text></g>`;
   }).join('');
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:var(--sans)">${g}</svg>`;
@@ -585,7 +585,7 @@ async function viewExec() {
     ['Máy giặt', sum(rev, 'washing'), '#9a7bb0'], ['Gửi xe', sum(rev, 'parking'), '#c25545'], ['Khác', sum(rev, 'other'), '#8a8172'],
   ].filter(x => x[1] > 0);
   const svcTotal = svcs.reduce((a, s) => a + s[1], 0) || 1;
-  const chartRows = rev.map(m => ({ month: m.month, label: m.month.slice(5), total: +m.total || 0, paid: +m.paid || 0 }));
+  const chartRows = rev.map(m => ({ month: m.month, label: m.month.slice(5), total: +m.total || 0, paid: +m.total || 0 })); // paid=total: chỉ hiển thị tiền phiếu báo (không track thu)
   const female = ST.students.filter(s => isOccupying(s) && s.gender === 'female').length;
   const male = occ - female;
   // --- Vận hành & tuân thủ (điểm 3): máy giặt · hợp đồng · hư hỏng · vi phạm ---
@@ -614,16 +614,14 @@ async function viewExec() {
     <div class="print-only" style="margin-bottom:14px"><h2 style="font-family:var(--serif);margin:0">${esc(ST.settings.dorm_name || 'Ký túc xá')} — Báo cáo điều hành ${year}</h2><div class="muted">Xuất ngày ${fmtDate(today())}</div></div>
     <div class="kpis">
       ${kpi(IC.userCheck, 'ic-green', occRate + '%', 'Tỉ lệ lấp đầy', occ + '/' + capacity + ' giường', "stuFilter='in';adminGo('students')")}
-      ${kpi(IC.percent, 'ic-brand', collection + '%', 'Tỉ lệ thu năm ' + year, '', "adminGo('revenue')")}
-      ${kpi(IC.banknote, 'ic-brand', money(totalYear), 'Doanh thu năm', yoy != null ? (yoy >= 0 ? '▲' : '▼') + Math.abs(yoy) + '% vs ' + (+year - 1) : '', "adminGo('revenue')")}
-      ${kpi(IC.wallet, 'ic-red', money(outstanding), 'Còn phải thu', '', "adminGo('invoices')")}
+      ${kpi(IC.trendingUp, 'ic-brand', money(totalYear), 'Dự báo doanh thu ' + year, yoy != null ? (yoy >= 0 ? '▲' : '▼') + Math.abs(yoy) + '% vs ' + (+year - 1) : '', "adminGo('revenue')")}
+      ${kpi(IC.users, 'ic-blue', occ, 'Học viên đang ở', '', "stuFilter='in';adminGo('students')")}
       ${kpi(IC.planeTakeoff, 'ic-gray', dep, 'Xuất cảnh năm ' + year, '', "stuFilter='departure';adminGo('students')")}
     </div>
-    <div class="panel"><div class="hd"><h2>${IC.trendingUp} Doanh thu theo tháng — ${year}</h2>
-      <div class="flex" style="gap:14px;font-size:12px"><span class="flex" style="gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:var(--brand);display:inline-block"></span>Đã thu</span><span class="flex" style="gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:var(--line2);display:inline-block"></span>Chưa thu</span></div>
-    </div><div class="pad">${chartRows.some(r => r.total) ? svgBars(chartRows) : '<div class="empty">Chưa có dữ liệu doanh thu năm này.</div>'}</div></div>
+    <div class="panel"><div class="hd"><h2>${IC.trendingUp} Dự báo doanh thu theo tháng — ${year}</h2><span class="muted" style="font-size:12px">Ước tính từ phiếu báo đã lập (thu thật do Bravo quản lý)</span></div>
+    <div class="pad">${chartRows.some(r => r.total) ? svgBars(chartRows) : '<div class="empty">Chưa có phiếu báo năm này.</div>'}</div></div>
     <div class="grid2" style="align-items:start">
-      <div class="panel" style="margin:0"><div class="hd"><h2>${IC.pie} Cơ cấu doanh thu</h2></div><div class="pad" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+      <div class="panel" style="margin:0"><div class="hd"><h2>${IC.pie} Cơ cấu doanh thu dự báo</h2></div><div class="pad" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
         ${svcs.length ? svgDonut(svcs.map(s => ({ label: s[0], value: s[1], color: s[2] }))) : '<div class="empty">Chưa có dữ liệu.</div>'}
         <div style="flex:1;min-width:170px">${svcs.map(s => `<div class="flex" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><span class="flex" style="gap:8px"><span style="width:11px;height:11px;border-radius:3px;background:${s[2]};display:inline-block"></span>${s[0]}</span><strong>${Math.round(s[1] / svcTotal * 100)}%</strong></div>`).join('')}</div>
       </div></div>
@@ -882,7 +880,7 @@ function viewStudents() {
     <div class="panel"><div class="hd"><h2>Học viên (<span id="stuCount">${list.length}</span>)</h2>
       <div class="search"><span class="i">${IC.search}</span><input id="ss" placeholder="Tìm tên, mã, lớp, SĐT, số phòng..." value="${esc(stuSearch)}"></div>
     </div><div class="table-wrap">
-      ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}${sTh('debt', 'Còn nợ', 'num')}<th>Dự kiến XC</th>${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
+      ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}<th>Dự kiến XC</th>${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
       ${list.map(s => {
         const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.alert}</span>` : ''}${contractOverdue(s) ? `<span title="Thuê ghép >7 ngày chưa ký HĐ" style="color:var(--red-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
         const ds = esc((s.name + ' ' + (s.code || '') + ' ' + (s.phone || '') + ' ' + (s.class_name || '') + ' ' + (s.room_name || '')).toLowerCase());
@@ -894,14 +892,13 @@ function viewStudents() {
         <td>${s.room_name ? `<strong>${esc(s.room_name)}</strong>` : '<span class="muted">Chưa xếp</span>'}<div class="sub2">${RENTAL_LABEL[s.rental_type] || 'Thuê ghép'}</div></td>
         <td><span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span></td>
         <td>${depositBadge(s)}${s.deposit_status === 'none' && isOccupying(s) ? ` <button class="btn sm ghost" title="Ghi nhận đóng cọc" onclick="depositForm(${s.id})">＋</button>` : ''}</td>
-        <td class="num">${s.debt ? `<span class="badge red">${money(s.debt)}</span>` : '<span class="muted">—</span>'}</td>
         <td class="muted" style="font-size:12px;white-space:nowrap">${s.expected_departure ? fmtDate(s.expected_departure) : (['departure', 'urgent_visa'].includes(s.checkout_reason) && s.check_out_date ? fmtDate(s.check_out_date) : '—')}</td>
         <td>${statusBadge(s)}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${isOccupying(s) ? `<button class="btn sm danger" onclick="checkOutForm(${s.id})">Check-out</button>` : `<button class="btn sm green" onclick="checkInForm(${s.id})">Check-in</button>`}
           <button class="btn sm pri" onclick="studentDetail(${s.id})">Chi tiết</button>
         </div></td></tr>`; }).join('')}
-      <tr class="no-result" style="display:none"><td colspan="8"><div class="empty">Không tìm thấy học viên phù hợp.</div></td></tr>
+      <tr class="no-result" style="display:none"><td colspan="7"><div class="empty">Không tìm thấy học viên phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có học viên phù hợp.</div>`}
     </div></div>`;
   const ss = el('ss'); if (ss) { ss.addEventListener('input', () => stuSearch = ss.value); attachRowSearch(ss, 'stuCount'); }
@@ -1078,7 +1075,7 @@ async function studentDetail(id) {
       <div class="cards" style="margin-bottom:16px">
         <div class="stat"><div class="l">Phòng</div><div class="v sm">${esc(s.room_name || '—')}${s.room_hang ? ` <span class="badge gray">${s.room_hang}</span>` : ''}</div></div>
         <div class="stat"><div class="l">Hình thức</div><div class="v sm">${RENTAL_LABEL[s.rental_type] || 'Thuê ghép'}</div></div>
-        <div class="stat"><div class="l">Còn nợ</div><div class="v sm" style="color:${s.debt ? 'var(--red)' : 'var(--green)'}">${money(s.debt)}</div></div>
+        <div class="stat"><div class="l">Tạm trú</div><div class="v sm">${s.residency_status === 'registered' ? '<span class="badge green">Đã ĐK</span>' : '<span class="badge amber">Chưa</span>'}</div></div>
       </div>
       <p><strong>Mã HV:</strong> ${esc(s.code || '—')} &nbsp;•&nbsp; <strong>Lớp:</strong> ${esc(s.class_name || '—')} &nbsp;•&nbsp; <strong>Ngày sinh:</strong> ${fmtDate(s.birth_date)}</p>
       <p><strong>SĐT:</strong> ${esc(s.phone || '—')} &nbsp;•&nbsp; <strong>SĐT phụ huynh:</strong> ${esc(s.parent_phone || '—')} &nbsp;•&nbsp; <strong>Tạm trú:</strong> ${s.residency_status === 'registered' ? '<span class="badge green">Đã đăng ký</span>' : '<span class="badge amber">Chưa đăng ký</span>'}</p>
@@ -1127,10 +1124,10 @@ async function studentDetail(id) {
         </tbody></table></div>` : '<p class="muted" style="margin:0">Chưa có vi phạm.</p>'}
       </div></div>
 
-      <h4 style="margin:18px 0 8px">${IC.receipt} Hóa đơn tiền phòng</h4>
-      ${invs.length ? `<div class="table-wrap"><table><thead><tr><th>Kỳ</th><th class="num">Tổng</th><th>Trạng thái</th></tr></thead><tbody>
-        ${invs.map(i => `<tr><td>${monthLabel(i.month)}</td><td class="num">${money(i.total)}</td><td>${invStatusBadge(i.status)}</td></tr>`).join('')}
-      </tbody></table></div>` : '<p class="muted">Chưa có hóa đơn.</p>'}
+      <h4 style="margin:18px 0 8px">${IC.receipt} Phiếu báo tiền phòng</h4>
+      ${invs.length ? `<div class="table-wrap"><table><thead><tr><th>Kỳ</th><th class="num">Tổng tiền phiếu</th></tr></thead><tbody>
+        ${invs.map(i => `<tr><td>${monthLabel(i.month)}</td><td class="num"><strong>${money(i.total)}</strong></td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">Chưa có phiếu báo.</p>'}
       <h4 style="margin:18px 0 8px">${IC.history} Lịch sử ra/vào</h4>
       ${logs.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày</th><th>Hoạt động</th><th>Ghi chú</th></tr></thead><tbody>
         ${logs.map(l => `<tr><td>${fmtDate(l.date)}</td><td>${l.type === 'in' ? '<span class="badge green">Check-in</span>' : '<span class="badge red">Check-out</span>'}</td><td class="muted">${esc(l.note || '')}</td></tr>`).join('')}
@@ -1492,40 +1489,37 @@ async function viewRevenue() {
     <td><strong>${m.month.slice(5)}/${m.month.slice(0, 4)}</strong></td>
     ${REV_SERVICES.filter(x => x[0] !== 'other' || sum('other')).map(([k]) => `<td class="num">${+m[k] ? money(m[k]) : '<span class="muted">—</span>'}</td>`).join('')}
     <td class="num"><strong>${money(m.total)}</strong></td>
-    <td class="num" style="color:var(--green)">${money(m.paid)}</td>
   </tr>`).join('');
 
   el('content').innerHTML = `
     <div class="cards">
       <div class="stat"><div class="l">${IC.calendar} Năm</div><div class="v sm"><select id="ry" style="font-size:15px;font-weight:600;padding:6px 8px">${(years.length ? years : [revYear]).map(y => `<option value="${y}" ${y === revYear ? 'selected' : ''}>${y}</option>`).join('')}</select></div></div>
-      <div class="stat"><div class="l">${IC.wallet} Tổng doanh thu năm</div><div class="v sm">${money(grand)}</div></div>
-      <div class="stat"><div class="l">${IC.checkCircle} Đã thu</div><div class="v sm" style="color:var(--green)">${money(paid)}</div></div>
-      <div class="stat"><div class="l"><span class="dot-svg" style="color:var(--red)">${IC.dot}</span> Chưa thu</div><div class="v sm" style="color:var(--red)">${money(grand - paid)}</div></div>
+      <div class="stat"><div class="l">${IC.trendingUp} Tổng dự báo doanh thu năm</div><div class="v sm">${money(grand)}</div></div>
     </div>
 
-    <div class="panel"><div class="hd"><h2>${IC.trendingUp} Doanh thu theo tháng — năm ${revYear}</h2>
+    <div class="panel"><div class="hd"><h2>${IC.trendingUp} Dự báo doanh thu theo tháng — năm ${revYear}</h2>
       <button class="btn sm" onclick='exportRevenue(${JSON.stringify(data).replace(/'/g, "&#39;")})'>${IC.download} Xuất Excel (CSV)</button></div>
       <div class="table-wrap">
       ${data.length ? `<table><thead><tr><th>Tháng</th>
         ${REV_SERVICES.filter(x => x[0] !== 'other' || sum('other')).map(([, l]) => `<th class="num">${l.replace('Phí ', '').replace(' sinh hoạt', '').replace(' (tiền phòng)', '')}</th>`).join('')}
-        <th class="num">Tổng</th><th class="num">Đã thu</th></tr></thead>
+        <th class="num">Tổng</th></tr></thead>
         <tbody>${monthRows}
           <tr style="background:#faf6f2"><td><strong>Cả năm</strong></td>
           ${REV_SERVICES.filter(x => x[0] !== 'other' || sum('other')).map(([k]) => `<td class="num"><strong>${money(sum(k))}</strong></td>`).join('')}
-          <td class="num"><strong>${money(grand)}</strong></td><td class="num" style="color:var(--green)"><strong>${money(paid)}</strong></td></tr>
-        </tbody></table>` : '<div class="empty">Chưa có hóa đơn trong năm này.</div>'}
+          <td class="num"><strong>${money(grand)}</strong></td></tr>
+        </tbody></table>` : '<div class="empty">Chưa có phiếu báo trong năm này.</div>'}
       </div>
     </div>
 
     <div class="panel"><div class="hd"><h2>${IC.receipt} Tổng theo dịch vụ (đối chiếu Bravo) — năm ${revYear}</h2></div>
-      <div class="table-wrap"><table><thead><tr><th>Mã SP Bravo</th><th>Loại phí</th><th>Dịch vụ</th><th class="num">Doanh thu cả năm</th></tr></thead><tbody>
+      <div class="table-wrap"><table><thead><tr><th>Mã SP Bravo</th><th>Loại phí</th><th>Dịch vụ</th><th class="num">Tiền phiếu cả năm</th></tr></thead><tbody>
         ${REV_SERVICES.map(([k, l, codeKey]) => { const v = sum(k); if (!v && k === 'other') return ''; return `<tr>
           <td><strong>${esc(ST.settings[codeKey] || '—')}</strong></td>
           <td class="muted">${esc(ST.settings.bravo_fee_type || '')}</td>
           <td>${l}</td><td class="num">${money(v)}</td></tr>`; }).join('')}
-        <tr style="background:#faf6f2"><td colspan="3"><strong>TỔNG DOANH THU</strong></td><td class="num"><strong>${money(grand)}</strong></td></tr>
+        <tr style="background:#faf6f2"><td colspan="3"><strong>TỔNG TIỀN PHIẾU</strong></td><td class="num"><strong>${money(grand)}</strong></td></tr>
       </tbody></table></div>
-      <div class="pad muted" style="font-size:12.5px">${IC.bulb} Mã sản phẩm Bravo chỉnh trong <a href="#" onclick="adminGo('settings');return false">Cài đặt</a>. Doanh thu = tổng tiền đã lập hóa đơn (chưa gồm cọc).</div>
+      <div class="pad muted" style="font-size:12.5px">${IC.bulb} Mã sản phẩm Bravo chỉnh trong <a href="#" onclick="adminGo('settings');return false">Cài đặt</a>. Số liệu = tổng tiền đã lập phiếu báo (chưa gồm cọc). Thu tiền thực tế do Bravo quản lý.</div>
     </div>
 
     <div class="panel"><div class="hd"><h2>${IC.planeTakeoff} Học viên xuất cảnh đi Nhật — năm ${revYear}</h2><span class="muted" style="font-size:12px">gồm xuất cảnh theo kế hoạch + đột xuất</span></div>
@@ -1538,8 +1532,8 @@ async function viewRevenue() {
 }
 function exportRevenue(data) {
   const cols = REV_SERVICES.map(x => x[1]);
-  const head = ['Thang', ...cols, 'Tong', 'Da thu'];
-  const rows = data.map(m => [m.month, ...REV_SERVICES.map(([k]) => +m[k] || 0), +m.total || 0, +m.paid || 0]);
+  const head = ['Thang', ...cols, 'Tong'];
+  const rows = data.map(m => [m.month, ...REV_SERVICES.map(([k]) => +m[k] || 0), +m.total || 0]);
   const sum = k => data.reduce((a, m) => a + (+m[k] || 0), 0);
   rows.push(['Ca nam', ...REV_SERVICES.map(([k]) => sum(k)), sum('total'), sum('paid')]);
   const csv = '﻿' + [head, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
@@ -2017,23 +2011,16 @@ async function viewInvoices() {
   el('content').innerHTML = `
     <div class="cards">
       <div class="stat"><div class="l">${IC.calendar} Kỳ</div><div class="v sm"><select id="im" style="font-size:15px;font-weight:600;padding:6px 8px">${(months.length ? months : [invMonth]).map(m => `<option value="${m}" ${m === invMonth ? 'selected' : ''}>${monthLabel(m)}</option>`).join('')}</select></div></div>
-      <div class="stat"><div class="l">Tổng phải thu</div><div class="v sm">${money(total)}</div></div>
-      <div class="stat"><div class="l">${IC.checkCircle} Đã thu</div><div class="v sm" style="color:var(--green)">${money(paid)}</div></div>
-      <div class="stat"><div class="l"><span class="dot-svg" style="color:var(--red)">${IC.dot}</span> Còn thiếu</div><div class="v sm" style="color:var(--red)">${money(total - paid)}</div></div>
+      <div class="stat"><div class="l">${IC.receipt} Số phiếu</div><div class="v sm">${all.length}</div></div>
+      <div class="stat"><div class="l">Tổng tiền phiếu (dự báo)</div><div class="v sm">${money(total)}</div></div>
     </div>
-    <div class="pill-row">
-      <button class="btn sm ${invFilter === 'all' ? 'pri' : ''}" onclick="invFilter='all';viewInvoices()">Tất cả (${all.length})</button>
-      <button class="btn sm ${invFilter === 'unpaid' ? 'pri' : ''}" onclick="invFilter='unpaid';viewInvoices()">Chưa đóng (${all.filter(i => i.status !== 'paid').length})</button>
-      <button class="btn sm ${invFilter === 'paid' ? 'pri' : ''}" onclick="invFilter='paid';viewInvoices()">Đã đóng (${all.filter(i => i.status === 'paid').length})</button>
-    </div>
-    <div class="panel"><div class="hd"><h2>Hóa đơn ${monthLabel(invMonth)} (<span id="invCount">${list.length}</span>)</h2>
+    <div class="panel"><div class="hd"><h2>Phiếu báo tiền phòng ${monthLabel(invMonth)} (<span id="invCount">${list.length}</span>)</h2>
       <div class="toolbar">
         <div class="search"><span class="i">${IC.search}</span><input id="invs" placeholder="Tìm tên HV / số phòng..." value="${esc(invSearch)}"></div>
-        ${all.filter(i => i.status !== 'paid').length ? `<button class="btn sm green" onclick="markMonthPaid()">${IC.check} Đánh dấu cả tháng đã thu</button>` : ''}
         ${all.length ? `<button class="btn sm" onclick='exportCSV(${JSON.stringify(list).replace(/'/g, "&#39;")})'>${IC.download} Xuất Excel (CSV)</button>` : ''}</div></div>
       <div class="table-wrap">
       ${all.length === 0 ? `<div class="empty">Chưa có hóa đơn nào cho kỳ này.<br><br><button class="btn pri" onclick="generateForm()">${IC.receipt} Tạo hóa đơn</button></div>` :
-      list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Tổng</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+      list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Tổng</th><th></th></tr></thead><tbody>
         ${list.map(i => `<tr data-s="${esc(((i.student_name || '') + ' ' + (i.student_code || '') + ' ' + (i.room_name || '')).toLowerCase())}">
           <td><strong>${esc(i.student_name)}</strong>${i.student_code ? `<div class="muted" style="font-size:11px">${esc(i.student_code)}</div>` : ''}</td>
           <td>${esc(i.room_name || '—')}</td>
@@ -2045,10 +2032,8 @@ async function viewInvoices() {
           <td class="num">${i.washing_charge ? money(i.washing_charge) : '—'}</td>
           <td class="num">${i.parking_charge ? money(i.parking_charge) : '—'}</td>
           <td class="num"><strong>${money(i.total)}</strong></td>
-          <td>${invStatusBadge(i.status)}</td>
           <td class="num"><div class="rowbtns" style="justify-content:flex-end">
-            <button class="btn sm" onclick='phieuBao(${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.fileText} Phiếu báo</button>
-            ${invActions(i)}
+            <button class="btn sm pri" onclick='phieuBao(${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.fileText} Phiếu báo</button>
             <button class="btn sm ghost" title="Tính lại theo số ngày ở hiện tại" onclick="recalcInv(${i.id})">${IC.refresh}</button>
             <button class="btn sm ghost" onclick='invoiceForm(${i.id}, ${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.pencil}</button>
             <button class="btn sm ghost" onclick="delInvoice(${i.id})">${IC.trash}</button>
@@ -2257,13 +2242,40 @@ async function phieuBao(inv) {
     </div></div></div>
     <div class="mf rc-noprint">
       <button class="btn" onclick="closeModal()">Đóng</button>
-      <button class="btn pri" onclick="window.print()">${IC.printer} In / Lưu PDF</button>
+      <button class="btn pri" onclick="downloadPhieuBao('phieu-bao-${esc(String(s.code || inv.student_id))}-${inv.month}')">${IC.download} Tải phiếu báo</button>
     </div>`, true);
 }
+// Tải phiếu báo dưới dạng file HTML tự chứa (không in) — mở ra đúng định dạng, tự lưu PDF nếu muốn
+function downloadPhieuBao(fname) {
+  const inner = el('receiptArea') ? el('receiptArea').innerHTML : '';
+  const css = `<style>
+    body{margin:0;padding:24px;background:#fff}
+    .receipt{font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#2a251f;max-width:620px;margin:0 auto}
+    .receipt .rc-head{text-align:center;border-bottom:2px solid #b8863b;padding-bottom:16px;margin-bottom:16px}
+    .receipt .rc-head h2{margin:0;font-size:24px;color:#2a251f;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+    .receipt .rc-head .addr{font-size:12.5px;color:#6a6055;margin-top:5px}
+    .receipt .rc-title{text-align:center;font-size:15px;font-weight:700;margin:6px 0 16px;letter-spacing:.03em;text-transform:uppercase;color:#8a6528}
+    .receipt .rc-info{font-size:13.5px;line-height:1.95}
+    .receipt .rc-info b{display:inline-block;min-width:120px;color:#4a443c}
+    .receipt table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px}
+    .receipt th,.receipt td{border:1px solid #e2d8ca;padding:9px 11px;text-align:left}
+    .receipt th{background:#f5ecd9;font-size:12px;color:#4a443c}
+    .receipt td.n,.receipt th.n{text-align:right}
+    .receipt .rc-total{background:#fbf4e8}
+    .receipt .rc-total td{font-weight:800;font-size:15px;color:#8a6528}
+    .receipt .rc-note{font-size:12.5px;color:#6a6055;margin-top:14px;border-top:1px dashed #d8cdbd;padding-top:10px}
+    .receipt .rc-note svg{width:15px;height:15px;vertical-align:-2px}
+  </style>`;
+  const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${esc(fname)}</title>${css}</head><body>${inner}</body></html>`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+  a.download = fname + '.html'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast('Đã tải phiếu báo');
+}
 function exportCSV(rows) {
-  const head = ['Ho ten', 'Ma HV', 'Phong', 'Ky', 'So ngay o', 'Tien phong', 'Dien (kWh)', 'Tien dien', 'Nuoc', 'Dich vu', 'May giat', 'Gui xe', 'Khac', 'Tong', 'Trang thai'];
-  const stTxt = s => s === 'paid' ? 'Da dong' : s === 'sent' ? 'Da gui QR' : 'Chua gui';
-  const data = rows.map(i => [i.student_name, i.student_code || '', i.room_name || '', i.month, i.days_stayed, i.room_charge, i.electric_kwh, i.electric_charge, i.water_charge, i.service_charge, i.washing_charge, i.parking_charge, i.other_charge, i.total, stTxt(i.status)]);
+  const head = ['Ho ten', 'Ma HV', 'Phong', 'Ky', 'So ngay o', 'Tien phong', 'Dien (kWh)', 'Tien dien', 'Nuoc', 'Dich vu', 'May giat', 'Gui xe', 'Khac', 'Tong'];
+  const data = rows.map(i => [i.student_name, i.student_code || '', i.room_name || '', i.month, i.days_stayed, i.room_charge, i.electric_kwh, i.electric_charge, i.water_charge, i.service_charge, i.washing_charge, i.parking_charge, i.other_charge, i.total]);
   const csv = '﻿' + [head, ...data].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -2671,13 +2683,13 @@ async function loadStudentPortal() {
   let profile, invs, damage, coutReqs, myVios = [];
   try { [profile, invs, damage, coutReqs, myVios] = await Promise.all([API.meProfile(), API.meInvoices(), API.meDamage(), API.meCheckoutReq(), API.meViolations().catch(() => [])]); }
   catch (e) { el('content').innerHTML = `<div class="hint">${IC.alert} ${esc(e.message)}</div>`; return; }
-  const debt = invs.filter(i => i.status !== 'paid').reduce((a, i) => a + (+i.total || 0), 0);
+  const billNow = invs.filter(i => i.month === curMonth()).reduce((a, i) => a + (+i.total || 0), 0);
   const depTxt = { held: 'Đang giữ', refunded: 'Đã hoàn', forfeited: 'Không hoàn', none: '—' }[profile.deposit_status] || '—';
   const pendingCout = coutReqs.find(c => c.status === 'pending');
   el('content').innerHTML = `
     <div class="cards">
       <div class="stat"><div class="l">${IC.doorOpen} Phòng của tôi</div><div class="v sm">${esc(profile.room_name || 'Chưa xếp')}</div></div>
-      <div class="stat"><div class="l"><span class="dot-svg" style="color:var(--red)">${IC.dot}</span> Còn nợ</div><div class="v sm" style="color:${debt ? 'var(--red)' : 'var(--green)'}">${money(debt)}</div></div>
+      <div class="stat"><div class="l">${IC.receipt} Phiếu tháng này</div><div class="v sm">${money(billNow)}</div></div>
       <div class="stat"><div class="l">${IC.lock} Cọc</div><div class="v sm">${depTxt}</div></div>
     </div>
     <div class="panel"><div class="hd"><h2>${IC.user} Thông tin của tôi</h2></div><div class="pad">
@@ -2694,10 +2706,10 @@ async function loadStudentPortal() {
     </div></div>` : ''}
 
     <div class="panel"><div class="hd"><h2>${IC.receipt} Phiếu báo tiền phòng</h2></div><div class="table-wrap">
-      ${invs.length ? `<table><thead><tr><th>Kỳ</th><th class="num">Phòng</th><th class="num">Điện</th><th class="num">Khác</th><th class="num">Tổng</th><th>Trạng thái</th></tr></thead><tbody>
-        ${invs.map(i => `<tr><td>${monthLabel(i.month)}</td><td class="num">${money(i.room_charge)}</td><td class="num">${money(i.electric_charge)}</td><td class="num">${money((+i.water_charge) + (+i.service_charge) + (+i.washing_charge) + (+i.parking_charge))}</td><td class="num"><strong>${money(i.total)}</strong></td><td>${invStatusBadge(i.status)}</td></tr>`).join('')}
+      ${invs.length ? `<table><thead><tr><th>Kỳ</th><th class="num">Phòng</th><th class="num">Điện</th><th class="num">Khác</th><th class="num">Tổng</th></tr></thead><tbody>
+        ${invs.map(i => `<tr><td>${monthLabel(i.month)}</td><td class="num">${money(i.room_charge)}</td><td class="num">${money(i.electric_charge)}</td><td class="num">${money((+i.water_charge) + (+i.service_charge) + (+i.washing_charge) + (+i.parking_charge))}</td><td class="num"><strong>${money(i.total)}</strong></td></tr>`).join('')}
       </tbody></table>` : '<div class="empty">Chưa có phiếu báo.</div>'}
-      <div class="pad muted" style="font-size:12.5px">${IC.creditCard} Đóng tiền qua mã QR quản lý gửi trên Zalo. Sau khi đóng, quản lý cập nhật "Đã đóng".</div>
+      <div class="pad muted" style="font-size:12.5px">${IC.creditCard} Đóng tiền qua mã QR quản lý gửi trên Zalo theo hạn hằng tháng.</div>
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.handCoins} Hỗ trợ học viên</h2><button class="btn sm pri" onclick="damageForm()">${IC.plus} Gửi yêu cầu hỗ trợ</button></div><div class="table-wrap">
