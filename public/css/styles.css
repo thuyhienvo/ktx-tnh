@@ -283,6 +283,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);b
 .es-ic{width:32px;height:32px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .es-ic .ic-svg{width:17px;height:17px}
 .es-ic.ic-blue .ic-svg{color:var(--blue-ink)}
+.es-ic.ic-amber .ic-svg{color:var(--amber-ink)}
 .es-ic.ic-brand .ic-svg{color:var(--brand-d)}
 .es-ic.ic-gray .ic-svg{color:var(--gray-ink)}
 .es-ic.ic-red .ic-svg{color:var(--red-ink)}

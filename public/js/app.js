@@ -598,8 +598,10 @@ async function viewExec() {
   const cSignedF = occStu.filter(s => s.gender === 'female' && signedC(s)).length;
   const cSignedM = occStu.filter(s => s.gender === 'male' && signedC(s)).length;
   const cOverdue = occStu.filter(contractOverdue).length;
-  const washUsers = occStu.filter(s => s.uses_washing).length;
-  const washRev = sum(rev, 'washing');
+  const resiReg = occStu.filter(s => s.residency_status === 'registered').length;
+  const resiUnreg = occStu.length - resiReg;
+  const resiOverdueE = occStu.filter(s => s.residency_status === 'unregistered' && stayDays(s) > 7).length;
+  const resiPct = occStu.length ? Math.round(resiReg / occStu.length * 100) : 0;
   const dmg = (ST.damage || []).filter(d => (d.category || 'damage') === 'damage');
   const dmgDone = dmg.filter(d => d.status === 'done').length;
   const dmgBlocked = dmg.filter(d => d.status === 'blocked').length;
@@ -640,7 +642,7 @@ async function viewExec() {
     </div>
     <div class="panel"><div class="hd"><h2>${IC.shield} Vận hành &amp; Tuân thủ — ${year}</h2></div><div class="pad">
       <div class="exec-stats">
-        ${es(IC.washer, 'ic-blue', 'Máy giặt', `${washUsers}<span> HV đang dùng</span>`, `Doanh thu năm: <strong>${money(washRev)}</strong>`, null, "stuFilter='washing';adminGo('students')")}
+        ${es(IC.flag, 'ic-amber', 'Tạm trú', `${resiReg}<span> đã đăng ký</span>`, `${resiUnreg} chưa đăng ký${resiOverdueE ? ` · <strong style="color:var(--red-ink)">${resiOverdueE} quá 7 ngày</strong>` : ''}`, resiPct, "residencyModal()")}
         ${es(IC.fileText, 'ic-brand', 'Hợp đồng', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá 7 ngày</strong>` : ''}`, cPct, "stuFilter='nocontract';adminGo('students')")}
         ${es(IC.wrench, 'ic-gray', 'Hư hỏng', `${dmg.length}<span> lượt báo</span>`, `Đã xử lý ${dmgDone} · đang xử lý ${dmgOpen} · chưa xử lý được ${dmgBlocked}`, dmgPct, "adminGo('repair')")}
         ${es(IC.alert, 'ic-red', 'Vi phạm', `${vioTotal}<span> lượt</span>`, `${vioNeedMail} HV cần báo trường${vioSev ? ' · ' + vioSev : ''}`, null, "adminGo('violations')")}
