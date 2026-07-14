@@ -643,7 +643,7 @@ async function viewExec() {
         </div>
       </div></div>
     </div>
-    <div class="panel"><div class="hd"><h2>${IC.shield} Vận hành &amp; Tuân thủ — ${year}</h2></div><div class="pad">
+    <div class="panel"><div class="hd"><h2>${IC.shield} Vận hành &amp; Tuân thủ</h2></div><div class="pad">
       <div class="exec-stats">
         ${es(IC.flag, 'ic-amber', 'Tạm trú', `${resiReg}<span> đã đăng ký</span>`, `${resiUnreg} chưa đăng ký${resiOverdueE ? ` · <strong style="color:var(--red-ink)">${resiOverdueE} quá 7 ngày</strong>` : ''}`, resiPct, "residencyModal()")}
         ${es(IC.fileText, 'ic-brand', 'Hợp đồng (ghép dài hạn)', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá 7 ngày</strong>` : ''}${shortTerm ? ` · Ngắn hạn: ${shortTerm} bàn giao${shortPending ? ` (<strong style="color:var(--amber-ink)">${shortPending} chưa ký phiếu</strong>)` : ''}` : ''}`, cPct, "stuFilter='nocontract';adminGo('students')")}
