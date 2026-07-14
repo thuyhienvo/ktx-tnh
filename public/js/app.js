@@ -592,12 +592,15 @@ async function viewExec() {
   const male = occ - female;
   // --- Vận hành & tuân thủ (điểm 3): máy giặt · hợp đồng · hư hỏng · vi phạm ---
   const occStu = ST.students.filter(isOccupying);
-  const signedC = s => ['done', 'scanned'].includes(s.contract_status);
-  const cSigned = occStu.filter(signedC).length, cUnsigned = occStu.length - cSigned;
-  const cPct = occStu.length ? Math.round(cSigned / occStu.length * 100) : 0;
-  const cSignedF = occStu.filter(s => s.gender === 'female' && signedC(s)).length;
-  const cSignedM = occStu.filter(s => s.gender === 'male' && signedC(s)).length;
+  const needC = occStu.filter(contractRequired);              // ghép dài hạn (>=2 tháng) → BẮT BUỘC ký HĐ
+  const cSigned = needC.filter(contractSigned).length;
+  const cUnsigned = needC.length - cSigned;                   // cần ký mà chưa ký
+  const cPct = needC.length ? Math.round(cSigned / needC.length * 100) : 0;
+  const cSignedF = needC.filter(s => s.gender === 'female' && contractSigned(s)).length;
+  const cSignedM = needC.filter(s => s.gender === 'male' && contractSigned(s)).length;
   const cOverdue = occStu.filter(contractOverdue).length;
+  const shortTerm = occStu.filter(isShortTermGhep).length;    // NHÓM RIÊNG: thuê ngắn hạn (<2 tháng) — chỉ ký phiếu bàn giao, không cần HĐ
+  const shortPending = occStu.filter(handoverPending).length; // ngắn hạn chưa ký phiếu bàn giao
   const resiReg = occStu.filter(s => s.residency_status === 'registered').length;
   const resiUnreg = occStu.length - resiReg;
   const resiOverdueE = occStu.filter(s => s.residency_status === 'unregistered' && stayDays(s) > 7).length;
@@ -643,7 +646,7 @@ async function viewExec() {
     <div class="panel"><div class="hd"><h2>${IC.shield} Vận hành &amp; Tuân thủ — ${year}</h2></div><div class="pad">
       <div class="exec-stats">
         ${es(IC.flag, 'ic-amber', 'Tạm trú', `${resiReg}<span> đã đăng ký</span>`, `${resiUnreg} chưa đăng ký${resiOverdueE ? ` · <strong style="color:var(--red-ink)">${resiOverdueE} quá 7 ngày</strong>` : ''}`, resiPct, "residencyModal()")}
-        ${es(IC.fileText, 'ic-brand', 'Hợp đồng', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá 7 ngày</strong>` : ''}`, cPct, "stuFilter='nocontract';adminGo('students')")}
+        ${es(IC.fileText, 'ic-brand', 'Hợp đồng (ghép dài hạn)', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá 7 ngày</strong>` : ''}${shortTerm ? ` · Ngắn hạn: ${shortTerm} bàn giao${shortPending ? ` (<strong style="color:var(--amber-ink)">${shortPending} chưa ký phiếu</strong>)` : ''}` : ''}`, cPct, "stuFilter='nocontract';adminGo('students')")}
         ${es(IC.wrench, 'ic-gray', 'Bảo trì', `${dmg.length}<span> lượt báo</span>`, `Đã xử lý ${dmgDone} · đang xử lý ${dmgOpen} · chưa xử lý được ${dmgBlocked}`, dmgPct, "adminGo('repair')")}
         ${es(IC.alert, 'ic-red', 'Vi phạm', `${vioTotal}<span> lượt</span>`, `${vioNeedMail} HV cần báo trường${vioSev ? ' · ' + vioSev : ''}`, null, "adminGo('violations')")}
       </div>
@@ -674,7 +677,7 @@ function residencyModal() {
 // Popup gộp "Hợp đồng chưa hoàn thiện": 3 loại cần xử lý, bấm từng loại xem danh sách
 function contractIssuesModal() {
   const occ = ST.students.filter(isOccupying);
-  const nc = occ.filter(s => ['unsigned', 'none'].includes(s.contract_status)).length;
+  const nc = occ.filter(s => contractRequired(s) && !contractSigned(s)).length;
   const ov = occ.filter(contractOverdue).length;
   const ho = occ.filter(handoverPending).length;
   const row = (ico, label, n, filter, cls) => `<div class="todo ${n ? cls : 'calm'}" ${n ? `onclick="closeModal();stuFilter='${filter}';adminGo('students')"` : ''}><span class="ic">${ico}</span><span class="tx">${label}</span><span class="n">${n}</span></div>`;
@@ -724,11 +727,10 @@ async function viewDashboard() {
   const depYear = ST.students.filter(s => isDeparture(s) && s.check_out_date.slice(0, 4) === curMonth().slice(0, 4)).length;
   const noResidency = occ.filter(s => s.residency_status !== 'registered').length;
   const resiOverdue = occ.filter(s => s.residency_status === 'unregistered' && stayDays(s) > 7).length; // chưa ĐK tạm trú, đã ở >7 ngày
-  const noContract = occ.filter(s => ['unsigned', 'none'].includes(s.contract_status)).length;
   const ghepOverdue = occ.filter(contractOverdue).length; // thuê ghép >7 ngày chưa ký HĐ
   const handoverTodo = occ.filter(handoverPending).length; // ngắn hạn chưa ký bàn giao
   // Gộp 3 loại "hợp đồng chưa hoàn thiện" (đếm không trùng)
-  const contractIncomplete = occ.filter(s => ['unsigned', 'none'].includes(s.contract_status) || contractOverdue(s) || handoverPending(s)).length;
+  const contractIncomplete = occ.filter(s => (contractRequired(s) && !contractSigned(s)) || handoverPending(s)).length;
   const depExpected = occ.filter(willDepartSoon).length; // dự kiến xuất cảnh (điều phối phòng)
   const totalVehicles = occ.reduce((a, s) => a + (+s.vehicle_count || 0), 0);
   const heldDeposit = ST.students.filter(s => s.deposit_status === 'held').reduce((a, s) => a + (+s.deposit_amount || 0), 0);
@@ -750,8 +752,7 @@ async function viewDashboard() {
   // act = biểu thức onclick đầy đủ (đặt đúng bộ lọc / tab rồi mới điều hướng) → bấm vào đúng danh sách cần xử lý
   const todo = (ico, tx, n, act, cls) => `<div class="todo ${n ? cls : 'calm'}" ${act && n ? `onclick="${act}"` : ''}><span class="ic">${ico}</span><span class="tx">${tx}</span><span class="n">${n}</span></div>`;
 
-  const signed = s => ['done', 'scanned'].includes(s.contract_status);
-  const zone = g => { const arr = occ.filter(s => s.gender === g); const sg = arr.filter(signed).length; return { sg, un: arr.length - sg, wash: arr.filter(s => s.uses_washing).length, veh: arr.reduce((a, s) => a + (+s.vehicle_count || 0), 0), total: arr.length }; };
+  const zone = g => { const arr = occ.filter(s => s.gender === g); const need = arr.filter(contractRequired); const sg = need.filter(contractSigned).length; return { sg, un: need.length - sg, wash: arr.filter(s => s.uses_washing).length, veh: arr.reduce((a, s) => a + (+s.vehicle_count || 0), 0), total: arr.length }; };
   const zE = zone('female'), zS = zone('male');
   const zRow = (name, z, tot) => `<tr ${tot ? 'style="background:#faf6f2"' : ''}><td><strong>${name}</strong></td><td class="num">${z.sg}</td><td class="num">${z.un}</td><td class="num">${z.wash}</td><td class="num">${z.veh}</td><td class="num"><strong>${z.total}</strong></td></tr>`;
 
@@ -900,7 +901,7 @@ function viewStudents() {
   if (stuFilter === 'upcoming') list = list.filter(s => liveStatus(s) === 'upcoming');
   if (stuFilter === 'out') list = list.filter(s => liveStatus(s) === 'left');
   if (stuFilter === 'noresi') list = list.filter(s => isOccupying(s) && s.residency_status !== 'registered');
-  if (stuFilter === 'nocontract') list = list.filter(s => isOccupying(s) && ['unsigned', 'none'].includes(s.contract_status));
+  if (stuFilter === 'nocontract') list = list.filter(s => contractRequired(s) && !contractSigned(s));
   if (stuFilter === 'washing') list = list.filter(s => isOccupying(s) && s.uses_washing);
   if (stuFilter === 'nodeposit') list = list.filter(s => isOccupying(s) && s.deposit_status === 'none');
   if (stuFilter === 'contract_overdue') list = list.filter(contractOverdue);
@@ -928,7 +929,7 @@ function viewStudents() {
       <button class="btn sm ${stuFilter === 'departure' ? 'pri' : ''}" onclick="stuFilter='departure';viewStudents()">${IC.planeTakeoff} Xuất cảnh (${cnt(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason))})</button>
       <button class="btn sm ${stuFilter === 'departure_expected' ? 'pri' : ''}" onclick="stuFilter='departure_expected';viewStudents()">${IC.planeTakeoff} Dự kiến XC (${cnt(willDepartSoon)})</button>
       <button class="btn sm ${stuFilter === 'noresi' ? 'pri' : ''}" onclick="stuFilter='noresi';viewStudents()">${IC.flag} Chưa tạm trú (${cnt(s => isOccupying(s) && s.residency_status !== 'registered')})</button>
-      <button class="btn sm ${stuFilter === 'nocontract' ? 'pri' : ''}" onclick="stuFilter='nocontract';viewStudents()">${IC.filePen} HĐ chưa ký (${cnt(s => isOccupying(s) && ['unsigned', 'none'].includes(s.contract_status))})</button>
+      <button class="btn sm ${stuFilter === 'nocontract' ? 'pri' : ''}" onclick="stuFilter='nocontract';viewStudents()">${IC.filePen} HĐ chưa ký (${cnt(s => contractRequired(s) && !contractSigned(s))})</button>
       <button class="btn sm ${stuFilter === 'washing' ? 'pri' : ''}" onclick="stuFilter='washing';viewStudents()">${IC.washer} Máy giặt (${cnt(s => isOccupying(s) && s.uses_washing)})</button>
       <button class="btn sm ${stuFilter === 'nodeposit' ? 'pri' : ''}" onclick="stuFilter='nodeposit';viewStudents()">${IC.lock} Chưa đóng cọc (${cnt(s => isOccupying(s) && s.deposit_status === 'none')})</button>
       <button class="btn sm ${stuFilter === 'contract_overdue' ? 'pri' : ''}" onclick="stuFilter='contract_overdue';viewStudents()">${IC.alert} Ghép >7 ngày chưa ký HĐ (${cnt(contractOverdue)})</button>
