@@ -936,7 +936,7 @@ function viewStudents() {
     <div class="panel"><div class="hd"><h2>Học viên (<span id="stuCount">${list.length}</span>)</h2>
       <div class="search"><span class="i">${IC.search}</span><input id="ss" placeholder="Tìm tên, mã, lớp, SĐT, số phòng..." value="${esc(stuSearch)}"></div>
     </div><div class="table-wrap">
-      ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}<th>Dự kiến XC</th>${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
+      ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}<th>SĐT</th><th>Ngày sinh</th>${sTh('room', 'Phòng')}<th>Ngày nhận</th>${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}<th>Dự kiến XC</th>${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
       ${list.map(s => {
         const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.alert}</span>` : ''}${contractOverdue(s) ? `<span title="Thuê ghép >7 ngày chưa ký HĐ" style="color:var(--red-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
         const ds = esc((s.name + ' ' + (s.code || '') + ' ' + (s.phone || '') + ' ' + (s.class_name || '') + ' ' + (s.room_name || '')).toLowerCase());
@@ -945,7 +945,10 @@ function viewStudents() {
           <strong>${esc(s.name)}</strong> <span class="badge ${s.gender === 'female' ? 'red' : 'blue'}" style="font-size:10px">${genderLabel(s.gender)}</span>${s.login_username ? ` <span title="Có tài khoản">${IC.key}</span>` : ''}
           <div class="sub2">${esc(s.code || '—')}${s.class_name ? ' · ' + esc(s.class_name) : ''}${flags}</div>
         </div></div></td>
+        <td style="white-space:nowrap;font-size:13px">${esc(s.phone || '—')}${s.parent_phone ? `<div class="sub2" title="SĐT phụ huynh">PH: ${esc(s.parent_phone)}</div>` : ''}</td>
+        <td class="muted" style="font-size:12px;white-space:nowrap">${fmtDate(s.birth_date)}</td>
         <td>${s.room_name ? `<strong>${esc(s.room_name)}</strong>` : '<span class="muted">Chưa xếp</span>'}<div class="sub2">${RENTAL_LABEL[s.rental_type] || 'Thuê ghép'}</div></td>
+        <td class="muted" style="font-size:12px;white-space:nowrap">${fmtDate(s.check_in_date)}</td>
         <td><span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span></td>
         <td>${depositBadge(s)}${s.deposit_status === 'none' && isOccupying(s) ? ` <button class="btn sm ghost" title="Ghi nhận đóng cọc" onclick="depositForm(${s.id})">＋</button>` : ''}</td>
         <td class="muted" style="font-size:12px;white-space:nowrap">${s.expected_departure ? fmtDate(s.expected_departure) : (['departure', 'urgent_visa'].includes(s.checkout_reason) && s.check_out_date ? fmtDate(s.check_out_date) : '—')}</td>
@@ -954,7 +957,7 @@ function viewStudents() {
           ${isOccupying(s) ? `<button class="btn sm danger" onclick="checkOutForm(${s.id})">Check-out</button>` : `<button class="btn sm green" onclick="checkInForm(${s.id})">Check-in</button>`}
           <button class="btn sm pri" onclick="studentDetail(${s.id})">Chi tiết</button>
         </div></td></tr>`; }).join('')}
-      <tr class="no-result" style="display:none"><td colspan="7"><div class="empty">Không tìm thấy học viên phù hợp.</div></td></tr>
+      <tr class="no-result" style="display:none"><td colspan="10"><div class="empty">Không tìm thấy học viên phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có học viên phù hợp.</div>`}
     </div></div>`;
   const ss = el('ss'); if (ss) { ss.addEventListener('input', () => stuSearch = ss.value); attachRowSearch(ss, 'stuCount'); }
