@@ -756,7 +756,6 @@ async function viewDashboard() {
     <div class="kpis">
       ${kpi('ic-green', IC.userCheck, inCount, 'Học viên đang ở', "stuFilter='in';adminGo('students')")}
       ${kpi('ic-blue', IC.bed, `${beds}<span class="muted" style="font-size:15px;font-weight:600"> / ${capacity}</span>`, 'Giường còn trống', "adminGo('rooms')")}
-      ${kpi('ic-brand', IC.planeTakeoff, `${depMonth}<span class="muted" style="font-size:15px;font-weight:600"> · năm ${depYear}</span>`, 'Xuất cảnh tháng này', "stuFilter='departure';adminGo('students')")}
       ${kpi('ic-brand', IC.receipt, money(billedThisMonth), 'Phiếu báo tháng này', "adminGo('invoices')")}
       ${kpi('ic-amber', IC.filePen, noBill, 'HV chưa lập phiếu tháng này', "adminGo('invoices')")}
     </div>
