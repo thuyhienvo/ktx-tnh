@@ -2725,7 +2725,7 @@ async function renderStudent() {
   el('app').innerHTML = `
     <div class="app"><div class="main" style="margin:0 auto;max-width:760px;width:100%">
       <div class="top">
-        <div><h1>${IC.home} Ký túc xá của tôi</h1><div class="sub">Xin chào, ${esc(Auth.user.full_name || Auth.user.username)}</div></div>
+        <div><h1>${IC.home} Phòng của tôi</h1><div class="sub">Xin chào, ${esc(Auth.user.full_name || Auth.user.username)}</div></div>
         <div class="toolbar"><button class="btn sm" onclick="changePwd()">${IC.key} Đổi mật khẩu</button><button class="btn sm" onclick="Auth.logout()">${IC.logOut} Đăng xuất</button></div>
       </div>
       <div class="content" id="content"><div class="spinner"></div></div>
@@ -2734,8 +2734,8 @@ async function renderStudent() {
   loadStudentPortal();
 }
 async function loadStudentPortal() {
-  let profile, invs, damage, coutReqs, myVios = [];
-  try { [profile, invs, damage, coutReqs, myVios] = await Promise.all([API.meProfile(), API.meInvoices(), API.meDamage(), API.meCheckoutReq(), API.meViolations().catch(() => [])]); }
+  let profile, invs, damage, coutReqs, myVios = [], mates = [];
+  try { [profile, invs, damage, coutReqs, myVios, mates] = await Promise.all([API.meProfile(), API.meInvoices(), API.meDamage(), API.meCheckoutReq(), API.meViolations().catch(() => []), API.meRoommates().catch(() => [])]); }
   catch (e) { el('content').innerHTML = `<div class="hint">${IC.alert} ${esc(e.message)}</div>`; return; }
   const billNow = invs.filter(i => i.month === curMonth()).reduce((a, i) => a + (+i.total || 0), 0);
   const depTxt = { held: 'Đang giữ', refunded: 'Đã hoàn', forfeited: 'Không hoàn', none: '—' }[profile.deposit_status] || '—';
@@ -2752,6 +2752,22 @@ async function loadStudentPortal() {
       <p><strong>Họ tên:</strong> ${esc(profile.name)} · <span class="badge ${profile.gender === 'female' ? 'red' : 'blue'}">${genderLabel(profile.gender)}</span></p>
       <p><strong>Mã HV:</strong> ${esc(profile.code || '—')} &nbsp;•&nbsp; <strong>Lớp:</strong> ${esc(profile.class_name || '—')} &nbsp;•&nbsp; <strong>SĐT:</strong> ${esc(profile.phone || '—')}</p>
       <p><strong>Ngày vào:</strong> ${fmtDate(profile.check_in_date)} ${profile.check_out_date ? `&nbsp;•&nbsp; <strong>Ngày trả:</strong> ${fmtDate(profile.check_out_date)}` : ''}</p>
+    </div></div>
+
+    <div class="panel"><div class="hd"><h2>${IC.users} Thành viên cùng phòng${profile.room_name ? ` — ${esc(profile.room_name)} (${mates.length})` : ''}</h2></div><div class="pad">
+      ${!profile.room_name ? '<p class="muted" style="margin:0">Bạn chưa được xếp phòng.</p>'
+        : mates.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px">${mates.map(m => `<span class="badge blue" style="font-size:13px;padding:6px 12px">${IC.user} ${esc(m.name)}</span>`).join('')}</div>`
+        : '<p class="muted" style="margin:0">Hiện bạn ở một mình trong phòng.</p>'}
+    </div></div>
+
+    <div class="panel"><div class="hd"><h2>${IC.washer} Dịch vụ máy giặt</h2></div><div class="pad">
+      ${profile.uses_washing
+        ? `<div class="flex" style="justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+            <div>${IC.checkCircle} Bạn <strong>đang dùng</strong> máy giặt — phí <strong>${money(profile.washing_fee)}/tháng</strong> (tính vào phiếu báo).</div>
+            <button class="btn sm ghost" onclick="toggleMyWashing(false)">Hủy đăng ký</button></div>`
+        : `<div class="flex" style="justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+            <div class="muted">Bạn chưa dùng máy giặt. Đăng ký nếu có nhu cầu — phí <strong>${money(profile.washing_fee)}/tháng</strong>.</div>
+            <button class="btn sm pri" onclick="toggleMyWashing(true)">${IC.plus} Đăng ký máy giặt</button></div>`}
     </div></div>
 
     ${myVios.length ? `<div class="panel"><div class="hd"><h2>${IC.alert} Nhắc nhở / Vi phạm (${myVios.length})</h2></div><div class="table-wrap">
@@ -2832,6 +2848,11 @@ async function submitCheckoutReq() {
   if (!d) return toast('Chọn ngày dự kiến trả phòng', 'err');
   await guard(() => API.createMeCheckoutReq({ desired_date: d, reason: el('co_reason').value, note: el('co_note').value.trim() }));
   closeModal(); toast('Đã gửi đơn trả phòng'); loadStudentPortal();
+}
+async function toggleMyWashing(on) {
+  if (!on && !confirm('Hủy đăng ký máy giặt? Phí máy giặt sẽ không còn tính từ kỳ sau.')) return;
+  await guard(() => API.meWashing(on));
+  toast(on ? 'Đã đăng ký máy giặt' : 'Đã hủy máy giặt'); loadStudentPortal();
 }
 
 /* ================================================================= */

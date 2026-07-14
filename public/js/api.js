@@ -115,6 +115,8 @@ const API = {
   deleteUser: id => api('/admin/users/' + id, { method: 'DELETE' }),
 
   meProfile: () => api('/me/profile'),
+  meRoommates: () => api('/me/roommates'),
+  meWashing: on => api('/me/washing', { method: 'POST', body: { on } }),
   meInvoices: () => api('/me/invoices'),
   meLogs: () => api('/me/logs'),
   meViolations: () => api('/me/violations'),

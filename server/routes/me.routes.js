@@ -1,5 +1,5 @@
 const express = require('express');
-const { query } = require('../db');
+const { query, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { cccdUrls } = require('../cccd-url');
 
@@ -14,7 +14,32 @@ router.get('/profile', async (req, res, next) => {
       FROM students s LEFT JOIN rooms r ON r.id = s.room_id
       WHERE s.id = $1`, [req.user.student_id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy hồ sơ học viên' });
-    res.json(cccdUrls(rows[0]));
+    // Kèm đơn giá máy giặt/gửi xe để hiển thị dịch vụ tự đăng ký (HV không được gọi /settings)
+    const s = await getSettings();
+    res.json({ ...cccdUrls(rows[0]), washing_fee: s.washing_fee, parking_fee: s.parking_fee });
+  } catch (e) { next(e); }
+});
+
+// Bạn cùng phòng (chỉ tên) — HV đang ở cùng phòng, không lộ SĐT/thông tin khác
+router.get('/roommates', async (req, res, next) => {
+  try {
+    const me = (await query('SELECT room_id FROM students WHERE id=$1 AND deleted_at IS NULL', [req.user.student_id])).rows[0];
+    if (!me || !me.room_id) return res.json([]);
+    const { rows } = await query(
+      `SELECT name FROM students
+       WHERE room_id=$1 AND id<>$2 AND deleted_at IS NULL
+         AND check_in_date <= CURRENT_DATE AND (check_out_date IS NULL OR check_out_date > CURRENT_DATE)
+       ORDER BY name`, [me.room_id, req.user.student_id]);
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+// Tự đăng ký / hủy dịch vụ máy giặt (khi vào ở mới phát sinh nhu cầu)
+router.post('/washing', async (req, res, next) => {
+  try {
+    const on = req.body.on !== false; // mặc định = đăng ký (true)
+    await query('UPDATE students SET uses_washing=$1 WHERE id=$2 AND deleted_at IS NULL', [on, req.user.student_id]);
+    res.json({ ok: true, uses_washing: on });
   } catch (e) { next(e); }
 });
 
