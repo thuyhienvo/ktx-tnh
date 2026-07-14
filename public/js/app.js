@@ -36,7 +36,6 @@ async function renderPublicRegister() {
         </div>
         <div class="intro-cta">
           <a class="btn pri lg" href="#dangky">${IC.filePen} Đăng ký nội trú</a>
-          ${info.hotline ? `<a class="btn lg" href="tel:${esc(String(info.hotline).replace(/\s/g, ''))}" style="background:rgba(255,255,255,.16);border:1.5px solid rgba(255,255,255,.7);color:#fff;backdrop-filter:blur(3px)">${IC.phone} Gọi hotline ${esc(info.hotline)}</a>` : ''}
         </div>
       </div>
     </header>
@@ -92,7 +91,6 @@ async function renderPublicRegister() {
           <tr class="price-hi"><td><strong>Tiền cọc</strong><div class="price-sub">${IC.checkCircle} Được hoàn lại khi trả phòng đúng quy định</div></td><td class="num"><strong>${money(info.deposit_fee)}</strong></td></tr>
         </tbody></table>
         <div class="price-callout">${IC.info} <strong>Khi nhận phòng, bạn đóng:</strong> tiền cọc <strong>${money(info.deposit_fee)}</strong> (được hoàn lại khi trả phòng) <strong>+ chi phí tháng đầu</strong> (tiền phòng, điện, nước, dịch vụ). Máy giặt và gửi xe chỉ tính khi bạn đăng ký sử dụng.</div>
-        ${info.hotline ? `<a class="price-hotline" href="tel:${esc(String(info.hotline).replace(/\s/g, ''))}">${IC.phone}<span>Còn thắc mắc về chi phí? Gọi hotline <strong>${esc(info.hotline)}</strong></span></a>` : ''}
       </div>
     </section>
 
@@ -115,7 +113,7 @@ async function renderPublicRegister() {
       </div>
     </section>
 
-    <footer class="intro-foot">${dorm}${info.hotline ? ` · Hotline: ${esc(info.hotline)}` : ''}${info.address ? ` · ${esc(info.address)}` : ''}</footer>
+    <footer class="intro-foot">${dorm}${info.address ? ` · ${esc(info.address)}` : ''}</footer>
   </div>`;
   el('pubBody').innerHTML = `
     <form id="applyForm">
@@ -349,7 +347,7 @@ const CHECKOUT_REASONS = [['departure', 'Xuất cảnh (đi Nhật)'], ['persona
 const REASON_LABEL = { departure: 'Xuất cảnh', personal: 'Cá nhân', facility: 'Cơ sở vật chất', dropout: 'Nghỉ học', reserve: 'Bảo lưu', other: 'Khác', normal: 'Khác', urgent_visa: 'Xuất cảnh' };
 const VIO_SEV = { minor: ['Nhẹ', 'gray'], major: ['Nặng', 'amber'], severe: ['Nghiêm trọng', 'red'] };
 const INTRO_FIELDS = [
-  ['hotline', '📞 Hotline (hiện ở đầu trang, khối chi phí, mục Liên hệ & footer)', 'in'],
+  ['hotline', '📞 Hotline (hiện ở mục "Liên hệ & đường đến")', 'in'],
   ['intro_hero_title', 'Tiêu đề lớn (hero) — Enter để xuống dòng', 'ta'],
   ['intro_hero_desc', 'Mô tả dưới tiêu đề (địa chỉ tự thêm phía trước)', 'ta'],
   ['intro_about_eyebrow', 'Mục "Về khu nội trú" — nhãn nhỏ', 'in'],
