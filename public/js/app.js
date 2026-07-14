@@ -688,6 +688,22 @@ function contractIssuesModal() {
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Đóng</button></div>`);
 }
+// Popup "Tiền cọc": gộp hoàn cọc + chưa đóng cọc
+function depositModal() {
+  const refund = ST.students.filter(s => liveStatus(s) === 'left' && s.deposit_status === 'held').length;
+  const noDep = ST.students.filter(s => isOccupying(s) && s.deposit_status === 'none').length;
+  const row = (ico, label, n, act, cls) => `<div class="todo ${n ? cls : 'calm'}" ${n ? `onclick="closeModal();${act}"` : ''}><span class="ic">${ico}</span><span class="tx">${label}</span><span class="n">${n}</span></div>`;
+  openModal(`
+    <div class="mh"><h3>${IC.handCoins} Tiền cọc</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <div class="hint">${IC.info} Các việc liên quan tiền cọc. Bấm từng mục để xem danh sách.</div>
+      <div class="todo-grid" style="grid-template-columns:1fr;margin-top:10px">
+        ${row(IC.handCoins, 'Hoàn cọc (đã trả phòng)', refund, "quyCoc()", 'bad')}
+        ${row(IC.lock, 'Chưa đóng cọc', noDep, "stuFilter='nodeposit';adminGo('students')", 'warn')}
+      </div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Đóng</button></div>`);
+}
 async function viewDashboard() {
   const occ = ST.students.filter(isOccupying);
   const inCount = occ.length;
@@ -745,14 +761,13 @@ async function viewDashboard() {
 
     <div class="panel"><div class="hd"><h2>${IC.zap} Cần xử lý</h2></div><div class="pad">
       <div class="todo-grid">
-        ${todo(IC.filePen, 'Đơn đăng ký / trả phòng chờ duyệt', pApps + pCout, pApps ? "adminGo('reg')" : "adminGo('checkout')", 'on')}
-        ${todo(IC.wrench, 'Hư hỏng chưa xử lý', pDmg, "adminGo('repair')", 'warn')}
+        ${todo(IC.filePen, 'Thuê phòng / trả phòng', pApps + pCout, pApps ? "adminGo('reg')" : "adminGo('checkout')", 'on')}
+        ${todo(IC.wrench, 'Bảo trì', pDmg, "adminGo('repair')", 'warn')}
         ${todo(IC.flag, 'Đăng ký Tạm Trú', resiOverdue, "residencyModal()", 'warn')}
-        ${todo(IC.fileText, 'Hợp đồng chưa hoàn thiện', contractIncomplete, "contractIssuesModal()", 'warn')}
-        <div class="todo ${refundPending ? 'bad' : 'calm'}" ${refundPending ? 'onclick="quyCoc()"' : ''}><span class="ic">${IC.handCoins}</span><span class="tx">Hoàn cọc</span><span class="n">${refundPending}</span></div>
-        ${todo(IC.lock, 'Chưa đóng cọc', occ.filter(s => s.deposit_status === 'none').length, "stuFilter='nodeposit';adminGo('students')", 'warn')}
+        ${todo(IC.fileText, 'Hợp đồng', contractIncomplete, "contractIssuesModal()", 'warn')}
+        ${todo(IC.handCoins, 'Tiền cọc', refundPending + occ.filter(s => s.deposit_status === 'none').length, "depositModal()", 'warn')}
         ${todo(IC.planeTakeoff, 'Dự kiến xuất cảnh (điều phối phòng)', depExpected, "stuFilter='departure_expected';adminGo('students')", 'on')}
-        <div class="todo ${needMail ? 'bad' : 'calm'}" ${needMail ? `onclick="adminGo('violations')"` : ''}><span class="ic">${IC.alert}</span><span class="tx">Vi phạm cần báo nhà trường</span><span class="n">${needMail}</span></div>
+        ${todo(IC.alert, 'Quản lý vi phạm', needMail, "adminGo('violations')", 'bad')}
       </div>
     </div></div>
 
