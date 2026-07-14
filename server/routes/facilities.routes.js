@@ -5,7 +5,7 @@ const { requireAuth, requireRole } = require('../auth');
 const router = express.Router();
 router.use(requireAuth);
 
-router.get('/', async (req, res, next) => {
+router.get('/', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { rows } = await query(`
       SELECT f.*,

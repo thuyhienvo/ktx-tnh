@@ -888,7 +888,6 @@ function stuSortVal(s) {
     case 'room': return (s.room_name || '').toLowerCase();
     case 'contract': return ['done', 'scanned', 'unsigned', 'none'].indexOf(s.contract_status);
     case 'deposit': return ['held', 'refunded', 'forfeited', 'none'].indexOf(s.deposit_status);
-    case 'debt': return +s.debt || 0;
     case 'status': return ['upcoming', 'staying', 'leaving', 'left'].indexOf(liveStatus(s));
     default: return 0;
   }
@@ -2121,11 +2120,6 @@ function invActions(i) {
 }
 async function setInvStatus(id, status) { await guard(() => API.setInvoiceStatus(id, status)); await refreshCache(); viewInvoices(); }
 async function recalcInv(id) { const r = await guard(() => API.recalcInvoice(id)); toast(`Đã tính lại: ${r.days_stayed} ngày ở → ${money(r.total)}`); viewInvoices(); }
-async function markMonthPaid() {
-  if (!confirm(`Đánh dấu TẤT CẢ hóa đơn ${monthLabel(invMonth)} là đã thu?`)) return;
-  const r = await guard(() => API.markPaid(invMonth));
-  toast(`Đã đánh dấu ${r.updated} hóa đơn đã thu`); viewInvoices();
-}
 async function delInvoice(id) { if (!confirm('Xóa hóa đơn này?')) return; await guard(() => API.deleteInvoice(id)); await refreshCache(); toast('Đã xóa'); viewInvoices(); }
 
 /* Tạo hóa đơn tự tính cho 1 học viên (VD học viên mới vào giữa tháng) */

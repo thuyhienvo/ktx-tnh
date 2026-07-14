@@ -16,7 +16,7 @@ function sanitize(s) {
 }
 
 // Cấu hình (mọi người đăng nhập đều xem được đơn giá) — ẩn secret
-router.get('/', requireAuth, async (req, res, next) => {
+router.get('/', requireAuth, requireRole('admin', 'staff'), async (req, res, next) => {
   try { res.json(sanitize(await getSettings())); } catch (e) { next(e); }
 });
 

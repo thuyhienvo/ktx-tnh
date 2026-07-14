@@ -22,7 +22,6 @@ router.get('/revenue', async (req, res, next) => {
         COALESCE(SUM(parking_charge),0) AS parking,
         COALESCE(SUM(other_charge),0) AS other,
         COALESCE(SUM(total),0) AS total,
-        COALESCE(SUM(CASE WHEN status='paid' THEN total ELSE 0 END),0) AS paid,
         COUNT(*)::int AS count
       FROM invoices ${where}
       GROUP BY month ORDER BY month`, params);

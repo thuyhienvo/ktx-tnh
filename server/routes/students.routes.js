@@ -61,8 +61,7 @@ const LIST_SELECT = `
     r.name AS room_name, r.floor AS room_floor, r.gender AS room_gender, r.hang AS room_hang,
     u.username AS login_username,
     (SELECT COUNT(*) FROM vehicles v WHERE v.student_id=s.id AND v.deleted_at IS NULL)::int AS vehicle_count,
-    (SELECT COUNT(*) FROM violations vi WHERE vi.student_id=s.id AND vi.deleted_at IS NULL)::int AS violation_count,
-    (SELECT COALESCE(SUM(i.total),0)::int FROM invoices i WHERE i.status<>'paid' AND i.student_id=s.id AND i.deleted_at IS NULL) AS debt
+    (SELECT COUNT(*) FROM violations vi WHERE vi.student_id=s.id AND vi.deleted_at IS NULL)::int AS violation_count
   FROM students s
   LEFT JOIN rooms r ON r.id = s.room_id
   LEFT JOIN users u ON u.student_id = s.id`;
@@ -133,8 +132,7 @@ router.get('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { rows } = await query(`
       SELECT s.*, r.name AS room_name, r.floor AS room_floor, r.gender AS room_gender, r.hang AS room_hang,
-        u.username AS login_username,
-        (SELECT COALESCE(SUM(i.total),0)::int FROM invoices i WHERE i.student_id=s.id AND i.status<>'paid' AND i.deleted_at IS NULL) AS debt
+        u.username AS login_username
       FROM students s
       LEFT JOIN rooms r ON r.id = s.room_id
       LEFT JOIN users u ON u.student_id = s.id
@@ -230,7 +228,12 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
 
 router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
-    const b = req.body;
+    const raw = req.body || {};
+    // MERGE với bản ghi hiện tại — chỉ ghi đè field được GỬI (undefined = giữ nguyên) → chống mất dữ liệu khi gọi API thiếu field
+    const cur = (await query('SELECT * FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    if (!cur) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    const b = { ...cur };
+    for (const k of Object.keys(raw)) if (raw[k] !== undefined) b[k] = raw[k];
     const f = studentFields(b);
     const cols = `code=$1, name=$2, gender=$3, phone=$4, id_card=$5, birth_date=$6, class_name=$7, room_id=$8,
       check_in_date=$9, note=$10, uses_washing=$11, rental_type=$12, residency_status=$13,
@@ -239,14 +242,12 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
     const params = f.slice(0, 16);
     params.push(D(b.class_start_date), D(b.expected_departure), b.parent_phone || '');
     let extra = '';
-    // Ảnh CCCD: chỉ cập nhật nếu gửi kèm; ảnh mới -> upload S3 & lưu key, dọn object cũ
-    const needCccd = CCCD_FIELDS.some(field => b[field] !== undefined);
-    const oldKeys = needCccd
-      ? (await query('SELECT cccd_front, cccd_back, cccd_image FROM students WHERE id=$1', [req.params.id])).rows[0] || {}
-      : {};
+    // Ảnh CCCD: chỉ cập nhật nếu client GỬI kèm (dựa vào body gốc, không phải merged)
+    const needCccd = CCCD_FIELDS.some(field => raw[field] !== undefined);
+    const oldKeys = needCccd ? { cccd_front: cur.cccd_front, cccd_back: cur.cccd_back, cccd_image: cur.cccd_image } : {};
     for (const field of CCCD_FIELDS) {
-      if (b[field] === undefined) continue;
-      const resolved = await resolveCccd(req.params.id, field, b[field], oldKeys[field]);
+      if (raw[field] === undefined) continue;
+      const resolved = await resolveCccd(req.params.id, field, raw[field], oldKeys[field]);
       if (resolved === undefined) continue; // giá trị không hợp lệ -> giữ nguyên, không ghi rác
       extra += `, ${field}=$${params.length + 1}`;
       params.push(resolved);

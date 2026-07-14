@@ -18,7 +18,7 @@ async function recalcInvoice(studentId, month) {
     const er = (await query('SELECT kwh FROM electric_readings WHERE room_id=$1 AND month=$2', [s.room_id, month])).rows[0];
     kwh = er ? Number(er.kwh) : 0;
     occ = (await query(
-      `SELECT COUNT(*)::int c FROM students WHERE room_id=$1 AND check_in_date <= $2 AND (check_out_date IS NULL OR check_out_date >= $3)`,
+      `SELECT COUNT(*)::int c FROM students WHERE room_id=$1 AND deleted_at IS NULL AND check_in_date <= $2 AND (check_out_date IS NULL OR check_out_date >= $3)`,
       [s.room_id, billing.lastDay(month), billing.firstDay(month)])).rows[0].c || 1;
   }
 

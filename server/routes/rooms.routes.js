@@ -6,7 +6,7 @@ const router = express.Router();
 router.use(requireAuth);
 
 // Danh sách phòng kèm số người đang ở + tên cơ sở. ?deleted=1 -> chỉ phòng đã xóa
-router.get('/', async (req, res, next) => {
+router.get('/', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const cond = req.query.deleted === '1' ? 'r.deleted_at IS NOT NULL' : 'r.deleted_at IS NULL';
     const { rows } = await query(`
@@ -45,15 +45,21 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
 
 router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
-    const { facility_id, name, gender, hang, capacity, monthly_fee, note, room_type } = req.body;
-    if (!name || !name.trim()) return res.status(400).json({ error: 'Nhập tên phòng' });
+    // MERGE với bản ghi hiện tại — field không gửi thì giữ nguyên (chống mất dữ liệu / reset room_type, capacity)
+    const cur = (await query('SELECT * FROM rooms WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    if (!cur) return res.status(404).json({ error: 'Không tìm thấy phòng' });
+    const raw = req.body || {};
+    const g = (k, def) => (raw[k] !== undefined ? raw[k] : def);
+    const name = g('name', cur.name);
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Nhập tên phòng' });
     const { rows } = await query(
       `UPDATE rooms SET facility_id=$1, name=$2, floor=$3, gender=$4, hang=$5, capacity=$6, monthly_fee=$7, note=$8, room_type=$9
        WHERE id=$10 RETURNING *`,
-      [facility_id || null, name.trim(), floorOf(name), gender === 'female' ? 'female' : 'male',
-       HANG(hang), +capacity || 0, +monthly_fee || 0, note || '', RTYPE(room_type), req.params.id]
+      [g('facility_id', cur.facility_id) || null, String(name).trim(), floorOf(name),
+       g('gender', cur.gender) === 'female' ? 'female' : 'male', HANG(g('hang', cur.hang)),
+       +g('capacity', cur.capacity) || 0, +g('monthly_fee', cur.monthly_fee) || 0,
+       g('note', cur.note) || '', RTYPE(g('room_type', cur.room_type)), req.params.id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy phòng' });
     res.json(rows[0]);
   } catch (e) { next(e); }
 });

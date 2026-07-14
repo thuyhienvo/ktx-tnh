@@ -72,6 +72,12 @@ router.get('/checkout-request', async (req, res, next) => {
 router.post('/checkout-request', async (req, res, next) => {
   try {
     const { desired_date, reason, note } = req.body;
+    // Chặn HV chưa nhận phòng (ngày vào ở tương lai) — chưa ở thì không thể "trả phòng"
+    const st = (await query('SELECT check_in_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.user.student_id])).rows[0];
+    const today = new Date().toISOString().slice(0, 10);
+    if (st && st.check_in_date && String(st.check_in_date).slice(0, 10) > today) {
+      return res.status(400).json({ error: 'Bạn chưa đến ngày nhận phòng nên chưa thể gửi đơn trả phòng.' });
+    }
     const pending = await query(`SELECT 1 FROM checkout_requests WHERE student_id=$1 AND status='pending'`, [req.user.student_id]);
     if (pending.rows.length) return res.status(400).json({ error: 'Bạn đã có đơn trả phòng đang chờ duyệt' });
     const { rows } = await query(
