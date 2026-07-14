@@ -2852,9 +2852,10 @@ async function loadMaintenance() {
   const done = tasks.filter(t => t.status === 'done');
   el('content').innerHTML = `
     <div class="cards">
-      <div class="stat"><div class="l">${IC.bell} Cần xử lý</div><div class="v sm" style="color:${pending.length ? 'var(--red)' : 'var(--green)'}">${pending.length}</div></div>
+      <div class="stat"><div class="l">${IC.bell} Bảo trì cần xử lý</div><div class="v sm" style="color:${pending.length ? 'var(--red)' : 'var(--green)'}">${pending.length}</div></div>
       <div class="stat"><div class="l">${IC.checkCircle} Đã hoàn thành</div><div class="v sm">${done.length}</div></div>
     </div>
+    <div id="handoverArea"><div class="spinner"></div></div>
     ${pending.length ? `<div class="hint" style="border-color:var(--amber-ink)">${IC.bell} Bạn có <strong>${pending.length}</strong> công việc bảo trì cần xử lý.</div>` : `<div class="hint">${IC.checkCircle} Không có công việc nào đang chờ.</div>`}
     <div class="panel"><div class="hd"><h2>${IC.wrench} Công việc cần xử lý</h2></div><div class="table-wrap">
       ${pending.length ? `<table><thead><tr><th>Chuyển lúc</th><th>Phòng</th><th>Nội dung</th><th>Người báo</th><th>Trạng thái</th><th></th></tr></thead><tbody>
@@ -2876,6 +2877,75 @@ async function loadMaintenance() {
       <table><thead><tr><th>Xong lúc</th><th>Phòng</th><th>Nội dung</th><th>Ghi chú bảo trì</th></tr></thead><tbody>
         ${done.map(t => `<tr><td>${fmtDate(String(t.resolved_at || t.assigned_at).slice(0, 10))}</td><td>${esc(t.room_name || '—')}</td><td>${esc(t.title)}</td><td class="muted">${esc(t.admin_note || '—')}</td></tr>`).join('')}
       </tbody></table></div></div>` : ''}`;
+  loadHandovers();
+}
+/* ---- Bàn giao phòng (bảo trì xác nhận nhận/trả phòng thực tế) ---- */
+let hoMonth = '';
+async function loadHandovers(month) {
+  if (month) hoMonth = month;
+  const area = el('handoverArea'); if (!area) return;
+  let d;
+  try { d = await API.handovers(hoMonth); }
+  catch (e) { area.innerHTML = `<div class="hint">${IC.alert} ${esc(e.message)}</div>`; return; }
+  hoMonth = d.month;
+  const pIn = d.checkins.filter(x => !x.checkin_confirmed_at).length;
+  const pOut = d.checkouts.filter(x => !x.checkout_confirmed_at).length;
+  const esq = s => esc(String(s || '')).replace(/'/g, '&#39;');
+  const monthsList = [];
+  for (let i = -1; i <= 12; i++) { const dt = new Date(); dt.setDate(1); dt.setMonth(dt.getMonth() - i); monthsList.push(dt.toISOString().slice(0, 7)); }
+  const monthOpts = monthsList.map(m => `<option value="${m}" ${m === hoMonth ? 'selected' : ''}>${monthLabel(m)}</option>`).join('');
+  const inRow = x => `<tr>
+    <td><strong>${esc(x.name)}</strong></td><td>${esc(x.room_name || '—')}</td><td>${fmtDate(x.date)}</td>
+    <td class="num">${x.checkin_confirmed_at
+      ? `<span class="badge green">${IC.check} Đã nhận phòng</span>${x.checkin_confirm_note ? `<div class="muted" style="font-size:11px;white-space:normal">${esc(x.checkin_confirm_note)}</div>` : ''}`
+      : `<button class="btn sm green" onclick="handoverCheckinForm(${x.id},'${esq(x.name)}')">${IC.check} Đã nhận phòng</button>`}</td></tr>`;
+  const outRow = x => `<tr>
+    <td><strong>${esc(x.name)}</strong></td><td>${esc(x.room_name || '—')}</td><td>${fmtDate(x.date)}</td>
+    <td class="num">${x.checkout_confirmed_at
+      ? `<span class="badge green">${IC.check} Đã trả ${fmtDate(x.checkout_actual_date)}</span>${x.checkout_confirm_note ? `<div class="muted" style="font-size:11px;white-space:normal">${esc(x.checkout_confirm_note)}</div>` : ''}`
+      : `<button class="btn sm green" onclick="handoverCheckoutForm(${x.id},'${esq(x.name)}','${x.date || ''}')">${IC.check} Đã trả phòng</button>`}</td></tr>`;
+  area.innerHTML = `
+    <div class="panel"><div class="hd"><h2>${IC.key} Bàn giao phòng</h2>
+      <select onchange="loadHandovers(this.value)" style="font-weight:600;padding:6px 8px;border-radius:8px">${monthOpts}</select></div>
+      <div class="pad"><div class="hint">${IC.info} <strong>${monthLabel(hoMonth)}</strong>: ${d.checkins.length} nhận phòng (<strong>${pIn}</strong> chưa xác nhận) · ${d.checkouts.length} trả phòng (<strong>${pOut}</strong> chưa xác nhận). Xác nhận thực tế + kiểm tra tài sản, thu chìa khóa.</div></div>
+      <div class="grid2" style="align-items:start;padding:0 16px 16px;gap:16px">
+        <div><h4 style="margin:0 0 8px"><span class="dot-svg dot-green">${IC.dot}</span> Nhận phòng (${d.checkins.length})</h4>
+          <div class="table-wrap">${d.checkins.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th>Ngày</th><th></th></tr></thead><tbody>${d.checkins.map(inRow).join('')}</tbody></table>` : '<div class="empty">Không có ai nhận phòng tháng này.</div>'}</div></div>
+        <div><h4 style="margin:0 0 8px"><span class="dot-svg dot-gray">${IC.dot}</span> Trả phòng (${d.checkouts.length})</h4>
+          <div class="table-wrap">${d.checkouts.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th>Ngày ĐK</th><th></th></tr></thead><tbody>${d.checkouts.map(outRow).join('')}</tbody></table>` : '<div class="empty">Không có ai trả phòng tháng này.</div>'}</div></div>
+      </div>
+    </div>`;
+}
+function handoverCheckinForm(id, name) {
+  openModal(`
+    <div class="mh"><h3>${IC.check} Xác nhận đã nhận phòng</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <p class="muted" style="margin:0 0 10px">Học viên: <strong>${esc(name)}</strong></p>
+      <div class="field"><label>Ghi chú bàn giao <span class="opt">(tình trạng phòng, đã giao chìa khóa...)</span></label><textarea id="ho_note" rows="3" placeholder="VD: Phòng sạch, đã giao 1 chìa khóa phòng + 1 chìa tủ locker..."></textarea></div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="submitHandoverCheckin(${id})">Xác nhận đã nhận phòng</button></div>`);
+}
+async function submitHandoverCheckin(id) {
+  await guard(() => API.confirmHandoverCheckin(id, el('ho_note').value.trim()));
+  closeModal(); toast('Đã xác nhận nhận phòng'); loadHandovers();
+}
+function handoverCheckoutForm(id, name, planDate) {
+  openModal(`
+    <div class="mh"><h3>${IC.check} Xác nhận đã trả phòng</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <p class="muted" style="margin:0 0 10px">Học viên: <strong>${esc(name)}</strong>${planDate ? ` · đăng ký trả: ${fmtDate(planDate)}` : ''}</p>
+      <div class="field"><label>Ngày trả phòng THỰC TẾ *</label><input id="ho_date"></div>
+      <div class="field"><label>Ghi chú (kiểm tra tài sản, thu chìa khóa) *</label><textarea id="ho_note" rows="3" placeholder="VD: Đã thu 2 chìa khóa, tài sản đủ, tường có vết bẩn nhỏ..."></textarea></div>
+      <div class="hint" style="font-size:12px">${IC.info} Ngày trả thực tế sẽ cập nhật để phiếu báo tính đúng số ngày ở.</div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="submitHandoverCheckout(${id})">Xác nhận đã trả phòng</button></div>`);
+  attachDate(el('ho_date'), planDate || today());
+}
+async function submitHandoverCheckout(id) {
+  const d = el('ho_date').dataset.iso;
+  if (!d) return toast('Chọn ngày trả phòng thực tế', 'err');
+  await guard(() => API.confirmHandoverCheckout(id, d, el('ho_note').value.trim()));
+  closeModal(); toast('Đã xác nhận trả phòng'); loadHandovers();
 }
 async function maintDo(id, status) { await guard(() => API.maintenanceTaskStatus(id, status)); toast('Đã cập nhật'); loadMaintenance(); }
 function maintDoneForm(id) {

@@ -77,6 +77,12 @@ ALTER TABLE students ADD COLUMN IF NOT EXISTS deposit_deduction_note TEXT DEFAUL
 ALTER TABLE students ADD COLUMN IF NOT EXISTS class_start_date DATE;              -- ngày khai giảng
 ALTER TABLE students ADD COLUMN IF NOT EXISTS expected_departure DATE;            -- ngày dự kiến xuất cảnh
 ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_phone TEXT DEFAULT '';       -- SĐT phụ huynh
+-- Bàn giao phòng thực tế (bảo trì xác nhận): nhận phòng + trả phòng (kiểm tài sản, thu chìa khóa)
+ALTER TABLE students ADD COLUMN IF NOT EXISTS checkin_confirmed_at TIMESTAMPTZ;   -- đã xác nhận nhận phòng
+ALTER TABLE students ADD COLUMN IF NOT EXISTS checkin_confirm_note TEXT DEFAULT '';
+ALTER TABLE students ADD COLUMN IF NOT EXISTS checkout_confirmed_at TIMESTAMPTZ;  -- đã xác nhận trả phòng
+ALTER TABLE students ADD COLUMN IF NOT EXISTS checkout_actual_date DATE;          -- ngày trả phòng THỰC TẾ
+ALTER TABLE students ADD COLUMN IF NOT EXISTS checkout_confirm_note TEXT DEFAULT '';
 
 -- Xe của học viên
 CREATE TABLE IF NOT EXISTS vehicles (
