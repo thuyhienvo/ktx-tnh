@@ -321,6 +321,8 @@ const roomTypeBadge = r => { const [l, c] = ROOM_TYPE[roomType(r)]; return `<spa
 const availBedsOf = rooms => rooms.filter(roomIsShared).reduce((a, r) => a + Math.max(0, (+r.capacity || 0) - (+r.occupancy || 0)), 0);
 const rentCapOf = rooms => rooms.filter(roomForRent).reduce((a, r) => a + (+r.capacity || 0), 0);
 const RENTAL_LABEL = { ghep: 'Thuê ghép', phong: 'Thuê nguyên phòng' };
+const RESI = { registered: ['Đã đăng ký', 'green'], processing: ['Đang xử lý', 'amber'], unregistered: ['Chưa đăng ký', 'gray'] };
+const resiBadge = st => { const [l, c] = RESI[st] || RESI.unregistered; return `<span class="badge ${c}">${l}</span>`; };
 const CONTRACT_LABEL = { done: 'Đã hoàn tất', scanned: 'Đã scan HĐ', unsigned: 'Chưa ký HĐ', none: 'Không ký HĐ', handover: 'Đã ký phiếu bàn giao' };
 const CONTRACT_BADGE = { done: 'green', scanned: 'blue', unsigned: 'amber', none: 'gray', handover: 'blue' };
 const CHECKOUT_REASONS = [['departure', 'Xuất cảnh (đi Nhật)'], ['personal', 'Cá nhân'], ['facility', 'Cơ sở vật chất'], ['dropout', 'Nghỉ học'], ['reserve', 'Bảo lưu'], ['other', 'Khác']];
@@ -648,6 +650,25 @@ async function viewExec() {
 }
 
 /* ---------- TỔNG QUAN ---------- */
+// Popup "Đăng ký tạm trú": 3 trạng thái, bấm từng trạng thái xem danh sách
+function residencyModal() {
+  const occ = ST.students.filter(isOccupying);
+  const over = occ.filter(s => s.residency_status === 'unregistered' && stayDays(s) > 7).length;
+  const proc = occ.filter(s => s.residency_status === 'processing').length;
+  const reg = occ.filter(s => s.residency_status === 'registered').length;
+  const row = (ico, label, n, filter, cls) => `<div class="todo ${n ? cls : 'calm'}" ${n ? `onclick="closeModal();stuFilter='${filter}';adminGo('students')"` : ''}><span class="ic">${ico}</span><span class="tx">${label}</span><span class="n">${n}</span></div>`;
+  openModal(`
+    <div class="mh"><h3>${IC.flag} Đăng ký tạm trú</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <div class="hint">${IC.info} Tình trạng đăng ký tạm trú của học viên đang ở. Bấm từng nhóm để xem danh sách.</div>
+      <div class="todo-grid" style="grid-template-columns:1fr;margin-top:10px">
+        ${row(IC.alert, 'Chưa đăng ký (đã ở >7 ngày)', over, 'resi_overdue', 'bad')}
+        ${row(IC.hourglass, 'Đang xử lý', proc, 'resi_processing', 'warn')}
+        ${row(IC.checkCircle, 'Đã có tạm trú', reg, 'resi_registered', 'on')}
+      </div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Đóng</button></div>`);
+}
 // Popup gộp "Hợp đồng chưa hoàn thiện": 3 loại cần xử lý, bấm từng loại xem danh sách
 function contractIssuesModal() {
   const occ = ST.students.filter(isOccupying);
@@ -681,6 +702,7 @@ async function viewDashboard() {
   const depMonth = ST.students.filter(s => isDeparture(s) && s.check_out_date.slice(0, 7) === curMonth()).length;
   const depYear = ST.students.filter(s => isDeparture(s) && s.check_out_date.slice(0, 4) === curMonth().slice(0, 4)).length;
   const noResidency = occ.filter(s => s.residency_status !== 'registered').length;
+  const resiOverdue = occ.filter(s => s.residency_status === 'unregistered' && stayDays(s) > 7).length; // chưa ĐK tạm trú, đã ở >7 ngày
   const noContract = occ.filter(s => ['unsigned', 'none'].includes(s.contract_status)).length;
   const ghepOverdue = occ.filter(contractOverdue).length; // thuê ghép >7 ngày chưa ký HĐ
   const handoverTodo = occ.filter(handoverPending).length; // ngắn hạn chưa ký bàn giao
@@ -725,7 +747,7 @@ async function viewDashboard() {
       <div class="todo-grid">
         ${todo(IC.filePen, 'Đơn đăng ký / trả phòng chờ duyệt', pApps + pCout, pApps ? "adminGo('reg')" : "adminGo('checkout')", 'on')}
         ${todo(IC.wrench, 'Hư hỏng chưa xử lý', pDmg, "adminGo('repair')", 'warn')}
-        ${todo(IC.flag, 'Chưa đăng ký tạm trú', noResidency, "stuFilter='noresi';adminGo('students')", 'warn')}
+        ${todo(IC.flag, 'Đăng ký Tạm Trú', resiOverdue, "residencyModal()", 'warn')}
         ${todo(IC.fileText, 'Hợp đồng chưa hoàn thiện', contractIncomplete, "contractIssuesModal()", 'warn')}
         <div class="todo ${refundPending ? 'bad' : 'calm'}" ${refundPending ? 'onclick="quyCoc()"' : ''}><span class="ic">${IC.handCoins}</span><span class="tx">Hoàn cọc</span><span class="n">${refundPending}</span></div>
         ${todo(IC.lock, 'Chưa đóng cọc', occ.filter(s => s.deposit_status === 'none').length, "stuFilter='nodeposit';adminGo('students')", 'warn')}
@@ -874,6 +896,9 @@ function viewStudents() {
   if (stuFilter === 'leaving') list = list.filter(s => liveStatus(s) === 'leaving');
   if (stuFilter === 'departure') list = list.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason));
   if (stuFilter === 'departure_expected') { list = list.filter(willDepartSoon).sort((a, b) => nextDepartureDate(a).localeCompare(nextDepartureDate(b))); }
+  if (stuFilter === 'resi_overdue') list = list.filter(s => isOccupying(s) && s.residency_status === 'unregistered' && stayDays(s) > 7);
+  if (stuFilter === 'resi_processing') list = list.filter(s => isOccupying(s) && s.residency_status === 'processing');
+  if (stuFilter === 'resi_registered') list = list.filter(s => isOccupying(s) && s.residency_status === 'registered');
   // Tìm kiếm áp dụng bằng ẩn/hiện hàng (attachRowSearch) — không lọc dựng lại ở đây
   const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
   const cnt = f => ST.students.filter(f).length;
@@ -983,7 +1008,7 @@ async function studentForm(id) {
       <div class="grid2">
         <div class="field"><label>Ngày vào (check-in)</label><input id="f_in" type="date" value="${esc((s.check_in_date || today()).slice(0, 10))}"></div>
         <div class="field"><label>Tạm trú</label><select id="f_residency">
-          ${opt('unregistered', s.residency_status, 'Chưa đăng ký')}${opt('registered', s.residency_status, 'Đã đăng ký')}</select></div>
+          ${opt('unregistered', s.residency_status, 'Chưa đăng ký')}${opt('processing', s.residency_status, 'Đang xử lý')}${opt('registered', s.residency_status, 'Đã đăng ký')}</select></div>
       </div>
 
       <div style="background:var(--bg2);padding:12px;border-radius:10px;margin-bottom:14px">
@@ -1092,10 +1117,10 @@ async function studentDetail(id) {
       <div class="cards" style="margin-bottom:16px">
         <div class="stat"><div class="l">Phòng</div><div class="v sm">${esc(s.room_name || '—')}${s.room_hang ? ` <span class="badge gray">${s.room_hang}</span>` : ''}</div></div>
         <div class="stat"><div class="l">Hình thức</div><div class="v sm">${RENTAL_LABEL[s.rental_type] || 'Thuê ghép'}</div></div>
-        <div class="stat"><div class="l">Tạm trú</div><div class="v sm">${s.residency_status === 'registered' ? '<span class="badge green">Đã ĐK</span>' : '<span class="badge amber">Chưa</span>'}</div></div>
+        <div class="stat"><div class="l">Tạm trú</div><div class="v sm">${resiBadge(s.residency_status)}</div></div>
       </div>
       <p><strong>Mã HV:</strong> ${esc(s.code || '—')} &nbsp;•&nbsp; <strong>Lớp:</strong> ${esc(s.class_name || '—')} &nbsp;•&nbsp; <strong>Ngày sinh:</strong> ${fmtDate(s.birth_date)}</p>
-      <p><strong>SĐT:</strong> ${esc(s.phone || '—')} &nbsp;•&nbsp; <strong>SĐT phụ huynh:</strong> ${esc(s.parent_phone || '—')} &nbsp;•&nbsp; <strong>Tạm trú:</strong> ${s.residency_status === 'registered' ? '<span class="badge green">Đã đăng ký</span>' : '<span class="badge amber">Chưa đăng ký</span>'}</p>
+      <p><strong>SĐT:</strong> ${esc(s.phone || '—')} &nbsp;•&nbsp; <strong>SĐT phụ huynh:</strong> ${esc(s.parent_phone || '—')} &nbsp;•&nbsp; <strong>Tạm trú:</strong> ${resiBadge(s.residency_status)}</p>
       <p><strong>Khai giảng:</strong> ${fmtDate(s.class_start_date)} &nbsp;•&nbsp; <strong>Dự kiến xuất cảnh:</strong> ${fmtDate(s.expected_departure)}</p>
       <p><strong>Ngày vào:</strong> ${fmtDate(s.check_in_date)} ${s.check_out_date ? ` &nbsp;•&nbsp; <strong>Ngày trả:</strong> ${fmtDate(s.check_out_date)}` : ''}</p>
       <p><strong>Tài khoản:</strong> ${s.login_username ? `<span class="badge blue">${IC.key} ${esc(s.login_username)}</span>` : '<span class="muted">Chưa có</span>'}

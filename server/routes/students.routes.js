@@ -69,7 +69,7 @@ const LIST_SELECT = `
 
 const CONTRACT = c => (['done', 'scanned', 'unsigned', 'none', 'handover'].includes(c) ? c : 'unsigned');
 const RENTAL = t => (t === 'phong' ? 'phong' : 'ghep');
-const RESIDENCY = r => (r === 'registered' ? 'registered' : 'unregistered');
+const RESIDENCY = r => (['registered', 'processing'].includes(r) ? r : 'unregistered');
 const D = v => (v ? v : null);
 
 router.get('/', requireRole('admin', 'staff'), async (req, res, next) => {
