@@ -774,15 +774,9 @@ async function viewDashboard() {
     <div class="grid2" style="align-items:start">
       <div class="panel" style="margin:0"><div class="hd"><h2>${IC.dashboard} Tình hình hôm nay</h2></div><div class="pad">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div style="cursor:pointer" onclick="stuFilter='upcoming';adminGo('students')"><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-blue">${IC.dot}</span> Sắp vào ›</div><div style="font-size:22px;font-weight:800">${upcoming}</div></div>
-          <div style="cursor:pointer" onclick="stuFilter='leaving';adminGo('students')"><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-amber">${IC.dot}</span> Sắp trả ›</div><div style="font-size:22px;font-weight:800">${leaving}</div></div>
+          <div style="cursor:pointer" onclick="stuFilter='upcoming';adminGo('students')"><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-blue">${IC.dot}</span> Sắp nhận phòng ›</div><div style="font-size:22px;font-weight:800">${upcoming}</div></div>
+          <div style="cursor:pointer" onclick="stuFilter='leaving';adminGo('students')"><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-amber">${IC.dot}</span> Sắp trả phòng ›</div><div style="font-size:22px;font-weight:800">${leaving}</div></div>
           <div style="cursor:pointer" onclick="adminGo('vehicles')"><div class="muted" style="font-size:12.5px">${IC.bike} Xe đang gửi ›</div><div style="font-size:22px;font-weight:800">${totalVehicles}</div></div>
-          <div style="cursor:pointer" onclick="quyCoc()"><div class="muted" style="font-size:12.5px">${IC.lock} Cọc đang giữ ›</div><div style="font-size:18px;font-weight:800">${money(heldDeposit)}</div></div>
-        </div>
-        <div class="rowbtns" style="margin-top:18px">
-          <button class="btn pri" onclick="studentForm()">${IC.plus} Thêm học viên</button>
-          <button class="btn" onclick="adminGo('invoices'); setTimeout(generateForm,60)">${IC.receipt} Tạo hóa đơn</button>
-          <button class="btn" onclick="quyCoc()">${IC.lock} Quỹ cọc</button>
         </div>
       </div></div>
 
