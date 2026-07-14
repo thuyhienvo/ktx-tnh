@@ -349,6 +349,7 @@ const CHECKOUT_REASONS = [['departure', 'Xuất cảnh (đi Nhật)'], ['persona
 const REASON_LABEL = { departure: 'Xuất cảnh', personal: 'Cá nhân', facility: 'Cơ sở vật chất', dropout: 'Nghỉ học', reserve: 'Bảo lưu', other: 'Khác', normal: 'Khác', urgent_visa: 'Xuất cảnh' };
 const VIO_SEV = { minor: ['Nhẹ', 'gray'], major: ['Nặng', 'amber'], severe: ['Nghiêm trọng', 'red'] };
 const INTRO_FIELDS = [
+  ['hotline', '📞 Hotline (hiện ở đầu trang, khối chi phí, mục Liên hệ & footer)', 'in'],
   ['intro_hero_title', 'Tiêu đề lớn (hero) — Enter để xuống dòng', 'ta'],
   ['intro_hero_desc', 'Mô tả dưới tiêu đề (địa chỉ tự thêm phía trước)', 'ta'],
   ['intro_about_eyebrow', 'Mục "Về khu nội trú" — nhãn nhỏ', 'in'],
@@ -2339,11 +2340,8 @@ function viewSettings() {
   const fee = (lbl, key, note = '') => `<div class="field"><label>${lbl} ${note ? `<span class="opt">${note}</span>` : ''}</label><input id="set_${key}" type="number" min="0" value="${esc(s[key] || 0)}"></div>`;
   el('content').innerHTML = `
     <div class="panel"><div class="hd"><h2>${IC.home} Thông tin hiển thị trên phiếu báo</h2></div><div class="pad">
-      <div class="grid2">
-        <div class="field"><label>Tên ký túc xá</label><input id="set_dorm_name" value="${esc(s.dorm_name || '')}"></div>
-        <div class="field"><label>Hotline</label><input id="set_hotline" value="${esc(s.hotline || '')}" placeholder="VD: 0906 316 671"></div>
-      </div>
-      <p class="muted" style="font-size:12px;margin:0">Địa chỉ lấy theo từng cơ sở (mục Cơ sở bên dưới).</p>
+      <div class="field"><label>Tên ký túc xá</label><input id="set_dorm_name" value="${esc(s.dorm_name || '')}"></div>
+      <p class="muted" style="font-size:12px;margin:0">Địa chỉ lấy theo từng cơ sở (mục Cơ sở bên dưới). Hotline chỉnh ở mục <strong>Trang giới thiệu</strong> bên dưới.</p>
     </div></div>
     <div class="panel"><div class="hd"><h2>${IC.banknote} Đơn giá & quy tắc tính tiền</h2></div><div class="pad">
       <div class="grid2">
@@ -2676,7 +2674,7 @@ async function saveSettings() {
   body.legal_female = el('set_legal_female').value.trim() || 'E2';
   body.legal_male = el('set_legal_male').value.trim() || 'S2';
   body.dorm_name = el('set_dorm_name').value.trim() || 'Ký túc xá';
-  body.hotline = el('set_hotline').value.trim();
+  // hotline giờ nằm ở mục "Trang giới thiệu" (lưu qua saveIntro)
   await guard(() => API.updateSettings(body));
   await refreshCache(); toast('Đã lưu cài đặt'); viewSettings();
 }
