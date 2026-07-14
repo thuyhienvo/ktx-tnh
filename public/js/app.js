@@ -709,6 +709,8 @@ async function viewDashboard() {
   const inCount = occ.length;
   const upcoming = ST.students.filter(s => liveStatus(s) === 'upcoming').length;
   const leaving = ST.students.filter(s => liveStatus(s) === 'leaving').length;
+  const checkinToday = ST.students.filter(s => s.check_in_date && s.check_in_date.slice(0, 10) === today()).length;   // nhận phòng hôm nay
+  const checkoutToday = ST.students.filter(s => s.check_out_date && s.check_out_date.slice(0, 10) === today()).length; // trả phòng hôm nay
   const capacity = rentCapOf(ST.rooms);           // tổng giường thuộc quỹ cho thuê (ghép + nguyên phòng)
   const beds = availBedsOf(ST.rooms);             // giường trống: CHỈ phòng cho thuê ghép còn slot
   const fullRooms = ST.rooms.filter(r => roomIsShared(r) && r.occupancy >= r.capacity && r.capacity > 0).length;
@@ -774,8 +776,8 @@ async function viewDashboard() {
     <div class="grid2" style="align-items:start">
       <div class="panel" style="margin:0"><div class="hd"><h2>${IC.dashboard} Tình hình hôm nay</h2></div><div class="pad">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div style="cursor:pointer" onclick="stuFilter='upcoming';adminGo('students')"><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-blue">${IC.dot}</span> Sắp nhận phòng ›</div><div style="font-size:22px;font-weight:800">${upcoming}</div></div>
-          <div style="cursor:pointer" onclick="stuFilter='leaving';adminGo('students')"><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-amber">${IC.dot}</span> Sắp trả phòng ›</div><div style="font-size:22px;font-weight:800">${leaving}</div></div>
+          <div style="cursor:pointer" onclick="stuFilter='checkin_today';adminGo('students')"><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-green">${IC.dot}</span> Nhận phòng hôm nay ›</div><div style="font-size:22px;font-weight:800">${checkinToday}</div></div>
+          <div style="cursor:pointer" onclick="stuFilter='checkout_today';adminGo('students')"><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-gray">${IC.dot}</span> Trả phòng hôm nay ›</div><div style="font-size:22px;font-weight:800">${checkoutToday}</div></div>
           <div style="cursor:pointer" onclick="adminGo('vehicles')"><div class="muted" style="font-size:12.5px">${IC.bike} Xe đang gửi ›</div><div style="font-size:22px;font-weight:800">${totalVehicles}</div></div>
         </div>
       </div></div>
@@ -908,6 +910,8 @@ function viewStudents() {
   if (stuFilter === 'resi_overdue') list = list.filter(s => isOccupying(s) && s.residency_status === 'unregistered' && stayDays(s) > 7);
   if (stuFilter === 'resi_processing') list = list.filter(s => isOccupying(s) && s.residency_status === 'processing');
   if (stuFilter === 'resi_registered') list = list.filter(s => isOccupying(s) && s.residency_status === 'registered');
+  if (stuFilter === 'checkin_today') list = list.filter(s => s.check_in_date && s.check_in_date.slice(0, 10) === today());
+  if (stuFilter === 'checkout_today') list = list.filter(s => s.check_out_date && s.check_out_date.slice(0, 10) === today());
   // Tìm kiếm áp dụng bằng ẩn/hiện hàng (attachRowSearch) — không lọc dựng lại ở đây
   const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
   const cnt = f => ST.students.filter(f).length;
