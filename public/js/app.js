@@ -644,7 +644,7 @@ async function viewExec() {
       <div class="exec-stats">
         ${es(IC.flag, 'ic-amber', 'Tạm trú', `${resiReg}<span> đã đăng ký</span>`, `${resiUnreg} chưa đăng ký${resiOverdueE ? ` · <strong style="color:var(--red-ink)">${resiOverdueE} quá 7 ngày</strong>` : ''}`, resiPct, "residencyModal()")}
         ${es(IC.fileText, 'ic-brand', 'Hợp đồng', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá 7 ngày</strong>` : ''}`, cPct, "stuFilter='nocontract';adminGo('students')")}
-        ${es(IC.wrench, 'ic-gray', 'Hư hỏng', `${dmg.length}<span> lượt báo</span>`, `Đã xử lý ${dmgDone} · đang xử lý ${dmgOpen} · chưa xử lý được ${dmgBlocked}`, dmgPct, "adminGo('repair')")}
+        ${es(IC.wrench, 'ic-gray', 'Bảo trì', `${dmg.length}<span> lượt báo</span>`, `Đã xử lý ${dmgDone} · đang xử lý ${dmgOpen} · chưa xử lý được ${dmgBlocked}`, dmgPct, "adminGo('repair')")}
         ${es(IC.alert, 'ic-red', 'Vi phạm', `${vioTotal}<span> lượt</span>`, `${vioNeedMail} HV cần báo trường${vioSev ? ' · ' + vioSev : ''}`, null, "adminGo('violations')")}
       </div>
     </div></div>
