@@ -32,7 +32,7 @@ async function renderPublicRegister() {
         <div class="intro-stats">
           <div><b>${info.room_count != null ? info.room_count : '—'}</b><span>Phòng ở</span></div>
           <div><b>${info.bed_free != null ? info.bed_free : '—'}</b><span>Giường trống</span></div>
-          <div><b>${money(info.room_fee).replace(' đ', '')}<small> đ</small></b><span>Thuê ghép / tháng</span></div>
+          <div><b>${money(info.room_fee)}</b><span>Thuê ghép / tháng</span></div>
         </div>
         <div class="intro-cta">
           <a class="btn pri lg" href="#dangky">${IC.filePen} Đăng ký nội trú</a>
@@ -1260,7 +1260,7 @@ function refundForm(id) {
     <td>${esc(a.name)} <span class="muted" style="font-size:11px">(${esc(a.unit)})</span></td>
     <td class="num"><input type="number" min="0" step="1" data-dqty="${a.id}" value="0" style="width:64px;text-align:right" oninput="dedCalc()"></td>
     <td class="num"><input type="number" min="0" data-dfee="${a.id}" data-dname="${esc(a.name)}" value="${+a.fee || 0}" style="width:110px;text-align:right" oninput="dedCalc()"></td>
-    <td class="num" id="dl_${a.id}">0 đ</td>
+    <td class="num" id="dl_${a.id}">0</td>
   </tr>`;
   const person = ST.assets.filter(a => a.category === 'person');
   const fixed = ST.assets.filter(a => a.category === 'fixed');
@@ -1274,7 +1274,7 @@ function refundForm(id) {
       </tbody></table></div>
       <div style="background:var(--bg2);padding:14px;border-radius:10px;margin:14px 0;font-size:14px">
         <div style="display:flex;justify-content:space-between"><span>Tiền cọc:</span><strong>${money(deposit)}</strong></div>
-        <div style="display:flex;justify-content:space-between;color:var(--red)"><span>Khấu trừ hư hao:</span><strong id="dedTotal">0 đ</strong></div>
+        <div style="display:flex;justify-content:space-between;color:var(--red)"><span>Khấu trừ hư hao:</span><strong id="dedTotal">0</strong></div>
         <div style="display:flex;justify-content:space-between;font-size:16px;margin-top:6px;padding-top:8px;border-top:1px solid var(--line)"><span><strong>Hoàn thực tế:</strong></span><strong id="dedRefund" data-deposit="${deposit}" style="color:var(--green)">${money(deposit)}</strong></div>
       </div>
       <div class="grid2">
