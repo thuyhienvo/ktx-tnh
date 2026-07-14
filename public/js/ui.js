@@ -4,6 +4,7 @@ const el = id => document.getElementById(id);
 
 const esc = s => (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = n => (Number(n) || 0).toLocaleString('vi-VN') + ' đ';
+const moneyN = n => (Number(n) || 0).toLocaleString('vi-VN'); // số tiền KHÔNG kèm đơn vị "đ" (dùng trong bảng có nhiều cột tiền)
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const curMonth = () => today().slice(0, 7);
 function fmtDate(d) { if (!d) return '—'; const p = String(d).slice(0, 10).split('-'); return `${p[2]}/${p[1]}/${p[0]}`; }

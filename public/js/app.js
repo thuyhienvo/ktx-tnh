@@ -2069,6 +2069,7 @@ async function viewInvoices() {
       <div class="stat"><div class="l">Tổng tiền phiếu (dự báo)</div><div class="v sm">${money(total)}</div></div>
     </div>
     <div class="panel"><div class="hd"><h2>Phiếu báo tiền phòng ${monthLabel(invMonth)} (<span id="invCount">${list.length}</span>)</h2>
+      <span class="muted" style="font-size:12px">Đơn vị: đồng</span>
       <div class="toolbar">
         <div class="search"><span class="i">${IC.search}</span><input id="invs" placeholder="Tìm tên HV / số phòng..." value="${esc(invSearch)}"></div>
         ${all.length ? `<button class="btn sm" onclick='exportCSV(${JSON.stringify(list).replace(/'/g, "&#39;")})'>${IC.download} Xuất Excel (CSV)</button>` : ''}</div></div>
@@ -2079,13 +2080,13 @@ async function viewInvoices() {
           <td><strong>${esc(i.student_name)}</strong>${i.student_code ? `<div class="muted" style="font-size:11px">${esc(i.student_code)}</div>` : ''}</td>
           <td>${esc(i.room_name || '—')}</td>
           <td class="num">${i.days_stayed}</td>
-          <td class="num">${money(i.room_charge)}</td>
-          <td class="num">${money(i.electric_charge)}<div class="muted" style="font-size:10px">${i.electric_kwh || 0} kWh</div></td>
-          <td class="num">${money(i.water_charge)}</td>
-          <td class="num">${money(i.service_charge)}</td>
-          <td class="num">${i.washing_charge ? money(i.washing_charge) : '—'}</td>
-          <td class="num">${i.parking_charge ? money(i.parking_charge) : '—'}</td>
-          <td class="num"><strong>${money(i.total)}</strong></td>
+          <td class="num">${moneyN(i.room_charge)}</td>
+          <td class="num">${moneyN(i.electric_charge)}<div class="muted" style="font-size:10px">${i.electric_kwh || 0} kWh</div></td>
+          <td class="num">${moneyN(i.water_charge)}</td>
+          <td class="num">${moneyN(i.service_charge)}</td>
+          <td class="num">${i.washing_charge ? moneyN(i.washing_charge) : '—'}</td>
+          <td class="num">${i.parking_charge ? moneyN(i.parking_charge) : '—'}</td>
+          <td class="num"><strong>${moneyN(i.total)}</strong></td>
           <td class="num"><div class="rowbtns" style="justify-content:flex-end">
             <button class="btn sm pri" onclick='phieuBao(${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.fileText} Phiếu báo</button>
             <button class="btn sm ghost" title="Tính lại theo số ngày ở hiện tại" onclick="recalcInv(${i.id})">${IC.refresh}</button>
