@@ -36,6 +36,7 @@ async function renderPublicRegister() {
         </div>
         <div class="intro-cta">
           <a class="btn pri lg" href="#dangky">${IC.filePen} Đăng ký nội trú</a>
+          ${info.hotline ? `<a class="btn lg" href="tel:${esc(String(info.hotline).replace(/\s/g, ''))}" style="background:rgba(255,255,255,.16);border:1.5px solid rgba(255,255,255,.7);color:#fff;backdrop-filter:blur(3px)">${IC.phone} Gọi hotline ${esc(info.hotline)}</a>` : ''}
         </div>
       </div>
     </header>
