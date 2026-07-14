@@ -648,6 +648,25 @@ async function viewExec() {
 }
 
 /* ---------- TỔNG QUAN ---------- */
+// Popup gộp "Hợp đồng chưa hoàn thiện": 3 loại cần xử lý, bấm từng loại xem danh sách
+function contractIssuesModal() {
+  const occ = ST.students.filter(isOccupying);
+  const nc = occ.filter(s => ['unsigned', 'none'].includes(s.contract_status)).length;
+  const ov = occ.filter(contractOverdue).length;
+  const ho = occ.filter(handoverPending).length;
+  const row = (ico, label, n, filter, cls) => `<div class="todo ${n ? cls : 'calm'}" ${n ? `onclick="closeModal();stuFilter='${filter}';adminGo('students')"` : ''}><span class="ic">${ico}</span><span class="tx">${label}</span><span class="n">${n}</span></div>`;
+  openModal(`
+    <div class="mh"><h3>${IC.fileText} Hợp đồng chưa hoàn thiện</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <div class="hint">${IC.info} Các nhóm cần hoàn thiện hợp đồng / bàn giao. Bấm từng nhóm để xem danh sách học viên.</div>
+      <div class="todo-grid" style="grid-template-columns:1fr;margin-top:10px">
+        ${row(IC.fileText, 'Hợp đồng chưa ký', nc, 'nocontract', 'warn')}
+        ${row(IC.alert, 'Thuê ghép ở >7 ngày chưa ký HĐ (báo động)', ov, 'contract_overdue', 'bad')}
+        ${row(IC.fileText, 'Ngắn hạn chưa ký bàn giao', ho, 'handover_pending', 'warn')}
+      </div>
+    </div>
+    <div class="mf"><button class="btn" onclick="closeModal()">Đóng</button></div>`);
+}
 async function viewDashboard() {
   const occ = ST.students.filter(isOccupying);
   const inCount = occ.length;
@@ -665,6 +684,8 @@ async function viewDashboard() {
   const noContract = occ.filter(s => ['unsigned', 'none'].includes(s.contract_status)).length;
   const ghepOverdue = occ.filter(contractOverdue).length; // thuê ghép >7 ngày chưa ký HĐ
   const handoverTodo = occ.filter(handoverPending).length; // ngắn hạn chưa ký bàn giao
+  // Gộp 3 loại "hợp đồng chưa hoàn thiện" (đếm không trùng)
+  const contractIncomplete = occ.filter(s => ['unsigned', 'none'].includes(s.contract_status) || contractOverdue(s) || handoverPending(s)).length;
   const depExpected = occ.filter(willDepartSoon).length; // dự kiến xuất cảnh (điều phối phòng)
   const totalVehicles = occ.reduce((a, s) => a + (+s.vehicle_count || 0), 0);
   const heldDeposit = ST.students.filter(s => s.deposit_status === 'held').reduce((a, s) => a + (+s.deposit_amount || 0), 0);
@@ -705,8 +726,7 @@ async function viewDashboard() {
         ${todo(IC.filePen, 'Đơn đăng ký / trả phòng chờ duyệt', pApps + pCout, pApps ? "adminGo('reg')" : "adminGo('checkout')", 'on')}
         ${todo(IC.wrench, 'Hư hỏng chưa xử lý', pDmg, "adminGo('repair')", 'warn')}
         ${todo(IC.flag, 'Chưa đăng ký tạm trú', noResidency, "stuFilter='noresi';adminGo('students')", 'warn')}
-        ${todo(IC.fileText, 'Chưa ký HĐ / bàn giao', noContract, "stuFilter='nocontract';adminGo('students')", 'warn')}
-        ${todo(IC.alert, 'Thuê ghép >7 ngày chưa ký HĐ', ghepOverdue, "stuFilter='contract_overdue';adminGo('students')", 'bad')}
+        ${todo(IC.fileText, 'Hợp đồng chưa hoàn thiện', contractIncomplete, "contractIssuesModal()", 'warn')}
         <div class="todo ${refundPending ? 'bad' : 'calm'}" ${refundPending ? 'onclick="quyCoc()"' : ''}><span class="ic">${IC.handCoins}</span><span class="tx">Hoàn cọc</span><span class="n">${refundPending}</span></div>
         ${todo(IC.lock, 'Chưa đóng cọc', occ.filter(s => s.deposit_status === 'none').length, "stuFilter='nodeposit';adminGo('students')", 'warn')}
         ${todo(IC.planeTakeoff, 'Dự kiến xuất cảnh (điều phối phòng)', depExpected, "stuFilter='departure_expected';adminGo('students')", 'on')}
