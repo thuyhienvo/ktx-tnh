@@ -289,7 +289,7 @@ const AdminTitles = {
   students: ['Học viên', 'Hồ sơ, hợp đồng, tạm trú'],
   rooms: ['Phòng', 'Danh sách phòng theo tầng / hạng / giới tính'],
   vehicles: ['Xe', 'Danh sách xe học viên gửi'],
-  washing: ['Máy giặt', 'Học viên đăng ký dùng máy giặt'],
+  services: ['Dịch vụ', 'Máy giặt · Gửi xe — dịch vụ tùy chọn của học viên'],
   checkin: ['Check-in / Check-out', 'Lịch sử ra / vào ký túc xá'],
   invoices: ['Tiền phòng', 'Hóa đơn hàng tháng, điện nước, cọc'],
   revenue: ['Dự báo doanh thu', 'Dự báo từ phiếu báo tiền phòng · đối chiếu Bravo (thu thật do Bravo quản lý)'],
@@ -413,7 +413,7 @@ function renderAdmin() {
           <button data-v="students"><span class="ico">${IC.users}</span><span class="lbl">Học viên</span></button>
           <button data-v="rooms"><span class="ico">${IC.doorOpen}</span><span class="lbl">Phòng</span></button>
           <button data-v="vehicles"><span class="ico">${IC.bike}</span><span class="lbl">Xe</span></button>
-          <button data-v="washing"><span class="ico">${IC.washer}</span><span class="lbl">Máy giặt</span></button>
+          <button data-v="services"><span class="ico">${IC.sparkles}</span><span class="lbl">Dịch vụ</span></button>
           <div class="grp">Vận hành</div>
           <button data-v="checkin"><span class="ico">${IC.key}</span><span class="lbl">Check-in / out</span></button>
           <button data-v="invoices"><span class="ico">${IC.wallet}</span><span class="lbl">Tiền phòng</span></button>
@@ -452,7 +452,7 @@ function renderAdmin() {
   startTableResize();
   const qp = new URLSearchParams(location.search);
   const startView = qp.get('view');
-  const views = ['exec', 'dashboard', 'students', 'rooms', 'vehicles', 'washing', 'checkin', 'invoices', 'revenue', 'reg', 'checkout', 'repair', 'violations', 'feedback', 'requests', 'audit', 'settings'];
+  const views = ['exec', 'dashboard', 'students', 'rooms', 'vehicles', 'services', 'checkin', 'invoices', 'revenue', 'reg', 'checkout', 'repair', 'violations', 'feedback', 'requests', 'audit', 'settings'];
   refreshCache().then(() => adminGo(views.includes(startView) ? startView : 'dashboard')).catch(e => toast(e.message, 'err'));
 }
 
@@ -529,7 +529,7 @@ function adminGo(view) {
   el('pgTitle').textContent = AdminTitles[view][0];
   el('pgSub').textContent = AdminTitles[view][1];
   el('topActions').innerHTML = '';
-  ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, vehicles: viewVehicles, washing: viewWashing, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, reg: viewRequests, checkout: viewRequests, repair: viewRequests, violations: viewRequests, feedback: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
+  ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, vehicles: viewVehicles, services: viewServices, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, reg: viewRequests, checkout: viewRequests, repair: viewRequests, violations: viewRequests, feedback: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
 }
 const roomById = id => ST.rooms.find(r => r.id === id);
 const studentById = id => ST.students.find(s => s.id === id);
@@ -1450,27 +1450,40 @@ function quyCoc() {
 
 /* ---------- XE ---------- */
 let vehSearch = '';
-/* ---------- MÁY GIẶT ---------- */
-function viewWashing() {
-  const fee = +ST.settings.washing_fee || 0;
-  const users = ST.students.filter(s => s.uses_washing && isOccupying(s)).sort((a, b) => (a.room_name || '').localeCompare(b.room_name || '', 'vi'));
-  const total = users.length * fee;
-  el('topActions').innerHTML = `<button class="btn pri" onclick="addWashingForm()">${IC.plus} Thêm HV dùng máy giặt</button>`;
+/* ---------- DỊCH VỤ (Máy giặt · Gửi xe — mở rộng được) ---------- */
+let svcTab = 'washing';
+function viewServices() {
+  const occ = ST.students.filter(isOccupying);
+  const washFee = +ST.settings.washing_fee || 0, parkFee = +ST.settings.parking_fee || 0;
+  const washUsers = occ.filter(s => s.uses_washing).sort((a, b) => (a.room_name || '').localeCompare(b.room_name || '', 'vi'));
+  const parkUsers = occ.filter(s => (+s.vehicle_count || 0) > 0).sort((a, b) => (a.room_name || '').localeCompare(b.room_name || '', 'vi'));
+  const totalVeh = occ.reduce((a, s) => a + (+s.vehicle_count || 0), 0);
+  el('topActions').innerHTML = '';
+  const svcCard = (ico, cls, headline, sub) => `<div class="kpi"><span class="ic ${cls}">${ico}</span><div><div class="v">${headline}</div><div class="l">${sub}</div></div></div>`;
+  const pill = (k, ico, label, n) => `<button class="btn sm ${svcTab === k ? 'pri' : ''}" onclick="svcTab='${k}';viewServices()">${ico} ${label} (${n})</button>`;
+
+  let body = '';
+  if (svcTab === 'parking') {
+    body = `<div class="panel"><div class="hd"><h2>${IC.bike} Gửi xe (${parkUsers.length} HV · ${totalVeh} xe)</h2><button class="btn sm" onclick="adminGo('vehicles')">${IC.bike} Quản lý biển số / mã dán →</button></div>
+      <div class="table-wrap">${parkUsers.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Số xe</th><th class="num">Phí / tháng</th></tr></thead><tbody>
+        ${parkUsers.map(s => `<tr><td><a href="#" onclick="studentDetail(${s.id});return false"><strong>${esc(s.name)}</strong></a>${s.code ? `<div class="muted" style="font-size:11px">${esc(s.code)}</div>` : ''}</td><td>${esc(s.room_name || '—')}</td><td class="num">${s.vehicle_count}</td><td class="num">${money((+s.vehicle_count || 0) * parkFee)}</td></tr>`).join('')}
+      </tbody></table>` : `<div class="empty">Chưa có HV gửi xe. Thêm xe ở mục <a href="#" onclick="adminGo('vehicles');return false">Xe</a>.</div>`}</div></div>`;
+  } else {
+    body = `<div class="panel"><div class="hd"><h2>${IC.washer} Máy giặt (${washUsers.length})</h2><button class="btn sm pri" onclick="addWashingForm()">${IC.plus} Thêm HV dùng máy giặt</button></div>
+      <div class="table-wrap">${washUsers.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Phí / tháng</th><th></th></tr></thead><tbody>
+        ${washUsers.map(s => `<tr><td><a href="#" onclick="studentDetail(${s.id});return false"><strong>${esc(s.name)}</strong></a>${s.code ? `<div class="muted" style="font-size:11px">${esc(s.code)}</div>` : ''}</td><td>${esc(s.room_name || '—')}</td><td class="num">${money(washFee)}</td><td class="num"><button class="btn sm ghost" onclick="toggleWashing(${s.id}, false)">${IC.trash} Ngưng</button></td></tr>`).join('')}
+      </tbody></table>` : '<div class="empty">Chưa có HV đăng ký máy giặt. Bấm "Thêm HV dùng máy giặt".</div>'}</div></div>`;
+  }
   el('content').innerHTML = `
     <div class="kpis">
-      <div class="kpi"><span class="ic ic-blue">${IC.washer}</span><div><div class="v">${users.length}</div><div class="l">HV đang dùng máy giặt</div></div></div>
-      <div class="kpi"><span class="ic ic-brand">${IC.banknote}</span><div><div class="v">${money(total)}</div><div class="l">Doanh thu máy giặt / tháng</div></div></div>
-      <div class="kpi"><span class="ic ic-gray">${IC.receipt}</span><div><div class="v">${money(fee)}</div><div class="l">Đơn giá / tháng</div></div></div>
+      ${svcCard(IC.washer, 'ic-blue', `${washUsers.length}<span class="muted" style="font-size:14px;font-weight:600"> HV</span>`, `Máy giặt · ${money(washUsers.length * washFee)}/tháng · đơn giá ${money(washFee)}`)}
+      ${svcCard(IC.bike, 'ic-brand', `${totalVeh}<span class="muted" style="font-size:14px;font-weight:600"> xe</span>`, `Gửi xe · ${money(totalVeh * parkFee)}/tháng · đơn giá ${money(parkFee)}`)}
     </div>
-    <div class="panel"><div class="hd"><h2>${IC.washer} Học viên dùng máy giặt (${users.length})</h2></div>
-    <div class="table-wrap">${users.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Phí / tháng</th><th></th></tr></thead><tbody>
-      ${users.map(s => `<tr>
-        <td><a href="#" onclick="studentDetail(${s.id});return false"><strong>${esc(s.name)}</strong></a>${s.code ? `<div class="muted" style="font-size:11px">${esc(s.code)}</div>` : ''}</td>
-        <td>${esc(s.room_name || '—')}</td>
-        <td class="num">${money(fee)}</td>
-        <td class="num"><button class="btn sm ghost" onclick="toggleWashing(${s.id}, false)">${IC.trash} Ngưng</button></td>
-      </tr>`).join('')}
-    </tbody></table>` : '<div class="empty">Chưa có học viên nào đăng ký máy giặt. Bấm "Thêm HV dùng máy giặt".</div>'}</div></div>`;
+    <div class="pill-row">
+      ${pill('washing', IC.washer, 'Máy giặt', washUsers.length)}
+      ${pill('parking', IC.bike, 'Gửi xe', parkUsers.length)}
+    </div>
+    ${body}`;
 }
 function addWashingForm() {
   const avail = ST.students.filter(s => !s.uses_washing && isOccupying(s)).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'));
@@ -1490,7 +1503,7 @@ async function toggleWashing(id, on) {
   await guard(() => API.setWashing(id, on));
   await refreshCache(); closeModal();
   toast(on ? 'Đã thêm HV dùng máy giặt' : 'Đã ngưng máy giặt');
-  if (ST.view === 'washing') viewWashing();
+  if (ST.view === 'services') viewServices();
 }
 async function viewVehicles() {
   el('content').innerHTML = '<div class="spinner"></div>';
