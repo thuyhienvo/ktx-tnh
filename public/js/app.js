@@ -412,7 +412,6 @@ function renderAdmin() {
           <button data-v="dashboard"><span class="ico">${IC.dashboard}</span><span class="lbl">Tổng quan</span></button>
           <button data-v="students"><span class="ico">${IC.users}</span><span class="lbl">Học viên</span></button>
           <button data-v="rooms"><span class="ico">${IC.doorOpen}</span><span class="lbl">Phòng</span></button>
-          <button data-v="vehicles"><span class="ico">${IC.bike}</span><span class="lbl">Xe</span></button>
           <button data-v="services"><span class="ico">${IC.sparkles}</span><span class="lbl">Dịch vụ</span></button>
           <div class="grp">Vận hành</div>
           <button data-v="checkin"><span class="ico">${IC.key}</span><span class="lbl">Check-in / out</span></button>
@@ -522,6 +521,7 @@ function closeSide() {
 }
 function adminGo(view) {
   if (view === 'requests') view = 'reg'; // alias cũ → trang Đăng ký ở nội trú
+  if (view === 'vehicles') { svcTab = 'parking'; view = 'services'; } // Xe đã gộp vào Dịch vụ → Gửi xe
   // Chặn nhân viên (staff) truy cập các mục dành riêng quản trị (kể cả deep-link)
   if (ADMIN_ONLY_VIEWS.includes(view) && Auth.user.role !== 'admin') view = 'dashboard';
   ST.view = view; closeSide();
@@ -529,7 +529,7 @@ function adminGo(view) {
   el('pgTitle').textContent = AdminTitles[view][0];
   el('pgSub').textContent = AdminTitles[view][1];
   el('topActions').innerHTML = '';
-  ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, vehicles: viewVehicles, services: viewServices, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, reg: viewRequests, checkout: viewRequests, repair: viewRequests, violations: viewRequests, feedback: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
+  ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, services: viewServices, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, reg: viewRequests, checkout: viewRequests, repair: viewRequests, violations: viewRequests, feedback: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
 }
 const roomById = id => ST.rooms.find(r => r.id === id);
 const studentById = id => ST.students.find(s => s.id === id);
@@ -1451,30 +1451,22 @@ function quyCoc() {
 
 /* ---------- XE ---------- */
 let vehSearch = '';
-/* ---------- DỊCH VỤ (Máy giặt · Gửi xe — mở rộng được) ---------- */
+/* ---------- DỊCH VỤ (Máy giặt · Gửi xe — mọi dịch vụ tùy chọn ở 1 nơi) ---------- */
 let svcTab = 'washing';
-function viewServices() {
+async function viewServices() {
   const occ = ST.students.filter(isOccupying);
   const washFee = +ST.settings.washing_fee || 0, parkFee = +ST.settings.parking_fee || 0;
   const washUsers = occ.filter(s => s.uses_washing).sort((a, b) => (a.room_name || '').localeCompare(b.room_name || '', 'vi'));
-  const parkUsers = occ.filter(s => (+s.vehicle_count || 0) > 0).sort((a, b) => (a.room_name || '').localeCompare(b.room_name || '', 'vi'));
-  const totalVeh = occ.reduce((a, s) => a + (+s.vehicle_count || 0), 0);
+  el('content').innerHTML = '<div class="spinner"></div>';
+  // Xe: lấy từ bảng xe (nguồn sự thật), lọc theo HV đang ở bằng CÙNG bộ isOccupying như dashboard
+  // → totalVeh ở đây == "Xe đang gửi" ở Tổng quan; dùng CHUNG cho KPI, pill và danh sách (tránh 3 số khác nhau)
+  const occIds = new Set(occ.map(s => s.id));
+  let allVeh = []; try { allVeh = await API.vehicles(); } catch (e) {}
+  const veh = allVeh.filter(v => occIds.has(v.student_id)).sort((a, b) => (a.room_name || '').localeCompare(b.room_name || '', 'vi'));
+  const totalVeh = veh.length;
   el('topActions').innerHTML = '';
   const svcCard = (ico, cls, headline, sub) => `<div class="kpi"><span class="ic ${cls}">${ico}</span><div><div class="v">${headline}</div><div class="l">${sub}</div></div></div>`;
   const pill = (k, ico, label, n) => `<button class="btn sm ${svcTab === k ? 'pri' : ''}" onclick="svcTab='${k}';viewServices()">${ico} ${label} (${n})</button>`;
-
-  let body = '';
-  if (svcTab === 'parking') {
-    body = `<div class="panel"><div class="hd"><h2>${IC.bike} Gửi xe (${parkUsers.length} HV · ${totalVeh} xe)</h2><button class="btn sm" onclick="adminGo('vehicles')">${IC.bike} Quản lý biển số / mã dán →</button></div>
-      <div class="table-wrap">${parkUsers.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Số xe</th><th class="num">Phí / tháng</th></tr></thead><tbody>
-        ${parkUsers.map(s => `<tr><td><a href="#" onclick="studentDetail(${s.id});return false"><strong>${esc(s.name)}</strong></a>${s.code ? `<div class="muted" style="font-size:11px">${esc(s.code)}</div>` : ''}</td><td>${esc(s.room_name || '—')}</td><td class="num">${s.vehicle_count}</td><td class="num">${money((+s.vehicle_count || 0) * parkFee)}</td></tr>`).join('')}
-      </tbody></table>` : `<div class="empty">Chưa có HV gửi xe. Thêm xe ở mục <a href="#" onclick="adminGo('vehicles');return false">Xe</a>.</div>`}</div></div>`;
-  } else {
-    body = `<div class="panel"><div class="hd"><h2>${IC.washer} Máy giặt (${washUsers.length})</h2><button class="btn sm pri" onclick="addWashingForm()">${IC.plus} Thêm HV dùng máy giặt</button></div>
-      <div class="table-wrap">${washUsers.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Phí / tháng</th><th></th></tr></thead><tbody>
-        ${washUsers.map(s => `<tr><td><a href="#" onclick="studentDetail(${s.id});return false"><strong>${esc(s.name)}</strong></a>${s.code ? `<div class="muted" style="font-size:11px">${esc(s.code)}</div>` : ''}</td><td>${esc(s.room_name || '—')}</td><td class="num">${money(washFee)}</td><td class="num"><button class="btn sm ghost" onclick="toggleWashing(${s.id}, false)">${IC.trash} Ngưng</button></td></tr>`).join('')}
-      </tbody></table>` : '<div class="empty">Chưa có HV đăng ký máy giặt. Bấm "Thêm HV dùng máy giặt".</div>'}</div></div>`;
-  }
   el('content').innerHTML = `
     <div class="kpis">
       ${svcCard(IC.washer, 'ic-blue', `${washUsers.length}<span class="muted" style="font-size:14px;font-weight:600"> HV</span>`, `Máy giặt · ${money(washUsers.length * washFee)}/tháng · đơn giá ${money(washFee)}`)}
@@ -1482,9 +1474,28 @@ function viewServices() {
     </div>
     <div class="pill-row">
       ${pill('washing', IC.washer, 'Máy giặt', washUsers.length)}
-      ${pill('parking', IC.bike, 'Gửi xe', parkUsers.length)}
+      ${pill('parking', IC.bike, 'Gửi xe', totalVeh)}
     </div>
-    ${body}`;
+    <div id="svcBody"><div class="spinner"></div></div>`;
+  if (svcTab === 'parking') {
+    el('svcBody').innerHTML = `<div class="panel"><div class="hd"><h2>${IC.bike} Gửi xe — HV đang ở (<span id="vehCount">${totalVeh}</span> xe)</h2>
+      <div class="search"><span class="i">${IC.search}</span><input id="vs" placeholder="Tìm biển số, loại, chủ xe, phòng..." value="${esc(vehSearch)}"></div></div>
+      <div class="pad muted" style="font-size:12px">${IC.info} Thêm/sửa xe (biển số, mã dán) trong <strong>Chi tiết học viên</strong>.</div>
+      <div class="table-wrap">${totalVeh ? `<table><thead><tr><th>Biển số</th><th>Loại xe</th><th>Mã dán</th><th>Chủ xe</th><th>Phòng</th><th class="num">Phí/tháng</th></tr></thead><tbody>
+        ${veh.map(v => `<tr data-s="${esc((v.plate + ' ' + (v.vehicle_type || '') + ' ' + (v.student_name || '') + ' ' + (v.room_name || '') + ' ' + (v.sticker || '')).toLowerCase())}">
+          <td><strong>${esc(v.plate || '—')}</strong></td><td>${esc(v.vehicle_type || '—')}</td><td>${esc(v.sticker || '—')}</td>
+          <td><a href="#" onclick="studentDetail(${v.student_id});return false">${esc(v.student_name)}</a></td><td>${esc(v.room_name || '—')}</td>
+          <td class="num">${money(parkFee)}</td>
+        </tr>`).join('')}
+        <tr class="no-result" style="display:none"><td colspan="6"><div class="empty">Không tìm thấy xe phù hợp.</div></td></tr>
+      </tbody></table>` : `<div class="empty">Chưa có HV đang ở gửi xe. Thêm xe trong <strong>Chi tiết học viên</strong>.</div>`}</div></div>`;
+    const vs = el('vs'); if (vs) { vs.addEventListener('input', () => vehSearch = vs.value); attachRowSearch(vs, 'vehCount'); }
+  } else {
+    el('svcBody').innerHTML = `<div class="panel"><div class="hd"><h2>${IC.washer} Máy giặt (${washUsers.length})</h2><button class="btn sm pri" onclick="addWashingForm()">${IC.plus} Thêm HV dùng máy giặt</button></div>
+      <div class="table-wrap">${washUsers.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Phí / tháng</th><th></th></tr></thead><tbody>
+        ${washUsers.map(s => `<tr><td><a href="#" onclick="studentDetail(${s.id});return false"><strong>${esc(s.name)}</strong></a>${s.code ? `<div class="muted" style="font-size:11px">${esc(s.code)}</div>` : ''}</td><td>${esc(s.room_name || '—')}</td><td class="num">${money(washFee)}</td><td class="num"><button class="btn sm ghost" onclick="toggleWashing(${s.id}, false)">${IC.trash} Ngưng</button></td></tr>`).join('')}
+      </tbody></table>` : '<div class="empty">Chưa có HV đăng ký máy giặt. Bấm "Thêm HV dùng máy giặt".</div>'}</div></div>`;
+  }
 }
 function addWashingForm() {
   const avail = ST.students.filter(s => !s.uses_washing && isOccupying(s)).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'));
@@ -1505,33 +1516,6 @@ async function toggleWashing(id, on) {
   await refreshCache(); closeModal();
   toast(on ? 'Đã thêm HV dùng máy giặt' : 'Đã ngưng máy giặt');
   if (ST.view === 'services') viewServices();
-}
-async function viewVehicles() {
-  el('content').innerHTML = '<div class="spinner"></div>';
-  const all = await guard(() => API.vehicles());
-  const active = all.filter(v => v.student_status === 'in');
-  const list = all;
-  el('content').innerHTML = `
-    <div class="cards">
-      <div class="stat"><div class="l">${IC.bike} Tổng xe</div><div class="v">${all.length}</div></div>
-      <div class="stat"><div class="l">${IC.checkCircle} Xe HV đang ở</div><div class="v">${active.length}</div></div>
-    </div>
-    <div class="panel"><div class="hd"><h2>Danh sách xe (<span id="vehCount">${list.length}</span>)</h2>
-      <div class="search"><span class="i">${IC.search}</span><input id="vs" placeholder="Tìm biển số, loại, chủ xe, phòng..." value="${esc(vehSearch)}"></div>
-    </div><div class="table-wrap">
-      ${list.length ? `<table><thead><tr><th>Biển số</th><th>Loại xe</th><th>Mã dán</th><th>Chủ xe</th><th>Phòng</th><th>Trạng thái HV</th></tr></thead><tbody>
-        ${list.map(v => `<tr data-s="${esc((v.plate + ' ' + (v.vehicle_type || '') + ' ' + (v.student_name || '') + ' ' + (v.room_name || '') + ' ' + (v.sticker || '')).toLowerCase())}">
-          <td><strong>${esc(v.plate || '—')}</strong></td>
-          <td>${esc(v.vehicle_type || '—')}</td>
-          <td>${esc(v.sticker || '—')}</td>
-          <td><a href="#" onclick="studentDetail(${v.student_id});return false">${esc(v.student_name)}</a></td>
-          <td>${esc(v.room_name || '—')}</td>
-          <td>${v.student_status === 'in' ? '<span class="badge green">Đang ở</span>' : '<span class="badge gray">Đã rời</span>'}</td>
-        </tr>`).join('')}
-        <tr class="no-result" style="display:none"><td colspan="6"><div class="empty">Không tìm thấy xe phù hợp.</div></td></tr>
-      </tbody></table>` : `<div class="empty">Chưa có xe nào. Thêm xe trong <strong>Chi tiết học viên</strong>.</div>`}
-    </div></div>`;
-  const vs = el('vs'); if (vs) { vs.addEventListener('input', () => vehSearch = vs.value); attachRowSearch(vs, 'vehCount'); }
 }
 
 /* ---------- BÁO CÁO DOANH THU ---------- */
@@ -1588,14 +1572,7 @@ async function viewRevenue() {
           <td>${l}</td><td class="num">${money(v)}</td></tr>`; }).join('')}
         <tr style="background:#faf6f2"><td colspan="3"><strong>TỔNG TIỀN PHIẾU</strong></td><td class="num"><strong>${money(grand)}</strong></td></tr>
       </tbody></table></div>
-      <div class="pad muted" style="font-size:12.5px">${IC.bulb} Mã sản phẩm Bravo chỉnh trong <a href="#" onclick="adminGo('settings');return false">Cài đặt</a>. Số liệu = tổng tiền đã lập phiếu báo (chưa gồm cọc). Thu tiền thực tế do Bravo quản lý.</div>
-    </div>
-
-    <div class="panel"><div class="hd"><h2>${IC.planeTakeoff} Học viên xuất cảnh đi Nhật — năm ${revYear}</h2><span class="muted" style="font-size:12px">gồm xuất cảnh theo kế hoạch + đột xuất</span></div>
-      <div class="table-wrap"><table><thead><tr><th>Tháng</th><th class="num">Số HV xuất cảnh</th></tr></thead><tbody>
-        ${Array.from({ length: 12 }, (_, i) => { const mm = String(i + 1).padStart(2, '0'); const c = ST.students.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason) && String(s.check_out_date).slice(0, 7) === revYear + '-' + mm).length; return `<tr><td>${mm}/${revYear}</td><td class="num">${c ? '<strong>' + c + '</strong>' : '<span class="muted">—</span>'}</td></tr>`; }).join('')}
-        <tr style="background:#faf6f2"><td><strong>Tổng cả năm ${revYear}</strong></td><td class="num"><strong>${ST.students.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason) && String(s.check_out_date).slice(0, 4) === revYear).length}</strong></td></tr>
-      </tbody></table></div>
+      <div class="pad muted" style="font-size:12.5px">${IC.bulb} Mã sản phẩm Bravo chỉnh trong <a href="#" onclick="adminGo('settings');return false">Cài đặt</a>. Số liệu = tổng tiền đã lập phiếu báo (chưa gồm cọc). Thu tiền thực tế do Bravo quản lý. Số HV xuất cảnh xem ở <a href="#" onclick="adminGo('exec');return false">Điều hành</a>.</div>
     </div>`;
   const ry = el('ry'); if (ry) ry.onchange = e => { revYear = e.target.value; viewRevenue(); };
 }
