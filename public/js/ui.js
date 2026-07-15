@@ -46,6 +46,13 @@ function closeModal() {
 // Đóng thẳng, không hỏi — dùng khi người dùng ĐÃ đồng ý bỏ (vd đã xác nhận ở adminGo)
 function closeModalNgay() { _formLucMo = null; el('overlay').classList.remove('show'); }
 
+// F5 / đóng tab / bấm Back của trình duyệt khi form đang dở -> nhờ trình duyệt hỏi hộ.
+// closeModal chỉ cứu được đường TRONG app; F5 là đường của trình duyệt, phải chặn ở đây.
+window.addEventListener('beforeunload', e => {
+  if (window._dangLuu || !formDangDo()) return;
+  e.preventDefault(); e.returnValue = '';   // trình duyệt tự hiện hộp "Rời khỏi trang?"
+});
+
 el('overlay').addEventListener('click', e => { if (e.target.id === 'overlay') closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
