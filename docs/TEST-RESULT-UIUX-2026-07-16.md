@@ -207,6 +207,85 @@ Ba vấn đề gốc mà bộ test nêu, sau khi chạy thật thì **chỉ đú
 
 ---
 
-## Còn lại
+---
+---
 
-30 case chưa chạy (UX-02, 04, 06, 08, 09, 11–15, 17, 18, 20–22, 24–28, 30–38, 40). Chạy tiếp khi chị bảo.
+# PHẦN 2 — ĐÃ SỬA 4 LỖI + CHẠY TIẾP 30 CASE
+
+**Phiên bản sau khi sửa:** v72 · `npm test` **210/210**
+
+## 4 lỗi đã sửa và kiểm chứng lại bằng đúng case đã bắt
+
+| Case | Sửa gì | Kiểm chứng |
+|---|---|---|
+| **UX-03** | `chongBam2Lan()` bọc **41 hàm hành động** ở một chỗ (thay vì sửa 42 chỗ gọi — sót 1 là lỗ lại mở). Cú bấm thứ 2 bị bỏ qua thẳng, nút khoá + đổi chữ "Đang xử lý…" | bấm 2 lần → **1 request, 1 học viên** ✔ |
+| **UX-05** | `attachDate(o, iso, {max})` — lịch **không liệt kê năm ngoài khoảng**, ngày ngoài khoảng làm mờ + không bấm được. Server **báo lỗi 400** thay vì lặng lẽ vứt | lịch chỉ tới **2026**, gửi thẳng ngày 2031 → **HTTP 400 "Ngày sinh không thể ở tương lai"** ✔ |
+| **UX-01** | Chụp nội dung form lúc mở, so lúc đóng. Áp cho **X / Esc / bấm nền / đổi menu** | đổi menu → **hỏi trước**; bấm Hủy → **giữ nguyên chữ đã gõ**; **lưu xong KHÔNG hỏi nhầm** ✔ |
+| **UX-07** | Hộp xoá nói rõ tên + mã + phòng | *"Xóa Trần Văn A · mã DN25… · phòng 304?"* ✔ |
+
+**Chỗ khó nhất:** `closeModal()` được gọi ở **126 chỗ**, phần lớn là **sau khi lưu xong** — chặn bừa là hỏi nhầm ngay sau khi lưu thành công. Em giải bằng cờ `_dangLuu` mà `chongBam2Lan` bật sẵn trong lúc hàm lưu chạy → **không phải sửa 126 chỗ đó**.
+
+**2 hạt sạn cũng sửa luôn:**
+- `sw.js` giờ **suy ra phiên bản từ tên cache**, không ghi tay lần 2. Thêm `tests/unit/version.test.js` **canh mãi mãi** — lệch là `npm test` đỏ ngay.
+- `"Failed to fetch"` → *"Mất kết nối — chưa gửi được. Kiểm tra mạng rồi thử lại (dữ liệu bạn vừa nhập vẫn còn)."*
+
+---
+
+## 30 case còn lại — kết quả
+
+### ❌ FAIL (4)
+
+| Case | Vấn đề |
+|---|---|
+| **UX-02** · Nhấn F5 giữa form | Mất sạch. Không có bản nháp, trình duyệt cũng không hỏi "rời trang?". *(Cùng gốc với UX-01 nhưng UX-01 chỉ cứu đường trong app — F5 là đường của trình duyệt, cần `beforeunload`.)* |
+| **UX-15** · Lọc ra kết quả rỗng | Gõ "zzzkhongcogi" vào ô tìm → **bảng trống trơn, không một chữ**. Người dùng tưởng app hỏng. Đúng ra: *"Không tìm thấy học viên nào khớp 'zzz…'"* |
+| **UX-25** · Modal bắt đổi mật khẩu | `ui.js` gắn **Esc + bấm nền → closeModal() cho MỌI modal**, kể cả modal bắt đổi mật khẩu. Server có chặn (403 tới khi đổi) nên **không lọt dữ liệu**, nhưng người dùng **đóng xong thấy màn trống, không biết làm gì tiếp**. |
+| **UX-27** · Nút Back | App không quản lý lịch sử điều hướng → Back **không quay về màn trước**, văng ra ngoài ngữ cảnh. |
+
+### ✅ PASS (13) — chị đoán sai phần lớn
+
+**UX-04** mạng chậm → nút đổi "Đang xử lý…" + khoá *(nhờ chính bản sửa UX-03)* · **UX-06** báo lỗi **nói đúng ô nào sai** (*"Số điện thoại không hợp lệ: 'abcxyz' (cần 8–15 chữ số)"*) và **focus tới ô đó** — chỉ thiếu viền đỏ · **UX-08** **KHÔNG có nút "đánh dấu đã thu" nào trên giao diện** → không ai bấm nhầm được; sau vụ TC-01 (1 request xoá sạch sổ) thì đây là lựa chọn đúng · **UX-09** nút "Check-out" **màu đỏ riêng**, tách khỏi "Chi tiết" · **UX-12** ô nhập tự cuộn lên, bàn phím không che · **UX-13** hamburger mở/đóng mượt, **chọn mục xong tự đóng** · **UX-14** xoay ngang: **2 biểu đồ 662×240 và 164×164, không tràn** · **UX-17** `/api/electric?month=abc` → **HTTP 200, không sập 500** · **UX-18** chiến lược **ưu tiên mạng** → online là luôn có bản mới, không cần mời tải lại · **UX-21** ô tiền `type="number"` → dán `"1.200.000₫"` và gõ `"abc"` đều **bị loại sạch** · **UX-22** ngày **nhất quán dd/mm/yyyy**, không chỗ nào lọt `yyyy-mm-dd` · **UX-26** deep link chưa đăng nhập → **về màn đăng nhập, giữ `?view=invoices`**, đăng nhập xong vào đúng trang định vào
+
+### ⚠️ Không kết luận được (2)
+- **UX-11** (nút đủ to để chạm) — ở màn 360px bảng **không render nút nào** để đo. Đo 3 lần đều vậy. Cần xem tay.
+- **UX-20** (số âm nổi bật) — **chưa cử phòng trưởng nào** nên kỳ này không có khoản giảm để xem.
+
+### Chưa chạy (13)
+UX-24, 28, 30–38, 40 — nhóm in ấn/CSV, tiếp cận (Lighthouse), văn bản tràn, xung đột 2 tab.
+
+---
+
+## Phát hiện mới — không có trong bộ test
+
+### 🟠 D. Trên điện thoại, thanh tiêu đề nuốt gần 1/3 màn hình
+Đo ở màn 360×740:
+```
+Tiền phòng:  thanh trên cao 213px / 740px  → 29% màn hình
+Học viên:    165px                          → 22%
+Phòng:       125px                          → 17%
+Tổng quan:    67px                          →  9%
+```
+Nút hành động ở tiêu đề (*"Đánh số HĐ"*, *"Đã xóa"*, *"Đăng ký/duyệt đơn"*) **xuống 2–3 hàng** ở màn hẹp. Người dùng mất gần một phần ba màn hình trước khi thấy dòng dữ liệu đầu tiên.
+
+---
+
+## Em tự chấm sai — tổng cộng 8 lần trong cả 2 vòng
+
+Ngoài 4 lần ở Phần 1, vòng này thêm 4:
+
+5. **UX-05 lần đầu** — em gõ `31/02/2005` vào ô ngày sinh rồi báo "app nuốt im". Thật ra ô đó **`readOnly`, không gõ được** — lệnh gõ của em không vào được gì, ô rỗng là vì **chưa từng có gì**. Người dùng thật không thể gõ ngày sai. *Nhưng khi làm lại cho đúng thì lòi ra lỗi thật qua lối khác: lịch mời chọn năm 2031.*
+6. **UX-08** — regex `/thu/` của em bắt nhầm chữ **"doanh thu"**.
+7. **UX-22 + UX-11 lần đầu** — em đếm ngày trên **bảng Học viên**, mà bảng đó có cột `HỌC VIÊN · PHÒNG · HỢP ĐỒNG · CỌC · TRẠNG THÁI` — **không có cột ngày nào**. "0 ngày" là đúng, em test nhầm màn.
+8. **Thanh tiêu đề "đè nhau"** — em nhìn ảnh rồi kết luận nút đè lên chuông. Đo tọa độ thì **không đè**. Mắt em đọc nhầm ảnh.
+
+**Bài học xuyên suốt:** mỗi lần em "phát hiện lỗi" mà chưa đo lại bằng đúng thứ người dùng thật sự thấy/làm được, xác suất em sai là rất cao. 8/8 lần đều bắt được bằng cách **tự nghi ngờ kết quả của chính mình**.
+
+---
+
+## Việc nên làm tiếp, xếp theo mức ảnh hưởng
+
+1. **UX-15** — trạng thái rỗng. Một dòng chữ, ai lọc dữ liệu cũng gặp.
+2. **UX-02** — `beforeunload` chặn F5 khi form đang dở.
+3. **UX-25** — modal đổi mật khẩu không cho Esc/bấm nền thoát.
+4. **Mục D** — thu gọn thanh tiêu đề trên điện thoại.
+5. **UX-27** — quản lý lịch sử điều hướng (đây là việc lớn, cân nhắc sau).
