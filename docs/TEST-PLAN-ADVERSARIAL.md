@@ -1,5 +1,11 @@
 # BỘ TEST CASE ĐỐI KHÁNG — App Quản lý KTX
 
+> **Bộ này (v1) gom theo NHÓM RỦI RO và đã chạy 15/07/2026** — kết quả ở `TEST-RESULT-2026-07-15.md` (36/43 lỗi đã sửa).
+> Nó phủ kỹ đường tiền, phân quyền, xếp phòng, xoá/khôi phục — nhưng **12 chức năng khác chưa có case nào**.
+> **Phần còn trống nằm ở `TEST-PLAN-ADVERSARIAL-V2.md`** (76 case, phủ từng chức năng: vi phạm, SMTP, xe,
+> tài sản, cơ sở, bảo trì, đơn từ, cổng học viên, trang công khai, duyệt đơn, ảnh/tài liệu, nhật ký,
+> báo cáo, quản trị tài khoản). Hai bộ bổ sung nhau, không thay thế nhau.
+
 > Mục tiêu: **tìm cho ra lỗi**, không phải xác nhận code chạy đúng như code được viết.
 > Mỗi case ghi rõ **KẾT QUẢ ĐÚNG** (theo nghiệp vụ) và **NGHI NGỜ** (dự đoán app sẽ sai).
 > Chỗ hai cái lệch nhau = bug.

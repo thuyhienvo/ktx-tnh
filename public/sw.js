@@ -1,9 +1,17 @@
 // Service worker: ưu tiên MẠNG cho giao diện (luôn có bản mới nhất khi online),
 // dùng cache làm dự phòng khi offline. API luôn lấy trực tiếp từ mạng.
-const CACHE = 'ktx-shell-v71';
+const CACHE = 'ktx-shell-v72';
+// Số phiên bản SUY RA TỪ TÊN CACHE — tuyệt đối không ghi tay lần thứ hai.
+// Trước đây SHELL ghi cứng '?v=25' trong khi index.html nạp '?v=71': service worker tải sẵn
+// nguyên bộ asset cũ 46 phiên bản mà KHÔNG lần nào dùng tới (trang chỉ xin ?v=71) — máy học viên
+// tải thừa gần gấp đôi ngay lần mở app đầu tiên. Đúng nhóm dùng điện thoại đời thấp, mạng yếu.
+// Lệch được vì số phải sửa tay ở 2 file; sửa index.html rồi quên sw.js là xong.
+// tests/unit/version.test.js canh việc này, hỏng là npm test đỏ ngay.
+const V = (CACHE.match(/-v(\d+)$/) || [, '1'])[1];
 const SHELL = [
-  '/', '/index.html', '/css/styles.css?v=25',
-  '/js/icons.js?v=25', '/js/api.js?v=25', '/js/ui.js?v=25', '/js/app.js?v=25',
+  '/', '/index.html',
+  `/css/styles.css?v=${V}`,
+  `/js/icons.js?v=${V}`, `/js/api.js?v=${V}`, `/js/ui.js?v=${V}`, `/js/app.js?v=${V}`,
   '/manifest.webmanifest', '/icons/icon.svg',
 ];
 

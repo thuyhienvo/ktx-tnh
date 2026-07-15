@@ -147,7 +147,7 @@ async function renderPublicRegister() {
       <div class="field"><label>Ghi chú</label><textarea id="a_note" rows="2"></textarea></div>
       <button class="btn pri lg" type="submit">Gửi đăng ký</button>
     </form>`;
-  attachDate(el('a_birth'), '');
+  attachDate(el('a_birth'), '', { max: today() });   // ngày sinh không thể ở tương lai
   el('applyForm').addEventListener('submit', async e => {
     e.preventDefault();
     // e.submitter có thể null (gửi form bằng lệnh, không qua nút bấm) -> tra ngược nút Gửi.
@@ -542,6 +542,12 @@ function closeSide() {
   if (s) s.classList.remove('open'); if (b) b.classList.remove('show');
 }
 function adminGo(view) {
+  // Đang điền dở form mà bấm menu khác -> hỏi trước, đừng vứt luôn công sức của người ta.
+  // _dangLuu = đang trong luồng lưu (adminGo được gọi lại sau khi lưu xong) -> không hỏi.
+  if (!window._dangLuu && typeof formDangDo === 'function' && formDangDo()) {
+    if (!confirm('Bạn có dữ liệu chưa lưu.\n\nRời khỏi và bỏ những gì vừa nhập?')) return;
+    closeModalNgay();
+  }
   if (view === 'requests') view = 'reg'; // alias cũ → trang Đăng ký ở nội trú
   if (view === 'vehicles') { svcTab = 'parking'; view = 'services'; } // Xe đã gộp vào Dịch vụ → Gửi xe
   // Chặn nhân viên (staff) truy cập các mục dành riêng quản trị (kể cả deep-link)
@@ -1134,7 +1140,7 @@ async function studentForm(id) {
       </div>` : ''}
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveStudent(${id || 0})">Lưu</button></div>`, true);
-  attachDate(el('f_birth'), s.birth_date);
+  attachDate(el('f_birth'), s.birth_date, { max: today() });
   attachDate(el('f_cstart'), s.class_start_date);
   attachDate(el('f_departure'), s.expected_departure);
   setTimeout(() => el('f_name').focus(), 50);
@@ -1434,8 +1440,13 @@ async function doRefund(id, deposit) {
   studentDetailRefresh(id);
 }
 async function delStudent(id) {
-  if (!confirm('Xóa học viên này? Đây là xóa mềm — có thể khôi phục lại trong mục "Đã xóa".')) return;
-  await guard(() => API.deleteStudent(id)); await refreshCache(); closeModal(); toast('Đã xóa học viên (khôi phục được)'); viewStudents();
+  // Phải nói rõ xoá AI. "Xóa học viên này?" thì bấm nhầm dòng cũng không biết mình sắp xoá ai —
+  // nhất là trên điện thoại, các nút san sát nhau.
+  const s = studentById(id) || {};
+  const ai = [s.name, s.code && `mã ${s.code}`, s.room_name && `phòng ${s.room_name}`].filter(Boolean).join(' · ');
+  if (!confirm(`Xóa ${ai || 'học viên này'}?\n\nĐây là xóa mềm — khôi phục lại được trong mục "Đã xóa".`)) return;
+  await guard(() => API.deleteStudent(id)); await refreshCache(); closeModal();
+  toast(`Đã xóa ${s.name || 'học viên'} (khôi phục được)`); viewStudents();
 }
 // Thùng rác học viên: xem danh sách đã xóa mềm + khôi phục
 async function showDeletedStudents() {
@@ -1487,7 +1498,7 @@ function appForm() {
       <div class="field"><label>Ghi chú</label><textarea id="ap_note" rows="2"></textarea></div>
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveApp()">Tạo đơn</button></div>`);
-  attachDate(el('ap_birth'), '');
+  attachDate(el('ap_birth'), '', { max: today() });
 }
 async function saveApp() {
   const name = el('ap_name').value.trim(), phone = el('ap_phone').value.trim();
@@ -3341,13 +3352,18 @@ async function submitMaintBlock(id) {
 const VN_DOW = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 function fmtDMY(iso) { if (!iso) return ''; const p = iso.split('-'); return `${p[2]}/${p[1]}/${p[0]}`; }
 // Gắn bộ chọn ngày cho 1 ô input: readonly, giá trị ISO lưu ở dataset.iso, hiển thị dd/mm/yyyy
-function attachDate(input, iso) {
+// max: ngày muộn nhất được chọn (vd ngày sinh không thể ở TƯƠNG LAI).
+// Không giới hạn thì lịch mời người ta chọn năm 2031 làm ngày sinh, app nhận, rồi server
+// ÂM THẦM đổi thành trống — người dùng thấy "Đã gửi đăng ký!" và không hề biết mình mất dữ liệu.
+function attachDate(input, iso, opt) {
   if (!input) return;
   input.readOnly = true;
   input.dataset.iso = (iso || '').slice(0, 10);
   input.value = fmtDMY(input.dataset.iso);
   input.placeholder = 'Chọn ngày';
   input.classList.add('date-in');
+  if (opt && opt.max) input.dataset.max = opt.max;
+  if (opt && opt.min) input.dataset.min = opt.min;
   input.onclick = () => openCalendar(input);
   input.onfocus = () => openCalendar(input);
 }
@@ -3367,17 +3383,24 @@ function openCalendar(input) {
     const sel = input.dataset.iso;
     const nowY = new Date().getFullYear();
     let cells = '';
+    const max = input.dataset.max || '', min = input.dataset.min || '';
     for (let i = 0; i < start; i++) cells += '<span class="cal-d empty"></span>';
     for (let d = 1; d <= days; d++) {
       const ds = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      cells += `<span class="cal-d${ds === sel ? ' sel' : ''}" data-d="${ds}">${d}</span>`;
+      // Ngày ngoài khoảng cho phép: hiện mờ, KHÔNG bấm được (thà chặn còn hơn cho chọn rồi vứt đi)
+      const cam = (max && ds > max) || (min && ds < min);
+      cells += `<span class="cal-d${ds === sel ? ' sel' : ''}${cam ? ' cam' : ''}" ${cam ? '' : `data-d="${ds}"`}>${d}</span>`;
     }
     cal.innerHTML = `
       <div class="cal-hd">
         <button type="button" class="cal-nav" data-nav="-1">‹</button>
         <div class="cal-title">
           <select class="cal-m">${Array.from({ length: 12 }, (_, i) => `<option value="${i}" ${i === m ? 'selected' : ''}>Tháng ${i + 1}</option>`).join('')}</select>
-          <select class="cal-y">${Array.from({ length: 100 }, (_, i) => { const yy = nowY + 5 - i; return `<option value="${yy}" ${yy === y ? 'selected' : ''}>${yy}</option>`; }).join('')}</select>
+          <select class="cal-y">${Array.from({ length: 100 }, (_, i) => nowY + 5 - i)
+            // Ô có giới hạn (vd ngày sinh) -> KHÔNG liệt kê năm ngoài khoảng. Liệt kê ra rồi
+            // chặn ở ngày là bắt người ta bấm mò mới biết mình không được chọn.
+            .filter(yy => (!max || yy <= +max.slice(0, 4)) && (!min || yy >= +min.slice(0, 4)))
+            .map(yy => `<option value="${yy}" ${yy === y ? 'selected' : ''}>${yy}</option>`).join('')}</select>
         </div>
         <button type="button" class="cal-nav" data-nav="1">›</button>
       </div>
@@ -3472,6 +3495,53 @@ function startTableResize() {
   } else _rzObs.disconnect();
   ['content', 'modal'].forEach(id => { const e = el(id); if (e) { _rzObs.observe(e, { childList: true, subtree: true }); scan(e); } });
 }
+
+/* ================= CHỐNG BẤM 2 LẦN =================
+   Bấm "Lưu" phát thứ hai trong lúc phát đầu chưa xong = 2 request = 2 bản ghi trùng.
+   Đây CHÍNH LÀ GỐC của việc thu dư 10.907.925đ/tháng đã phải dọn tay ngày 16/07/2026:
+   nhân viên tưởng chưa ăn (mạng chậm) nên bấm lại — app tạo luôn 2 hồ sơ, mỗi hồ sơ 1 phiếu.
+   Tuyến chặn trùng ở server KHÔNG cứu được ca này: nó dựa vào mã HV / CCCD, mà học viên
+   mới đăng ký thì chưa có mã → cả 2 bản ghi đều lọt.
+
+   Bọc MỘT LẦN ở đây thay vì sửa 42 chỗ gọi — sót một chỗ là lỗ lại mở. Các hàm này khai báo
+   bằng `function` ở cấp cao nhất nên nằm sẵn trên window, ghi đè được. */
+let _nutVuaBam = null;
+document.addEventListener('click', e => {
+  const b = e.target && e.target.closest ? e.target.closest('button') : null;
+  if (b) _nutVuaBam = b;
+}, true); // pha capture: chạy TRƯỚC onclick, để hàm bên dưới biết nút nào vừa bị bấm
+
+function chongBam2Lan(fn) {
+  let dangChay = false;
+  return async function (...args) {
+    if (dangChay) return;              // cú bấm thứ 2 -> bỏ qua thẳng, không gửi request
+    dangChay = true;
+    // Báo cho closeModal/adminGo biết đang trong luồng LƯU -> đừng hỏi "bỏ dữ liệu chưa lưu?"
+    // ngay sau khi vừa lưu xong. Nhờ cờ này mà không phải sửa 126 chỗ gọi closeModal().
+    window._dangLuu = true;
+    const nut = _nutVuaBam, chuCu = nut ? nut.textContent : null;
+    if (nut) { nut.disabled = true; nut.textContent = 'Đang xử lý…'; } // cho người ta THẤY là đang chạy
+    try { return await fn.apply(this, args); }
+    finally {
+      dangChay = false; window._dangLuu = false;
+      if (nut && document.contains(nut)) { nut.disabled = false; nut.textContent = chuCu; }
+    }
+  };
+}
+
+[
+  'saveStudent', 'saveRoom', 'saveVehicle', 'saveAsset', 'saveFacility', 'saveUser', 'saveApp',
+  'saveViolation', 'saveVtype', 'saveInvoice', 'saveOneInvoice', 'saveElectric', 'saveDeposit',
+  'saveAccount', 'saveSettings', 'saveIntro', 'saveBravo', 'saveMailSettings', 'saveNote',
+  'doApprove', 'doTransfer', 'doCheckOut', 'doCheckIn', 'doSetLeader', 'unsetLeader',
+  'doChangePwd', 'doResetUserPw', 'delStudent', 'runGenerate', 'applyRenumber',
+  'settleDepositAndClose', 'submitCheckoutReq', 'submitDamage', 'submitHandoverCheckin',
+  'submitHandoverCheckout', 'submitMaintBlock', 'submitMaintDone', 'toggleWashing',
+  'toggleMyWashing', 'uploadRulesDoc', 'removeRulesDoc',
+].forEach(ten => {
+  if (typeof window[ten] === 'function') window[ten] = chongBam2Lan(window[ten]);
+  else console.warn('[chống bấm 2 lần] không thấy hàm:', ten); // đổi tên hàm mà quên sửa đây -> báo ngay
+});
 
 /* ================= KHỞI ĐỘNG ================= */
 boot();

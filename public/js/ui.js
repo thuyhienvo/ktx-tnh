@@ -19,12 +19,32 @@ function toast(msg, type = 'ok') {
   t._t = setTimeout(() => (t.className = 'toast'), 2800);
 }
 
+/* ---- Bảo vệ công sức nhập liệu ----
+   Form học viên có ~20 ô. Điền dở rồi lỡ bấm X / Esc / bấm ra nền / đổi menu là MẤT SẠCH,
+   phải gõ lại từ đầu — trên điện thoại thì bỏ cuộc luôn.
+   Cách làm: chụp lại nội dung form lúc MỞ, so lúc ĐÓNG. Có khác thì mới hỏi.
+   Cờ window._dangLuu do chongBam2Lan (app.js) bật trong lúc hàm lưu chạy — nhờ vậy 126 chỗ gọi
+   closeModal() sau khi lưu xong KHÔNG bị hỏi nhầm, mà không phải sửa 126 chỗ đó. */
+function _chupForm() {
+  return [...el('modal').querySelectorAll('input,select,textarea')]
+    .map(f => (f.type === 'checkbox' || f.type === 'radio') ? (f.checked ? '1' : '0') : f.value).join('');
+}
+let _formLucMo = null;
+function formDangDo() { return _formLucMo !== null && el('overlay').classList.contains('show') && _chupForm() !== _formLucMo; }
+
 function openModal(html, wide) {
   el('modal').className = 'modal' + (wide ? ' wide' : '');
   el('modal').innerHTML = html;
   el('overlay').classList.add('show');
+  _formLucMo = _chupForm();
 }
-function closeModal() { el('overlay').classList.remove('show'); }
+function closeModal() {
+  if (!window._dangLuu && formDangDo()
+      && !confirm('Bạn có dữ liệu chưa lưu.\n\nĐóng lại và bỏ những gì vừa nhập?')) return;
+  closeModalNgay();
+}
+// Đóng thẳng, không hỏi — dùng khi người dùng ĐÃ đồng ý bỏ (vd đã xác nhận ở adminGo)
+function closeModalNgay() { _formLucMo = null; el('overlay').classList.remove('show'); }
 
 el('overlay').addEventListener('click', e => { if (e.target.id === 'overlay') closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });

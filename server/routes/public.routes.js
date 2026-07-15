@@ -107,7 +107,15 @@ router.post('/apply', async (req, res, next) => {
     if (!isValidPhone(b.phone)) return res.status(400).json({ error: 'Số điện thoại không hợp lệ (chỉ chữ số, 8–15 số)' });
     // Ngày sinh: phải là ngày CÓ THẬT và không ở tương lai; sai -> bỏ qua (null) thay vì lỗi 500
     const todayStr = new Date().toISOString().slice(0, 10);
-    const birthDate = (isValidYmd(b.birth_date) && b.birth_date <= todayStr) ? b.birth_date : null;
+    // Ngày sinh sai thì BÁO, đừng lặng lẽ đổi thành trống: người ta bấm "Gửi" xong thấy
+    // "Đã gửi đăng ký!" và yên tâm là đã khai — đến lúc quản lý mở đơn ra mới thấy thiếu,
+    // phải gọi điện hỏi lại từng người. Ô trống (không khai) thì vẫn cho qua, đó là quyền của họ.
+    const coNgaySinh = b.birth_date != null && String(b.birth_date).trim() !== '';
+    if (coNgaySinh && !isValidYmd(b.birth_date))
+      return res.status(400).json({ error: `Ngày sinh không hợp lệ: "${b.birth_date}"` });
+    if (coNgaySinh && b.birth_date > todayStr)
+      return res.status(400).json({ error: 'Ngày sinh không thể ở tương lai — vui lòng chọn lại.' });
+    const birthDate = coNgaySinh ? b.birth_date : null;
     // Chèn đơn trước (chưa có ảnh) để lấy id
     const { rows } = await query(
       `INSERT INTO applications (name, phone, gender, birth_date, code, class_name, rental_type, pref, note, wants_washing, wants_parking, plate, facility_id)

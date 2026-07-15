@@ -526,3 +526,6 @@ th.sortable.asc .sort-ar,th.sortable.desc .sort-ar{opacity:1;color:var(--brand-d
 #dataHealth td:first-child{white-space:nowrap;width:1%}
 #dataHealth .table-wrap{max-height:none}
 #dataHealth code{background:var(--bg2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:12px}
+
+/* Ngày trong lịch nằm ngoài khoảng cho phép (vd ngày sinh ở tương lai) */
+.cal-d.cam{opacity:.28;cursor:not-allowed;pointer-events:none}

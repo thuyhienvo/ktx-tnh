@@ -12,11 +12,18 @@ const Auth = {
 
 async function api(path, { method = 'GET', body } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  const res = await fetch('/api' + path, {
-    method, headers,
-    body: body ? JSON.stringify(body) : undefined,
-    credentials: 'same-origin', // gửi kèm cookie phiên
-  });
+  let res;
+  try {
+    res = await fetch('/api' + path, {
+      method, headers,
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'same-origin', // gửi kèm cookie phiên
+    });
+  } catch (e) {
+    // Mất mạng: trình duyệt ném "Failed to fetch" / "NetworkError" — tiếng Anh, người dùng
+    // đọc không hiểu. Toàn app tiếng Việt, riêng lúc hỏng nhất lại nói tiếng Anh.
+    throw new Error('Mất kết nối — chưa gửi được. Kiểm tra mạng rồi thử lại (dữ liệu bạn vừa nhập vẫn còn).');
+  }
   // Phiên hết hạn khi đang đăng nhập -> xóa hint + tải lại về màn đăng nhập
   if (res.status === 401 && Auth.user) { Auth.user = null; location.reload(); throw new Error('Hết phiên đăng nhập'); }
   let data = null;
