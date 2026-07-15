@@ -26,7 +26,14 @@ app.use(express.json({ limit: '2mb' }));
 
 // Rate-limit: chặn brute-force login + lạm dụng API
 const apiLimiter = rateLimit({ windowMs: 60 * 1000, max: 600, standardHeaders: true, legacyHeaders: false, message: { error: 'Quá nhiều yêu cầu, vui lòng thử lại sau ít phút.' } });
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false, message: { error: 'Đăng nhập sai quá nhiều lần. Vui lòng đợi vài phút rồi thử lại.' } });
+// Chống dò mật khẩu = đếm lần ĐĂNG NHẬP SAI. skipSuccessfulRequests: đăng nhập ĐÚNG không bị tính.
+// Trước đây đếm cả lần đúng -> người dùng thật đăng nhập nhiều thiết bị / hết phiên vài lần là bị khoá,
+// mà câu báo lỗi lại nói "đăng nhập sai quá nhiều lần" — sai sự thật, không ai hiểu tại sao mình bị chặn.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 20, skipSuccessfulRequests: true,
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Đăng nhập sai quá nhiều lần. Vui lòng đợi vài phút rồi thử lại.' },
+});
 app.use('/api', apiLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/change-password', authLimiter);
