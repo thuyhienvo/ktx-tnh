@@ -46,6 +46,22 @@ async function putDataUrl(bucket, key, dataUrl) {
   return putBuffer(bucket, key, p.buffer, p.contentType);
 }
 
+// Tài liệu PDF (nội quy ký túc xá). Tách riêng khỏi parseDataUrl để KHÔNG vô tình cho phép
+// upload PDF vào những chỗ chỉ được nhận ảnh (ảnh CCCD, ảnh trang giới thiệu).
+function parsePdfDataUrl(dataUrl) {
+  const m = /^data:application\/pdf;base64,(.+)$/s.exec(dataUrl || '');
+  if (!m) return null;
+  const buffer = Buffer.from(m[1], 'base64');
+  // Kiểm chữ ký file thật, không tin mỗi cái nhãn data: — đổi nhãn là qua mặt được.
+  if (buffer.slice(0, 5).toString('latin1') !== '%PDF-') return null;
+  return { contentType: 'application/pdf', ext: 'pdf', buffer };
+}
+async function putPdfDataUrl(bucket, key, dataUrl) {
+  const p = parsePdfDataUrl(dataUrl);
+  if (!p) { const e = new Error('Tệp không hợp lệ — chỉ nhận file PDF'); e.status = 400; throw e; }
+  return putBuffer(bucket, key, p.buffer, p.contentType);
+}
+
 // Lấy object để stream ra client (proxy). Trả stream + metadata; ném lỗi nếu không có.
 async function getObject(bucket, key) {
   const r = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
@@ -64,5 +80,5 @@ async function signedGetUrl(bucket, key, expiresIn = 3600) {
 
 module.exports = {
   s3, CCCD_BUCKET, INTRO_BUCKET,
-  parseDataUrl, putBuffer, putDataUrl, getObject, deleteObject, signedGetUrl,
+  parseDataUrl, parsePdfDataUrl, putBuffer, putDataUrl, putPdfDataUrl, getObject, deleteObject, signedGetUrl,
 };

@@ -24,6 +24,22 @@ router.get('/image/:key', async (req, res, next) => {
   } catch (e) { res.status(404).end(); }
 });
 
+// Nội quy ký túc xá (PDF). Không cần đăng nhập: đây là bản ai cũng được phát khi vào ở,
+// và người sắp đăng ký cũng nên đọc được trước khi quyết định.
+router.get('/doc/noi-quy', async (req, res, next) => {
+  try {
+    const row = (await query(`SELECT path FROM media WHERE key='noi-quy'`)).rows[0];
+    if (!row || !row.path) return res.status(404).end();
+    const obj = await storage.getObject(storage.INTRO_BUCKET, row.path);
+    res.set('Content-Type', 'application/pdf');
+    res.set('X-Content-Type-Options', 'nosniff');
+    // inline = mở thẳng trong trình duyệt, không bắt tải về rồi mới đọc
+    res.set('Content-Disposition', 'inline; filename="noi-quy-ky-tuc-xa.pdf"');
+    res.set('Cache-Control', 'public, max-age=300');
+    obj.body.pipe(res);
+  } catch (e) { res.status(404).end(); }
+});
+
 // Thông tin KTX + đơn giá (để hiển thị trên trang đăng ký)
 router.get('/info', async (req, res, next) => {
   try {

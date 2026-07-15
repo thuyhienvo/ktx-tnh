@@ -494,3 +494,27 @@ th.sortable.asc .sort-ar,th.sortable.desc .sort-ar{opacity:1;color:var(--brand-d
   .stat .v{font-size:23px}
   .intro-stats{gap:18px}
 }
+
+/* ===== Cơ sở vật chất trong phòng (trang "Phòng của tôi") ===== */
+.asset-h{margin:0 0 10px;font-size:13px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
+.asset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.asset-item{display:flex;justify-content:space-between;align-items:center;gap:12px;
+  background:var(--bg2);border:1px solid var(--line);border-radius:11px;padding:10px 13px}
+.asset-name{font-size:13.5px;font-weight:600;min-width:0}
+/* Tiền phải dùng font số rõ ràng + tabular-nums để các cột số thẳng hàng */
+.asset-fee{font-size:13px;font-weight:700;color:var(--brand-d);white-space:nowrap;font-variant-numeric:tabular-nums}
+@media(max-width:520px){.asset-grid{grid-template-columns:1fr}}
+
+/* ===== Lịch trực nhật (trang "Phòng của tôi") ===== */
+.chore-list{display:flex;flex-direction:column;gap:6px}
+.chore-row{display:grid;grid-template-columns:88px 132px 1fr;gap:12px;align-items:center;
+  padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:var(--card)}
+/* Tuần hiện tại nổi lên — đây là dòng người ta mở trang để tìm */
+.chore-row.now{background:var(--bg2);border-color:var(--line2)}
+.chore-row.mine{border-color:var(--green);background:var(--green-bg)}
+.chore-date{font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.chore-who{font-size:14px;min-width:0}
+@media(max-width:600px){
+  .chore-row{grid-template-columns:1fr;gap:5px;padding:12px}
+  .chore-when{order:-1}
+}

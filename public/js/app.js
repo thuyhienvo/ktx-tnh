@@ -2546,6 +2546,8 @@ function viewSettings() {
       <div class="pad muted" style="font-size:12.5px">${IC.bulb} Phí bồi hoàn dùng để khấu trừ vào cọc khi học viên trả phòng (nếu tài sản hư/mất/không vệ sinh).</div>
     </div>
 
+    ${rulesDocBlock()}
+
     <div class="panel"><div class="hd"><h2>${IC.filePen} Nội dung trang giới thiệu</h2><a class="btn sm" href="/dang-ky" target="_blank">Xem trang</a></div><div class="pad">
       <div class="hint">${IC.info} Chỉnh tiêu đề &amp; mô tả từng mục ở trang đăng ký công khai. Để trống sẽ dùng nội dung mặc định.</div>
       ${INTRO_FIELDS.map(([k, label, t]) => `<div class="field"><label>${label}</label>${t === 'ta' ? `<textarea id="set_${k}" rows="2">${esc(s[k] || '')}</textarea>` : `<input id="set_${k}" value="${esc(s[k] || '')}">`}</div>`).join('')}
@@ -2615,6 +2617,7 @@ function viewSettings() {
       <button class="btn" onclick="changePwd()">${IC.key} Đổi mật khẩu</button>
     </div></div>`;
   loadAdminUsers();
+  refreshRulesDocStatus();
 }
 /* ---------- Quản lý tài khoản nhân viên (chỉ quản trị) ---------- */
 const ROLE_LABEL = { admin: ['Quản trị viên', 'gray'], staff: ['Nhân viên', 'blue'], maintenance: ['Bảo trì', 'amber'] };
@@ -2696,6 +2699,53 @@ function uploadIntroMedia(key, input) {
 async function removeIntroMedia(key) {
   if (!confirm('Xóa ảnh này? Trang giới thiệu sẽ hiện ô mẫu.')) return;
   await guard(() => API.deleteMedia(key)); toast('Đã xóa ảnh'); viewSettings();
+}
+
+/* Nội quy ký túc xá (PDF) — học viên xem ở trang "Phòng của tôi" */
+function uploadRulesDoc(input) {
+  const f = input.files[0]; if (!f) return;
+  if (f.type !== 'application/pdf') { input.value = ''; return toast('Chỉ nhận file PDF', 'err'); }
+  if (f.size > 15 * 1024 * 1024) { input.value = ''; return toast('File quá lớn (tối đa 15MB)', 'err'); }
+  const r = new FileReader();
+  r.onload = async () => {
+    try { await guard(() => API.uploadDoc('noi-quy', r.result)); toast('Đã cập nhật nội quy'); viewSettings(); }
+    catch (e) { input.value = ''; }
+  };
+  r.readAsDataURL(f);
+}
+async function removeRulesDoc() {
+  if (!confirm('Xóa file nội quy?\n\nHọc viên sẽ không còn thấy mục "Nội quy ký túc xá" trong trang Phòng của tôi.')) return;
+  await guard(() => API.deleteMedia('noi-quy')); toast('Đã xóa nội quy'); viewSettings();
+}
+// viewSettings() là hàm đồng bộ, không đợi API được -> vẽ khung trước, hỏi trạng thái file sau.
+function rulesDocBlock() {
+  return `<div class="panel"><div class="hd"><h2>${IC.clipboard} Nội quy ký túc xá</h2></div><div class="pad">
+    <div class="flex" style="justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+      <div id="rulesDocStatus" class="muted">Đang kiểm tra...</div>
+      <div class="rowbtns" id="rulesDocBtns">
+        <label class="btn sm pri" style="cursor:pointer;margin:0">${IC.plus} Tải file PDF
+          <input type="file" accept="application/pdf" style="display:none" onchange="uploadRulesDoc(this)"></label>
+      </div>
+    </div>
+    <div class="hint" style="margin:14px 0 0">${IC.info}<span>File PDF, tối đa 15MB. Học viên xem ở trang
+      <strong>Phòng của tôi</strong>; người đang tìm hiểu cũng đọc được trước khi đăng ký.</span></div>
+  </div></div>`;
+}
+async function refreshRulesDocStatus() {
+  const st = el('rulesDocStatus'), bt = el('rulesDocBtns');
+  if (!st || !bt) return;
+  // Hỏi danh sách media (đã có sẵn 'noi-quy') thay vì đi thử gọi file — thử gọi thì chưa có file
+  // là console đỏ một dòng 404 mỗi lần mở Cài đặt.
+  let m = null;
+  try { m = (await API.mediaList()).find(x => x.key === 'noi-quy'); } catch {}
+  const up = !!(m && m.uploaded);
+  st.innerHTML = up ? `${IC.checkCircle} Đã tải lên${m.updated_at ? ` <span class="muted">— cập nhật ${fmtDate(String(m.updated_at).slice(0, 10))}</span>` : ''} — học viên xem được ở trang <strong>Phòng của tôi</strong>.`
+    : 'Chưa có file. Học viên sẽ không thấy mục Nội quy.';
+  st.className = up ? '' : 'muted';
+  bt.innerHTML = `${up ? `<a class="btn sm" href="/api/public/doc/noi-quy" target="_blank" rel="noopener">Xem</a>
+      <button class="btn sm ghost" title="Xóa file nội quy" onclick="removeRulesDoc()">${IC.trash}</button>` : ''}
+    <label class="btn sm pri" style="cursor:pointer;margin:0">${IC.plus} ${up ? 'Thay file' : 'Tải file PDF'}
+      <input type="file" accept="application/pdf" style="display:none" onchange="uploadRulesDoc(this)"></label>`;
 }
 async function saveIntro() {
   const body = {};
@@ -2864,8 +2914,8 @@ async function renderStudent() {
   loadStudentPortal();
 }
 async function loadStudentPortal() {
-  let profile, invs, damage, coutReqs, myVios = [], mates = [];
-  try { [profile, invs, damage, coutReqs, myVios, mates] = await Promise.all([API.meProfile(), API.meInvoices(), API.meDamage(), API.meCheckoutReq(), API.meViolations().catch(() => []), API.meRoommates().catch(() => [])]); }
+  let profile, invs, damage, coutReqs, myVios = [], mates = [], assets = [], chores = [];
+  try { [profile, invs, damage, coutReqs, myVios, mates, assets, chores] = await Promise.all([API.meProfile(), API.meInvoices(), API.meDamage(), API.meCheckoutReq(), API.meViolations().catch(() => []), API.meRoommates().catch(() => []), API.meAssets().catch(() => []), API.meChores().catch(() => [])]); }
   catch (e) { el('content').innerHTML = `<div class="hint">${IC.alert} ${esc(e.message)}</div>`; return; }
   const billNow = invs.filter(i => i.month === curMonth()).reduce((a, i) => a + (+i.total || 0), 0);
   const depTxt = { held: 'Đang giữ', refunded: 'Đã hoàn', forfeited: 'Không hoàn', none: '—' }[profile.deposit_status] || '—';
@@ -2891,6 +2941,10 @@ async function loadStudentPortal() {
         : '<p class="muted" style="margin:0">Hiện bạn ở một mình trong phòng.</p>'}
       ${profile.room_name ? leaderNote(profile, mates) : ''}
     </div></div>
+
+    ${myChoresPanel(chores, profile)}
+    ${myAssetsPanel(assets, profile)}
+    ${myRulesPanel(profile)}
 
     <div class="panel"><div class="hd"><h2>${IC.washer} Dịch vụ máy giặt</h2></div><div class="pad">
       ${profile.uses_washing
@@ -2938,6 +2992,7 @@ async function loadStudentPortal() {
         ${coutReqs.filter(c => c.status !== 'pending').map(c => `<tr><td>${fmtDate(String(c.created_at).slice(0, 10))}</td><td>${fmtDate(c.desired_date)}</td><td>${c.status === 'done' ? '<span class="badge green">Đã duyệt</span>' : '<span class="badge gray">Từ chối</span>'}</td></tr>`).join('')}
       </tbody></table></div>` : ''}
     </div></div>`;
+
 }
 function damageForm() {
   openModal(`
@@ -2999,6 +3054,69 @@ function leaderNote(profile, mates) {
   }
   if (mates.some(m => m.is_leader)) return '';  // huy hiệu trên danh sách đã nói rõ rồi
   return `<div class="hint" style="margin:14px 0 0">${IC.info}<span>Phòng chưa có phòng trưởng. Ban quản lý sẽ cử một bạn trong phòng.</span></div>`;
+}
+
+/* Lịch trực nhật — xoay vòng theo tuần, app tự tính (không ai phải nhập).
+   Tô đậm tuần HIỆN TẠI và đánh dấu rõ khi đến lượt chính mình — đó là thứ duy nhất
+   người ta mở trang này để xem. */
+function myChoresPanel(chores, profile) {
+  if (!profile.room_name) return '';
+  const DOW = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+  const dm = s => { const d = new Date(s); return `${DOW[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`; };
+  return `<div class="panel"><div class="hd"><h2>${IC.calendar} Lịch trực nhật — ${esc(profile.room_name)}</h2></div><div class="pad">
+    ${!chores.length ? '<p class="muted" style="margin:0">Chưa xếp được lịch — phòng chưa có ai ở.</p>' : `
+    <div class="chore-list">${chores.map((w, i) => `
+      <div class="chore-row${i === 0 ? ' now' : ''}${w.is_me ? ' mine' : ''}">
+        <div class="chore-when">${i === 0 ? '<span class="badge amber">Tuần này</span>' : `<span class="muted">${i === 1 ? 'Tuần sau' : 'Tuần thứ ' + (i + 1)}</span>`}</div>
+        <div class="chore-date">${dm(w.from)} – ${dm(w.to)}</div>
+        <div class="chore-who">${w.is_me
+          // "Đến lượt bạn" chỉ được nói khi ĐÚNG LÀ tuần này. Tuần sau cũng ghi vậy là sai sự thật,
+          // người ta đi trực nhầm tuần rồi tuần của mình lại bỏ trống.
+          ? `<strong>${esc(w.name)}</strong> <span class="badge ${i === 0 ? 'green' : 'gray'}">${i === 0 ? 'Đến lượt bạn' : 'Lượt của bạn'}</span>`
+          : esc(w.name)}</div>
+      </div>`).join('')}</div>
+    <div class="hint" style="margin:16px 0 0">${IC.info}<span>Lịch xoay vòng theo <strong>tuần</strong> (thứ Hai → Chủ nhật)
+      giữa các bạn đang ở phòng, app tự xếp. Bạn nào trả phòng thì tự bỏ khỏi lịch.</span></div>`}
+  </div></div>`;
+}
+
+/* Nội quy ký túc xá (PDF do quản lý tải lên). Chưa có file thì KHÔNG hiện khối này —
+   thà không có mục còn hơn hiện ra một nút bấm vào báo lỗi. */
+function myRulesPanel(profile) {
+  if (!profile.has_rules) return '';
+  return `<div class="panel"><div class="hd"><h2>${IC.clipboard} Nội quy ký túc xá</h2></div><div class="pad">
+    <div class="flex" style="justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+      <div class="muted">Bản nội quy, quy định của ký túc xá. Vui lòng đọc kỹ và tuân thủ.</div>
+      <a class="btn pri" href="/api/public/doc/noi-quy" target="_blank" rel="noopener">${IC.clipboard} Xem nội quy</a>
+    </div>
+  </div></div>`;
+}
+
+/* Cơ sở vật chất trong phòng — trang "Phòng của tôi".
+   Tách 2 nhóm vì học viên chịu trách nhiệm khác nhau:
+     person = bàn giao riêng cho từng người, mất/hư là TRỪ THẲNG VÀO TIỀN CỌC lúc trả phòng
+     fixed  = trang bị chung của phòng
+   Phí bồi hoàn phải nói TRƯỚC. Trừ tiền rồi mới cho biết là không sòng phẳng. */
+function myAssetsPanel(assets, profile) {
+  if (!assets.length) return '';
+  const mine = assets.filter(a => a.category === 'person');
+  const room = assets.filter(a => a.category !== 'person');
+  const qty = a => (+a.quantity > 1 ? ` <span class="muted">×${a.quantity}</span>` : '');
+
+  const list = (arr, showFee) => `<div class="asset-grid">${arr.map(a => `
+    <div class="asset-item">
+      <div class="asset-name">${esc(a.name)}${qty(a)}${a.note ? `<div class="sub2">${esc(a.note)}</div>` : ''}</div>
+      ${showFee && +a.fee > 0 ? `<div class="asset-fee">${money(a.fee)}<span class="muted">/${esc(a.unit || 'cái')}</span></div>` : ''}
+    </div>`).join('')}</div>`;
+
+  return `<div class="panel"><div class="hd"><h2>${IC.box} Cơ sở vật chất trong phòng${profile.room_name ? ` — ${esc(profile.room_name)}` : ''}</h2></div><div class="pad">
+    ${room.length ? `<h4 class="asset-h">Trang bị chung của phòng</h4>${list(room, false)}` : ''}
+    ${mine.length ? `<h4 class="asset-h" style="margin-top:18px">Bàn giao cho bạn <span class="muted">— mức bồi hoàn nếu mất / hư / không vệ sinh</span></h4>${list(mine, true)}` : ''}
+    <div class="hint" style="margin:18px 0 0">${IC.info}<span>Số tiền bên phải là <strong>mức bồi hoàn</strong>, sẽ được
+      <strong>trừ vào tiền cọc</strong> khi bạn trả phòng nếu món đó mất, hư hoặc chưa vệ sinh.
+      Đồ trong phòng hỏng do hao mòn thì <strong>không phải đền</strong> — bấm
+      <strong>${IC.wrench} Báo hư hỏng</strong> bên dưới để Ban quản lý cử người sửa.</span></div>
+  </div></div>`;
 }
 
 async function toggleMyWashing(on) {

@@ -140,6 +140,9 @@ const API = {
 
   meProfile: () => api('/me/profile'),
   meRoommates: () => api('/me/roommates'),
+  meAssets: () => api('/me/assets'),
+  meChores: () => api('/me/chores'),
+  uploadDoc: (key, data) => api('/media/doc/' + key, { method: 'POST', body: { data } }),
   meWashing: on => api('/me/washing', { method: 'POST', body: { on } }),
   meInvoices: () => api('/me/invoices'),
   meLogs: () => api('/me/logs'),

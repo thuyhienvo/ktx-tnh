@@ -3,6 +3,7 @@ const { query, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { cccdUrls } = require('../cccd-url');
 const { isValidYmd } = require('../valid');
+const chores = require('../chores');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('student'));
@@ -19,7 +20,10 @@ router.get('/profile', async (req, res, next) => {
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy hồ sơ học viên' });
     // Kèm đơn giá máy giặt/gửi xe để hiển thị dịch vụ tự đăng ký (HV không được gọi /settings)
     const s = await getSettings();
-    res.json({ ...cccdUrls(rows[0]), washing_fee: s.washing_fee, parking_fee: s.parking_fee });
+    // Có nội quy chưa — trả kèm ở đây thay vì để client đi thử gọi file rồi ăn 404.
+    // Chưa tải nội quy thì MỌI học viên mở trang đều dính một lỗi 404 đỏ lòm trong console.
+    const rules = (await query(`SELECT 1 FROM media WHERE key='noi-quy' AND path IS NOT NULL`)).rows[0];
+    res.json({ ...cccdUrls(rows[0]), washing_fee: s.washing_fee, parking_fee: s.parking_fee, has_rules: !!rules });
   } catch (e) { next(e); }
 });
 
@@ -39,6 +43,33 @@ router.get('/roommates', async (req, res, next) => {
          AND s.check_in_date <= CURRENT_DATE AND (s.check_out_date IS NULL OR s.check_out_date > CURRENT_DATE)
        ORDER BY is_leader DESC, s.name`, [me.room_id, req.user.student_id]);
     res.json(rows);
+  } catch (e) { next(e); }
+});
+
+// Cơ sở vật chất trong phòng. Học viên KHÔNG gọi được /api/assets (chỉ admin/staff) nên mở đường riêng.
+// Chỉ trả những gì họ cần biết — đặc biệt là PHÍ BỒI HOÀN, vì khoản này bị trừ thẳng vào tiền cọc
+// lúc trả phòng. Không cho biết trước rồi lúc trừ tiền mới nói là không sòng phẳng.
+router.get('/assets', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT name, unit, category, quantity, fee, note FROM assets
+        WHERE deleted_at IS NULL ORDER BY category DESC, sort, name`);
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+// Lịch trực nhật của phòng — 4 tuần tới, xoay vòng theo tuần
+router.get('/chores', async (req, res, next) => {
+  try {
+    const me = (await query('SELECT room_id FROM students WHERE id=$1 AND deleted_at IS NULL', [req.user.student_id])).rows[0];
+    if (!me || !me.room_id) return res.json([]);
+    const { rows } = await query(
+      `SELECT id, name, check_in_date, check_out_date FROM students
+        WHERE room_id=$1 AND deleted_at IS NULL AND check_in_date IS NOT NULL
+          AND (check_out_date IS NULL OR check_out_date >= CURRENT_DATE)`, [me.room_id]);
+    const today = new Date().toISOString().slice(0, 10);
+    const list = chores.schedule({ members: rows, today, weeks: 4 });
+    res.json(list.map(w => ({ ...w, is_me: w.student_id === req.user.student_id })));
   } catch (e) { next(e); }
 });
 
