@@ -21,8 +21,28 @@ async function api(path, { method = 'GET', body } = {}) {
   if (res.status === 401 && Auth.user) { Auth.user = null; location.reload(); throw new Error('Hết phiên đăng nhập'); }
   let data = null;
   try { data = await res.json(); } catch {}
-  if (!res.ok) throw new Error((data && data.error) || 'Lỗi kết nối máy chủ');
+  if (!res.ok) {
+    // Gắn kèm status + dữ liệu trả về để nơi gọi xử lý được các trường hợp cần hỏi lại
+    // (vd 409 "phòng quá tải — cần xác nhận"), thay vì chỉ hiện một dòng lỗi đỏ rồi bế tắc.
+    const err = new Error((data && data.error) || 'Lỗi kết nối máy chủ');
+    err.status = res.status; err.data = data;
+    throw err;
+  }
   return data;
+}
+
+// Chạy một thao tác xếp phòng. Nếu server báo QUÁ TẢI (409) thì hỏi người dùng,
+// đồng ý thì gửi lại kèm xác nhận. Nghiệp vụ CHO PHÉP quá tải (HV vào ở chờ bạn xuất cảnh),
+// nhưng bắt buộc người xếp phải thấy cảnh báo và tự xác nhận — việc này được ghi vào nhật ký.
+async function withOverloadConfirm(run) {
+  try { return await run(false); }
+  catch (e) {
+    if (e && e.status === 409 && e.data && e.data.needs_confirm) {
+      if (!confirm(`${e.data.error}\n\nVẫn xếp vào phòng này?\n(Việc xếp quá tải sẽ được ghi vào nhật ký kèm tên người xếp.)`)) return null;
+      return await run(true);
+    }
+    throw e;
+  }
 }
 
 const API = {

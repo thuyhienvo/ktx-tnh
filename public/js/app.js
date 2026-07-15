@@ -1101,7 +1101,10 @@ async function saveStudent(id) {
   } else if (_cccdChanged) {
     body.cccd_image = _cccdData;
   }
-  await guard(() => id ? API.updateStudent(id, body) : API.createStudent(body));
+  // Xếp vào phòng đã đầy -> server hỏi lại (409); đồng ý thì gửi kèm xác nhận (được ghi nhật ký)
+  const saved = await guard(() => withOverloadConfirm(ok =>
+    id ? API.updateStudent(id, { ...body, confirm_overload: ok }) : API.createStudent({ ...body, confirm_overload: ok })));
+  if (saved === null) return; // người dùng bấm Hủy ở hộp xác nhận quá tải
   await refreshCache(); closeModal(); toast('Đã lưu học viên'); viewStudents();
 }
 // Gợi ý số HĐ tự động theo pháp nhân + ngày ký (điểm 7)
@@ -1260,7 +1263,9 @@ function transferForm(id) {
 }
 async function doTransfer(id) {
   const room_id = el('t_room').value; if (!room_id) return toast('Chọn phòng mới', 'err');
-  await guard(() => API.transfer(id, { room_id, date: el('t_date').value, note: el('t_note').value.trim() }));
+  const moved = await guard(() => withOverloadConfirm(ok =>
+    API.transfer(id, { room_id, date: el('t_date').value, note: el('t_note').value.trim(), confirm_overload: ok })));
+  if (moved === null) return;
   await refreshCache(); closeModal(); toast('Đã chuyển phòng'); adminGo(ST.view);
 }
 /* Hoàn cọc kèm khấu trừ hư hao tài sản + STK */
@@ -1949,7 +1954,8 @@ async function doApprove(id) {
     contract_no: el('ap_cno').value.trim(), contract_date: el('ap_cdate').value || null, contract_status: el('ap_cstatus').value,
   };
   if (el('ap_login').checked) { body.create_login = true; body.login_username = el('ap_user').value.trim(); body.login_password = el('ap_pass').value.trim(); }
-  const r = await guard(() => API.approveApplication(id, body));
+  const r = await guard(() => withOverloadConfirm(ok => API.approveApplication(id, { ...body, confirm_overload: ok })));
+  if (r === null) return; // hủy ở hộp xác nhận quá tải
   await refreshCache(); closeModal();
   if (r.account) alert(`Đã thêm học viên & tạo tài khoản:\n\nTên đăng nhập: ${r.account.username}\nMật khẩu: ${r.account.password}\n\nGửi thông tin này cho học viên để đăng nhập.`);
   else toast('Đã thêm học viên vào phòng');
@@ -1981,7 +1987,9 @@ function checkInForm(id) {
     <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn green" onclick="doCheckIn(${id})">Xác nhận check-in</button></div>`);
 }
 async function doCheckIn(id) {
-  await guard(() => API.checkIn(id, { date: el('c_date').value, room_id: el('c_room').value || null, note: el('c_note').value.trim() }));
+  const r = await guard(() => withOverloadConfirm(ok =>
+    API.checkIn(id, { date: el('c_date').value, room_id: el('c_room').value || null, note: el('c_note').value.trim(), confirm_overload: ok })));
+  if (r === null) return;
   await refreshCache(); closeModal(); toast('Đã check-in'); adminGo(ST.view);
 }
 function checkOutForm(id) {
