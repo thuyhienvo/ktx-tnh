@@ -110,7 +110,10 @@ a:hover{text-decoration:underline;text-underline-offset:2px}
 .top{background:rgba(248,244,236,.82);backdrop-filter:saturate(170%) blur(10px);border-bottom:1px solid var(--line);padding:18px 34px;display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;z-index:5;flex-wrap:wrap}
 .top h1{font-family:var(--serif);margin:0;font-size:26px;font-weight:600;letter-spacing:.005em;line-height:1.1}
 .top .sub{color:var(--muted);font-size:13px;margin-top:3px}
-.content{padding:24px 26px;max-width:1280px;width:100%}
+/* Dùng TRỌN bề ngang và canh cùng lề với thanh tiêu đề (.top padding 34px).
+   Trước đây max-width:1280px + không căn giữa: khi còn thanh menu 250px thì khoảng thừa bị che,
+   bỏ menu đi là lộ ra ~700px trống lệch hẳn sang phải trên màn hình rộng. */
+.content{padding:24px 34px;width:100%}
 
 /* ---------- Thẻ / lưới ---------- */
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:16px;margin-bottom:24px}
@@ -472,7 +475,7 @@ th.sortable.asc .sort-ar,th.sortable.desc .sort-ar{opacity:1;color:var(--brand-d
 
 @media(max-width:820px){
   .grid2{grid-template-columns:1fr}
-  .content{padding:16px 13px}
+  .content{padding:16px 14px}
   .top{padding:12px 14px;gap:10px}
   .top h1{font-size:20px}
   th,td{padding:11px 12px}
