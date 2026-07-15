@@ -2,7 +2,7 @@ const express = require('express');
 const { query, pool, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const billing = require('../billing');
-const { recalcInvoice, roomRoster } = require('../invoice-calc');
+const { recalcInvoice, roomRoster, studentElectric } = require('../invoice-calc');
 const { isValidMonth } = require('../valid');
 
 const router = express.Router();
@@ -95,8 +95,34 @@ router.post('/generate', async (req, res, next) => {
     )).rows;
 
     // Chỉ số điện theo phòng
-    const er = (await client.query('SELECT room_id, kwh FROM electric_readings WHERE month=$1', [month])).rows;
+    const er = (await client.query('SELECT room_id, reading_start, reading_end, kwh FROM electric_readings WHERE month=$1', [month])).rows;
     const kwhByRoom = {}; er.forEach(r => { kwhByRoom[r.room_id] = Number(r.kwh); });
+
+    // ---- TIỀN ĐIỆN TỪNG NGƯỜI: cắt chặng theo các lần chốt chỉ số giữa kỳ, cộng qua MỌI phòng họ ở ----
+    // Hai chỗ cách cũ tính sai, cùng vì chỉ nhìn students.room_id (phòng HIỆN TẠI):
+    //   1) người chuyển phòng giữa tháng -> phần điện ở phòng CŨ rơi mất, không ai trả;
+    //   2) người ở lại phòng cũ -> gánh thay phần đó.
+    const readsByRoom = {};
+    (await client.query('SELECT room_id, read_date AS date, reading FROM meter_reads WHERE read_date >= $1 AND read_date <= $2 ORDER BY read_date', [mStart, mEnd]))
+      .rows.forEach(r => { (readsByRoom[r.room_id] = readsByRoom[r.room_id] || []).push(r); });
+    const staysByRoom = {};
+    (await client.query(
+      `SELECT rs.room_id, rs.student_id, rs.from_date AS from, rs.to_date AS to
+         FROM room_stays rs JOIN students s ON s.id = rs.student_id
+        WHERE s.deleted_at IS NULL AND rs.from_date <= $1 AND (rs.to_date IS NULL OR rs.to_date >= $2)`, [mEnd, mStart]))
+      .rows.forEach(r => { (staysByRoom[r.room_id] = staysByRoom[r.room_id] || []).push(r); });
+
+    const unit = Number(fees.electric_unit);
+    const elecByStudent = {};
+    for (const e of er) {
+      const stays = staysByRoom[e.room_id];
+      if (!stays || !stays.length) continue;
+      const segs = billing.buildSegments({ month, startReading: e.reading_start, endReading: e.reading_end, reads: readsByRoom[e.room_id] || [], stays });
+      const share = billing.splitElectricExact(segs.map(s => ({ electric: Number(s.kwh || 0) * unit, roster: s.roster })));
+      // Ở phòng có chỉ số nhưng phần chia = 0 -> vẫn phải ghi 0, đừng để rơi về cách tính cũ
+      stays.forEach(st => { if (elecByStudent[st.student_id] == null) elecByStudent[st.student_id] = 0; });
+      for (const id of Object.keys(share)) elecByStudent[id] = (elecByStudent[id] || 0) + share[id];
+    }
 
     // Danh sách người ở mỗi phòng KÈM SỐ NGÀY Ở (để chia điện theo ngày ở thực tế).
     // Trước đây chỉ đếm đầu người -> ai ở 1 ngày cũng gánh 1 suất điện như người ở cả tháng.
@@ -130,6 +156,7 @@ router.post('/generate', async (req, res, next) => {
       const inv = billing.computeInvoice({
         student: s, room, month, fees,
         roster: s.room_id ? (rosterByRoom[s.room_id] || []) : [],
+        electricCharge: elecByStudent[s.id] != null ? elecByStudent[s.id] : null,
         kwh: s.room_id ? (kwhByRoom[s.room_id] || 0) : 0,
         vehicleCount: vehByStudent[s.id] || 0,
       });
@@ -185,8 +212,10 @@ router.post('/generate-one', async (req, res, next) => {
     const roster = await roomRoster(s.room_id, month);
     const kwhRow = s.room_id ? (await query('SELECT kwh FROM electric_readings WHERE room_id=$1 AND month=$2', [s.room_id, month])).rows[0] : null;
     const vehicleCount = (await query('SELECT COUNT(*)::int c FROM vehicles WHERE student_id=$1 AND deleted_at IS NULL', [student_id])).rows[0].c;
+    // Cộng phần điện ở MỌI phòng HV ở trong tháng (chuyển phòng giữa tháng vẫn tính đủ)
+    const electricCharge = await studentElectric(student_id, month, Number(fees.electric_unit));
 
-    const inv = billing.computeInvoice({ student: s, room, month, fees, roster, kwh: kwhRow ? Number(kwhRow.kwh) : 0, vehicleCount });
+    const inv = billing.computeInvoice({ student: s, room, month, fees, roster, electricCharge, kwh: kwhRow ? Number(kwhRow.kwh) : 0, vehicleCount });
     let row;
     if (dup) {
       const other = Number(dup.other_charge) || 0;

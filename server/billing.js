@@ -13,16 +13,25 @@ function lastDay(month) {
 function diffDaysInclusive(a, b) {
   return Math.max(0, Math.round((new Date(b) - new Date(a)) / 86400000) + 1);
 }
+function addDays(ymd, n) {
+  const [y, m, d] = String(ymd).split('-').map(Number);
+  const dt = new Date(y, m - 1, d + n);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+// Số ngày ở thực tế trong một khoảng [from..to] (tính cả 2 đầu)
+function daysStayedInRange(student, from, to) {
+  const ci = student.check_in_date, co = student.check_out_date;
+  if (ci && ci > to) return 0;   // chưa vào
+  if (co && co < from) return 0; // đã rời trước khoảng này
+  const inD = ci && ci > from ? ci : from;
+  const outD = co && co < to ? co : to;
+  return diffDaysInclusive(inD, outD);
+}
 
 // Số ngày ở thực tế trong tháng
 function daysStayedInMonth(student, month) {
-  const mStart = firstDay(month), mEnd = lastDay(month);
-  const inD = student.check_in_date && student.check_in_date > mStart ? student.check_in_date : mStart;
-  const outD = student.check_out_date && student.check_out_date < mEnd ? student.check_out_date : mEnd;
-  // Chưa vào trong tháng này, hoặc đã rời trước khi tháng bắt đầu
-  if (student.check_in_date && student.check_in_date > mEnd) return 0;
-  if (student.check_out_date && student.check_out_date < mStart) return 0;
-  return diffDaysInclusive(inD, outD);
+  return daysStayedInRange(student, firstDay(month), lastDay(month));
 }
 
 // Hệ số cho các phí cố định khi ở tháng lẻ:
@@ -47,20 +56,81 @@ const r0 = n => Math.round(Number(n) || 0);
 // Dùng phương pháp "phần dư lớn nhất" để TỔNG các phần khớp TUYỆT ĐỐI với tiền điện của phòng
 // (không hụt/dư đồng nào, kể cả khi đơn giá không chia hết).
 function splitElectricByDays(roomElectric, roster) {
-  const out = {};
-  const list = (roster || []).filter(r => (r.days || 0) > 0);
-  const totalDays = list.reduce((a, r) => a + r.days, 0);
-  if (!(roomElectric > 0) || totalDays <= 0) { (roster || []).forEach(r => { out[r.student_id] = 0; }); return out; }
-  const parts = list.map(r => {
-    const exact = (roomElectric * r.days) / totalDays;
-    const base = Math.floor(exact);
-    return { id: r.student_id, base, frac: exact - base };
-  });
-  let rem = r0(roomElectric) - parts.reduce((a, p) => a + p.base, 0);
-  parts.slice().sort((a, b) => (b.frac - a.frac) || (a.id - b.id)).forEach(p => { if (rem > 0) { p.base += 1; rem -= 1; } });
-  parts.forEach(p => { out[p.id] = p.base; });
+  const out = splitElectricExact([{ electric: roomElectric, roster }]);
   (roster || []).forEach(r => { if (out[r.student_id] === undefined) out[r.student_id] = 0; });
   return out;
+}
+
+// Chia tiền điện theo TỪNG CHẶNG giữa 2 lần chốt chỉ số công-tơ.
+// segments: [{ electric, roster:[{student_id, days}] }] — electric = tiền điện CHÍNH XÁC (chưa làm tròn) của chặng.
+//
+// Vì sao phải cắt chặng: người rời phòng giữa tháng chỉ được tính phần điện ĐÃ CHỐT tới ngày họ đi
+// (chặng trước), còn điện dùng sau đó là của người ở lại. Chia thẳng cả tháng theo ngày ở sẽ bắt
+// người ở lại gánh thay — hoặc ngược lại, tùy phòng dùng nhiều điện vào nửa nào của tháng.
+//
+// Làm tròn 1 LẦN DUY NHẤT ở cuối trên tổng của cả người (cộng qua mọi chặng), theo "phần dư lớn nhất",
+// nên tổng các phần khớp TUYỆT ĐỐI với tiền điện của phòng — không dư/hụt đồng nào.
+function splitElectricExact(segments) {
+  const exact = {};   // student_id -> số tiền chính xác (số thực, chưa làm tròn)
+  let totalExact = 0;
+  for (const seg of segments || []) {
+    const list = (seg.roster || []).filter(r => (r.days || 0) > 0);
+    const totalDays = list.reduce((a, r) => a + r.days, 0);
+    if (!(seg.electric > 0) || totalDays <= 0) continue;
+    totalExact += seg.electric;
+    for (const r of list) exact[r.student_id] = (exact[r.student_id] || 0) + (seg.electric * r.days) / totalDays;
+  }
+  const parts = Object.keys(exact).map(id => {
+    const base = Math.floor(exact[id]);
+    return { id: Number(id), base, frac: exact[id] - base };
+  });
+  let rem = r0(totalExact) - parts.reduce((a, p) => a + p.base, 0);
+  parts.slice().sort((a, b) => (b.frac - a.frac) || (a.id - b.id)).forEach(p => { if (rem > 0) { p.base += 1; rem -= 1; } });
+  const out = {};
+  parts.forEach(p => { out[p.id] = p.base; });
+  return out;
+}
+
+// Cắt tháng thành các CHẶNG theo những lần chốt chỉ số GIỮA KỲ (lúc có người trả phòng / chuyển đi).
+//   startReading / endReading : chỉ số đầu & cuối tháng của phòng
+//   reads   : [{date, reading}] các lần chốt trong tháng
+//   stays   : [{student_id, from, to}] ai ở phòng này từ ngày nào đến ngày nào (to=null nghĩa là còn ở)
+// Chốt ngày D tính TRỌN ngày D vào chặng trước (người trả phòng ngày D vẫn được tính ở hết ngày D).
+// -> [{ from, to, kwh, roster:[{student_id, days}] }]
+function buildSegments({ month, startReading, endReading, reads, stays }) {
+  const mStart = firstDay(month), mEnd = lastDay(month);
+  const start = Number(startReading) || 0, end = Number(endReading) || 0;
+
+  // Chỉ lấy các lần chốt NẰM TRONG tháng và TRƯỚC ngày cuối tháng (chốt đúng ngày cuối = chỉ số cuối tháng)
+  const mids = [];
+  for (const r of (reads || [])) {
+    const date = String(r.date).slice(0, 10);
+    if (date < mStart || date >= mEnd) continue;
+    const i = mids.findIndex(x => x.date === date);
+    if (i >= 0) mids[i] = { date, reading: Number(r.reading) }; // trùng ngày -> lấy lần chốt sau cùng
+    else mids.push({ date, reading: Number(r.reading) });
+  }
+  mids.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  const roster = (from, to) => (stays || [])
+    .map(s => ({ student_id: s.student_id, days: daysStayedInRange({ check_in_date: s.from, check_out_date: s.to }, from, to) }))
+    .filter(r => r.days > 0)
+    // 1 người có thể có 2 lượt ở cùng phòng (đi rồi quay lại) -> cộng dồn, không tạo 2 dòng
+    .reduce((acc, r) => { const h = acc.find(x => x.student_id === r.student_id); h ? (h.days += r.days) : acc.push(r); return acc; }, []);
+
+  const segs = [];
+  let prev = start, from = mStart;
+  for (const p of [...mids, { date: mEnd, reading: end }]) {
+    segs.push({ from, to: p.date, kwh: p.reading - prev, roster: roster(from, p.date) });
+    prev = p.reading;
+    from = addDays(p.date, 1);
+  }
+
+  // Chỉ số phải TĂNG DẦN. Nếu dữ liệu chốt mâu thuẫn (chốt giữa kỳ > chỉ số cuối tháng, hoặc lùi số),
+  // thà quay về chia cả tháng còn hơn xuất ra con số sai mà không ai biết.
+  const bad = segs.some(s => s.kwh < 0) || Math.abs(segs.reduce((a, s) => a + s.kwh, 0) - (end - start)) > 0.05;
+  if (bad) return [{ from: mStart, to: mEnd, kwh: end - start, roster: roster(mStart, mEnd), fellback: true }];
+  return segs.filter(s => s.from <= s.to);
 }
 
 // Giá thuê nguyên phòng theo hạng
@@ -72,7 +142,9 @@ function roomPriceByHang(hang, fees) {
 // opts: { student, room, month, fees, roster, occupants, kwh, vehicleCount }
 //   roster = [{student_id, days}] của TẤT CẢ người ở cùng phòng trong kỳ -> chia điện theo ngày ở (đúng).
 //   occupants = số người (CÁCH CŨ: chia đều đầu người) — chỉ dùng khi không truyền roster.
-function computeInvoice({ student, room, month, fees, occupants, roster, kwh, vehicleCount }) {
+//   electricCharge = tiền điện ĐÃ TÍNH SẴN của riêng học viên này (cộng qua mọi phòng họ ở trong tháng,
+//     cắt theo từng chặng chốt chỉ số) — ưu tiên cao nhất, đúng nhất. Xem invoice-calc.studentElectric.
+function computeInvoice({ student, room, month, fees, occupants, roster, electricCharge, kwh, vehicleCount }) {
   const dim = daysInMonth(month);
   const days = daysStayedInMonth(student, month);
 
@@ -97,9 +169,15 @@ function computeInvoice({ student, room, month, fees, occupants, roster, kwh, ve
   const parking_charge = r0(Number(fees.parking_fee) * nVehicles * f);
 
   // Điện: tổng kWh phòng × đơn giá, chia theo SỐ NGÀY Ở của từng người
-  const roomElectric = r0(Number(kwh || 0) * Number(fees.electric_unit));
+  const unit = Number(fees.electric_unit);
+  const roomElectric = r0(Number(kwh || 0) * unit);
   let electric_charge;
-  if (Array.isArray(roster) && roster.length) {
+  if (electricCharge != null) {
+    // ĐÚNG NHẤT: đã cộng phần của HV ở MỌI phòng họ ở trong tháng, cắt theo từng chặng chốt chỉ số.
+    // Người chuyển phòng giữa tháng phải trả cả phần ở phòng cũ — cách cũ (chỉ nhìn phòng hiện tại) làm rơi mất.
+    electric_charge = r0(electricCharge);
+  } else if (Array.isArray(roster) && roster.length) {
+    // Không có lần chốt giữa kỳ -> cả tháng là 1 chặng, chia theo ngày ở
     const share = splitElectricByDays(roomElectric, roster);
     electric_charge = share[student.id] != null ? share[student.id] : 0;
   } else {
@@ -146,7 +224,8 @@ function liveStatus(s, today) {
 function isOccupying(s, today) { const st = liveStatus(s, today); return st === 'staying' || st === 'leaving'; }
 
 module.exports = {
-  daysInMonth, firstDay, lastDay, daysStayedInMonth,
+  daysInMonth, firstDay, lastDay, addDays, daysStayedInMonth, daysStayedInRange,
   partialFactor, computeInvoice, depositRefundEligible,
-  roomPriceByHang, liveStatus, isOccupying, splitElectricByDays,
+  roomPriceByHang, liveStatus, isOccupying,
+  splitElectricByDays, splitElectricExact, buildSegments,
 };

@@ -15,6 +15,56 @@ async function roomRoster(roomId, month) {
     .filter(r => r.days > 0);
 }
 
+// Các CHẶNG tính điện của 1 phòng trong tháng, cắt theo những lần chốt chỉ số giữa kỳ.
+// Dựa trên room_stays (lịch sử ở phòng) nên người đã CHUYỂN ĐI vẫn được tính đúng phần của họ
+// ở phòng cũ — thứ mà cách cũ (đọc students.room_id hiện tại) làm mất dấu hoàn toàn.
+async function roomSegments(roomId, month) {
+  if (!roomId) return null;
+  const er = (await query('SELECT reading_start, reading_end FROM electric_readings WHERE room_id=$1 AND month=$2', [roomId, month])).rows[0];
+  if (!er) return null;
+
+  const reads = (await query(
+    'SELECT read_date AS date, reading FROM meter_reads WHERE room_id=$1 AND read_date >= $2 AND read_date <= $3 ORDER BY read_date',
+    [roomId, billing.firstDay(month), billing.lastDay(month)])).rows;
+
+  const stays = (await query(
+    `SELECT rs.student_id, rs.from_date AS from, rs.to_date AS to
+       FROM room_stays rs JOIN students s ON s.id = rs.student_id
+      WHERE rs.room_id=$1 AND s.deleted_at IS NULL
+        AND rs.from_date <= $2 AND (rs.to_date IS NULL OR rs.to_date >= $3)`,
+    [roomId, billing.lastDay(month), billing.firstDay(month)])).rows;
+  if (!stays.length) return null;
+
+  return billing.buildSegments({
+    month, startReading: er.reading_start, endReading: er.reading_end, reads, stays,
+  });
+}
+
+// Tiền điện của MỘT học viên trong tháng = TỔNG phần của họ ở MỌI phòng họ từng ở trong tháng đó.
+//
+// Vì sao phải quét nhiều phòng: chuyển phòng giữa tháng thì students.room_id chỉ còn phòng MỚI.
+// Tính theo phòng hiện tại -> phần điện họ đã dùng ở phòng CŨ rơi mất, không ai trả, tổng thu hụt.
+//
+// Làm tròn TỪNG PHÒNG RIÊNG (không gộp rồi mới làm tròn) để giữ đồng thời 2 điều:
+//   - mỗi phòng: tổng các phần đúng bằng tiền điện của phòng đó;
+//   - mỗi người: tiền điện = tổng phần của họ ở các phòng.
+// Trả về null nếu chưa có dữ liệu chỉ số -> để bên gọi dùng cách tính cũ.
+async function studentElectric(studentId, month, unit) {
+  const { rows } = await query(
+    `SELECT DISTINCT room_id FROM room_stays
+      WHERE student_id=$1 AND from_date <= $2 AND (to_date IS NULL OR to_date >= $3)`,
+    [studentId, billing.lastDay(month), billing.firstDay(month)]);
+  let sum = 0, found = false;
+  for (const r of rows) {
+    const segs = await roomSegments(r.room_id, month);
+    if (!segs) continue;
+    found = true;
+    const share = billing.splitElectricExact(segs.map(s => ({ electric: Number(s.kwh || 0) * unit, roster: s.roster })));
+    sum += share[studentId] || 0;
+  }
+  return found ? sum : null;
+}
+
 // Tính lại 1 hóa đơn theo dữ liệu hiện tại: số ngày ở, hình thức thuê, dịch vụ,
 // và tiền điện từ chỉ số công-tơ tháng đó (chia theo số ngày ở). Giữ khoản khác.
 async function recalcInvoice(studentId, month) {
@@ -33,8 +83,10 @@ async function recalcInvoice(studentId, month) {
     kwh = er ? Number(er.kwh) : 0;
     roster = await roomRoster(s.room_id, month);
   }
+  // Quét MỌI phòng HV từng ở trong tháng (không chỉ phòng hiện tại) -> chuyển phòng giữa tháng vẫn tính đủ
+  const electricCharge = await studentElectric(studentId, month, Number(fees.electric_unit));
 
-  const c = billing.computeInvoice({ student: s, room, month, fees, roster, kwh, vehicleCount: veh });
+  const c = billing.computeInvoice({ student: s, room, month, fees, roster, electricCharge, kwh, vehicleCount: veh });
   const other = Number(inv.other_charge) || 0;
   const total = c.room_charge + c.electric_charge + c.water_charge + c.service_charge + c.washing_charge + c.parking_charge + other;
 
@@ -46,4 +98,4 @@ async function recalcInvoice(studentId, month) {
   return rows[0];
 }
 
-module.exports = { recalcInvoice, roomRoster };
+module.exports = { recalcInvoice, roomRoster, roomSegments, studentElectric };

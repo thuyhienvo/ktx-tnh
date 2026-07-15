@@ -2,6 +2,8 @@ const express = require('express');
 const { query } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { recalcInvoice } = require('../invoice-calc');
+const roomStays = require('../room-stays');
+const meter = require('../meter');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
@@ -63,12 +65,38 @@ router.post('/checkout/:id/confirm', async (req, res, next) => {
     const date = req.body.date || cr.desired_date || new Date().toISOString().slice(0, 10);
     const noticeDate = cr.created_at ? new Date(cr.created_at).toISOString().slice(0, 10) : null;
     const st = await query('SELECT room_id FROM students WHERE id=$1', [cr.student_id]);
+    const roomId = st.rows[0]?.room_id || null;
+
+    // Chốt chỉ số điện ngày trả phòng (nếu người duyệt có nhập) — kiểm tra trước khi ghi
+    const mr = req.body.meter_reading;
+    const hasMeter = mr != null && String(mr).trim() !== '';
+    if (hasMeter) {
+      if (!roomId) return res.status(400).json({ error: 'Học viên không ở phòng nào — không có công-tơ để chốt chỉ số' });
+      const err = await meter.checkRead(null, { roomId, date, reading: mr });
+      if (err) return res.status(400).json({ error: err });
+    }
+
     await query(`UPDATE students SET status='out', check_out_date=$1, checkout_notice_date=$2, checkout_reason=$3 WHERE id=$4`,
       [date, noticeDate, cr.reason, cr.student_id]);
+    await roomStays.checkOut(null, cr.student_id, date);
+    if (hasMeter) {
+      await meter.recordRead(null, {
+        roomId, date, reading: mr, reason: 'checkout', studentId: cr.student_id,
+        note: 'Chốt chỉ số lúc trả phòng (duyệt đơn HV)', by: req.user && req.user.username,
+      });
+    }
     await query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'out',$2,$3,$4,'self')`,
-      [cr.student_id, date, st.rows[0]?.room_id || null, 'Trả phòng (duyệt đơn HV)']);
+      [cr.student_id, date, roomId, 'Trả phòng (duyệt đơn HV)']);
     await query(`UPDATE checkout_requests SET status='done', handled_at=now() WHERE id=$1`, [req.params.id]);
+
+    // Chốt giữa kỳ đổi phần chia của cả phòng -> tính lại cho mọi người liên quan
     try { await recalcInvoice(cr.student_id, date.slice(0, 7)); } catch (e) {}
+    if (hasMeter) {
+      for (const sid of await meter.affectedStudents(null, roomId, date)) {
+        if (sid === cr.student_id) continue;
+        try { await recalcInvoice(sid, date.slice(0, 7)); } catch (e) {}
+      }
+    }
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

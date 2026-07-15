@@ -8,6 +8,8 @@ const storage = require('../storage');
 const { cccdUrls, SIDE_COL } = require('../cccd-url');
 const { isValidYmd, isValidPhone, rejectUnknown } = require('../valid');
 const { checkRoomAssignment, logOverload, blockOrConfirm } = require('../room-rules');
+const roomStays = require('../room-stays');
+const meter = require('../meter');
 const DATE_FIELDS = ['birth_date', 'check_in_date', 'check_out_date', 'contract_date', 'deposit_date', 'class_start_date', 'expected_departure', 'checkout_notice_date'];
 
 const router = express.Router();
@@ -224,6 +226,11 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
         Object.assign(st, cccdUpd);
       }
 
+      // Mở lượt ở phòng ngay từ đầu -> về sau chuyển phòng/trả phòng mới có cái để cắt chặng tính điện
+      if (b.room_id) {
+        await roomStays.openStay(client, st.id, b.room_id, checkIn);
+        if (checkOut) await roomStays.closeStay(client, st.id, checkOut);
+      }
       await client.query(
         `INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'in',$2,$3,'Đăng ký & vào ở','admin')`,
         [st.id, checkIn, b.room_id || null]
@@ -282,6 +289,8 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
     const { rows } = await query(
       `UPDATE students SET ${cols}${extra} WHERE id=$${params.length} RETURNING *`, params);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    // Sửa ô Phòng/Ngày trong hồ sơ = ĐÍNH CHÍNH (chuyển phòng thật phải qua chức năng Chuyển phòng)
+    await roomStays.reconcile(null, rows[0].id, rows[0].room_id, rows[0].check_in_date && String(rows[0].check_in_date).slice(0, 10), rows[0].check_out_date && String(rows[0].check_out_date).slice(0, 10));
     for (const w of chkU.warnings) await logOverload(req, { studentId: rows[0].id, studentName: rows[0].name, warning: w });
     res.json({ ...(await signCccd(rows[0])), warnings: chkU.warnings });
   } catch (e) { next(e); }
@@ -329,6 +338,7 @@ router.post('/:id/checkin', requireRole('admin', 'staff'), async (req, res, next
       [room_id || null, d, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    await roomStays.checkIn(null, +req.params.id, room_id || null, d); // giữ dấu vết ở phòng -> chia điện đúng
     await query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'in',$2,$3,$4,'admin')`,
       [req.params.id, d, room_id || null, note || 'Check-in']);
     res.json(rows[0]);
@@ -339,7 +349,7 @@ router.post('/:id/checkin', requireRole('admin', 'staff'), async (req, res, next
 router.post('/:id/checkout', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     // Chặn field lạ: gửi "check_out_date" (đúng tên cột DB) từng bị NUỐT IM LẶNG rồi tự lấy ngày hôm nay
-    const bad = rejectUnknown(req.body, ['date', 'notice_date', 'reason', 'note']);
+    const bad = rejectUnknown(req.body, ['date', 'notice_date', 'reason', 'note', 'meter_reading']);
     if (bad) return res.status(400).json({ error: bad });
     const { date, notice_date, reason, note } = req.body;
     if (date != null && !isValidYmd(date)) return res.status(400).json({ error: 'Ngày trả phòng không hợp lệ' });
@@ -353,29 +363,56 @@ router.post('/:id/checkout', requireRole('admin', 'staff'), async (req, res, nex
     const rs = ['departure', 'personal', 'facility', 'dropout', 'reserve', 'other'].includes(reason) ? reason : 'other';
     const cur = await query('SELECT room_id FROM students WHERE id=$1', [req.params.id]);
     if (!cur.rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    const roomId = cur.rows[0].room_id || null;
+
+    // CHỐT CHỈ SỐ ĐIỆN NGÀY TRẢ PHÒNG — kiểm tra TRƯỚC khi ghi bất cứ thứ gì,
+    // để nhập nhầm chỉ số không làm học viên bị "out" nửa vời rồi phải sửa tay.
+    const mr = req.body.meter_reading;
+    const hasMeter = mr != null && String(mr).trim() !== '';
+    if (hasMeter) {
+      if (!roomId) return res.status(400).json({ error: 'Học viên không ở phòng nào — không có công-tơ để chốt chỉ số' });
+      const err = await meter.checkRead(null, { roomId, date: d, reading: mr });
+      if (err) return res.status(400).json({ error: err });
+    }
+
     const elig = depositRefundEligible({ noticeDate: notice_date || null, checkoutDate: d, reason: rs });
     const { rows } = await query(
       `UPDATE students SET status='out', check_out_date=$1, checkout_notice_date=$2, checkout_reason=$3 WHERE id=$4 RETURNING *`,
       [d, notice_date || null, rs, req.params.id]
     );
+    await roomStays.checkOut(null, +req.params.id, d); // đóng lượt ở, tính trọn ngày trả phòng
+    if (hasMeter) {
+      await meter.recordRead(null, {
+        roomId, date: d, reading: mr, reason: 'checkout', studentId: +req.params.id,
+        note: `Chốt chỉ số lúc ${rows[0].name} trả phòng`, by: req.user && req.user.username,
+      });
+    }
     await query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'out',$2,$3,$4,'admin')`,
-      [req.params.id, d, cur.rows[0].room_id || null, note || 'Check-out']);
-    // Tính lại hóa đơn tháng trả phòng theo số ngày ở thực tế (nếu đã lập)
-    let recalced = null;
+      [req.params.id, d, roomId, note || 'Check-out']);
+
+    // Tính lại hóa đơn tháng trả phòng theo số ngày ở thực tế (nếu đã lập).
+    // Chốt giữa kỳ làm đổi phần chia của CẢ PHÒNG, nên phải tính lại cho mọi người ở đó — không riêng người vừa đi.
+    let recalced = null, recalced_roommates = [];
     try { recalced = await recalcInvoice(req.params.id, d.slice(0, 7)); } catch (e) {}
+    if (hasMeter) {
+      for (const sid of await meter.affectedStudents(null, roomId, d)) {
+        if (sid === +req.params.id) continue;
+        try { const r = await recalcInvoice(sid, d.slice(0, 7)); if (r) recalced_roommates.push(sid); } catch (e) {}
+      }
+    }
     // HV đã rời -> DỌN phiếu của các KỲ SAU. Trước đây phiếu tháng sau vẫn nguyên và vẫn đòi tiền
     // người không còn ở (check-out chỉ tính lại đúng tháng trả phòng).
     const dropped = await query(
       `UPDATE invoices SET deleted_at=now() WHERE student_id=$1 AND month > $2 AND deleted_at IS NULL RETURNING month, total`,
       [req.params.id, d.slice(0, 7)]);
-    res.json({ student: rows[0], refund: elig, recalced, dropped_future_invoices: dropped.rows.map(r => r.month) });
+    res.json({ student: rows[0], refund: elig, recalced, recalced_roommates, dropped_future_invoices: dropped.rows.map(r => r.month) });
   } catch (e) { next(e); }
 });
 
 // Chuyển phòng
 router.post('/:id/transfer', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
-    const bad = rejectUnknown(req.body, ['room_id', 'date', 'note', 'confirm_overload']);
+    const bad = rejectUnknown(req.body, ['room_id', 'date', 'note', 'confirm_overload', 'meter_reading']);
     if (bad) return res.status(400).json({ error: bad });
     const { room_id, date, note } = req.body;
     if (!room_id) return res.status(400).json({ error: 'Chọn phòng mới' });
@@ -383,17 +420,43 @@ router.post('/:id/transfer', requireRole('admin', 'staff'), async (req, res, nex
     const d = date || new Date().toISOString().slice(0, 10);
     const cur = await query('SELECT room_id, gender, rental_type, name FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id]);
     if (!cur.rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    const oldRoom = cur.rows[0].room_id;
+    if (String(oldRoom) === String(room_id)) return res.status(400).json({ error: 'Học viên đang ở chính phòng này' });
     // LUẬT XẾP PHÒNG — áp cả ở đường CHUYỂN PHÒNG
     const chkT = await checkRoomAssignment({ studentId: +req.params.id, gender: cur.rows[0].gender, rentalType: cur.rows[0].rental_type, roomId: room_id });
     if (blockOrConfirm(res, chkT, req.body.confirm_overload === true)) return;
+
+    // CHỐT CHỈ SỐ ĐIỆN PHÒNG CŨ NGÀY CHUYỂN ĐI — kiểm tra trước khi ghi
+    const mr = req.body.meter_reading;
+    const hasMeter = mr != null && String(mr).trim() !== '';
+    if (hasMeter) {
+      if (!oldRoom) return res.status(400).json({ error: 'Học viên chưa ở phòng nào — không có công-tơ phòng cũ để chốt' });
+      const err = await meter.checkRead(null, { roomId: oldRoom, date: d, reading: mr });
+      if (err) return res.status(400).json({ error: err });
+    }
+
     for (const w of chkT.warnings) await logOverload(req, { studentId: +req.params.id, studentName: cur.rows[0].name, warning: w });
-    const oldRoom = cur.rows[0].room_id;
     const { rows } = await query(`UPDATE students SET room_id=$1 WHERE id=$2 RETURNING *`, [room_id, req.params.id]);
+    await roomStays.transfer(null, +req.params.id, room_id, d); // lượt cũ hết ngày D-1, lượt mới từ ngày D
     const oldName = oldRoom ? (await query('SELECT name FROM rooms WHERE id=$1', [oldRoom])).rows[0]?.name : '—';
     const newName = (await query('SELECT name FROM rooms WHERE id=$1', [room_id])).rows[0]?.name;
+    if (hasMeter) {
+      await meter.recordRead(null, {
+        roomId: oldRoom, date: d, reading: mr, reason: 'transfer', studentId: +req.params.id,
+        note: `Chốt chỉ số phòng ${oldName} lúc ${cur.rows[0].name} chuyển đi`, by: req.user && req.user.username,
+      });
+    }
     await query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'in',$2,$3,$4,'admin')`,
       [req.params.id, d, room_id, note || `Chuyển phòng ${oldName} → ${newName}`]);
-    res.json(rows[0]);
+
+    // Chốt giữa kỳ đổi phần chia của CẢ phòng cũ -> tính lại cho mọi người liên quan
+    let recalced = [];
+    if (hasMeter) {
+      const month = d.slice(0, 7);
+      const ids = new Set([...(await meter.affectedStudents(null, oldRoom, d)), +req.params.id]);
+      for (const sid of ids) { try { const r = await recalcInvoice(sid, month); if (r) recalced.push(sid); } catch (e) {} }
+    }
+    res.json({ ...rows[0], recalced });
   } catch (e) { next(e); }
 });
 

@@ -1246,6 +1246,17 @@ async function delVehicle(vid, studentId) {
   if (!confirm('Xóa xe này?')) return;
   await guard(() => API.deleteVehicle(vid)); await refreshCache(); toast('Đã xóa xe'); studentDetail(studentId);
 }
+/* Ô chốt chỉ số công-tơ, dùng chung cho Trả phòng và Chuyển phòng.
+   KHÔNG bắt buộc: bỏ trống thì app quay về chia tiền điện cả tháng theo số ngày ở (như trước). */
+function meterField(id, roomName, verb) {
+  return `<div class="field">
+    <label>Chỉ số công-tơ phòng ${esc(roomName || '')} hôm ${verb} <span class="muted">— không bắt buộc</span></label>
+    <input id="${id}" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Số trên đồng hồ điện, VD: 1234.5">
+    <div class="hint">${IC.info}<span>Nhập số này thì tiền điện dùng <strong>trước</strong> và <strong>sau</strong> hôm đó được tách riêng — ai dùng nấy trả.
+    Bỏ trống thì app chia tiền điện cả tháng theo số ngày ở của từng người.</span></div>
+  </div>`;
+}
+
 /* Chuyển phòng */
 function transferForm(id) {
   const s = studentById(id);
@@ -1258,15 +1269,20 @@ function transferForm(id) {
         <div class="field"><label>Ngày chuyển</label><input id="t_date" type="date" value="${today()}"></div>
       </div>
       <div class="field"><label>Ghi chú</label><input id="t_note" placeholder="Lý do chuyển..."></div>
+      ${s.room_id ? meterField('t_meter', s.room_name, 'chuyển đi') : ''}
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="doTransfer(${id})">Chuyển</button></div>`);
 }
 async function doTransfer(id) {
   const room_id = el('t_room').value; if (!room_id) return toast('Chọn phòng mới', 'err');
+  const meter = el('t_meter') ? el('t_meter').value.trim() : '';
   const moved = await guard(() => withOverloadConfirm(ok =>
-    API.transfer(id, { room_id, date: el('t_date').value, note: el('t_note').value.trim(), confirm_overload: ok })));
+    API.transfer(id, { room_id, date: el('t_date').value, note: el('t_note').value.trim(), meter_reading: meter || undefined, confirm_overload: ok })));
   if (moved === null) return;
-  await refreshCache(); closeModal(); toast('Đã chuyển phòng'); adminGo(ST.view);
+  await refreshCache(); closeModal();
+  const n = moved.recalced ? moved.recalced.length : 0;
+  toast(n ? `Đã chuyển phòng · tính lại tiền điện cho ${n} phiếu` : 'Đã chuyển phòng');
+  adminGo(ST.view);
 }
 /* Hoàn cọc kèm khấu trừ hư hao tài sản + STK */
 function refundForm(id) {
@@ -2005,15 +2021,20 @@ function checkOutForm(id) {
         ${CHECKOUT_REASONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
       </select></div>
       <div class="field"><label>Ghi chú</label><input id="c_note" placeholder="VD: hết hạn ở, chuyển đi..."></div>
+      ${s.room_id ? meterField('c_meter', s.room_name, 'rời phòng') : ''}
       <div class="hint">${IC.info} App sẽ tự xét điều kiện hoàn cọc dựa trên ngày báo và lý do.</div>
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn danger" onclick="doCheckOut(${id})">Xác nhận check-out</button></div>`);
 }
 async function doCheckOut(id) {
   const s = studentById(id);
-  const r = await guard(() => API.checkOut(id, { date: el('c_date').value, notice_date: el('c_notice').value, reason: el('c_reason').value, note: el('c_note').value.trim() }));
+  const meter = el('c_meter') ? el('c_meter').value.trim() : '';
+  const r = await guard(() => API.checkOut(id, { date: el('c_date').value, notice_date: el('c_notice').value, reason: el('c_reason').value, note: el('c_note').value.trim(), meter_reading: meter || undefined }));
   await refreshCache(); closeModal();
-  toast(r.recalced ? `Đã check-out · hóa đơn tháng tính lại ${r.recalced.days_stayed} ngày ở` : 'Đã check-out');
+  const nRoom = r.recalced_roommates ? r.recalced_roommates.length : 0;
+  toast(r.recalced
+    ? `Đã check-out · phiếu tháng tính lại ${r.recalced.days_stayed} ngày ở${nRoom ? ` · ${nRoom} bạn cùng phòng cũng được tính lại tiền điện` : ''}`
+    : 'Đã check-out');
   if (s && s.deposit_status === 'held') depositSettlePrompt(id, r.refund);
   else adminGo(ST.view);
 }

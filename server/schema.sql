@@ -304,3 +304,43 @@ CREATE INDEX IF NOT EXISTS idx_students_room     ON students(room_id);
 CREATE INDEX IF NOT EXISTS idx_vehicles_student  ON vehicles(student_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_deleted  ON invoices(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_electric_month    ON electric_readings(month);
+
+-- ===== Chốt chỉ số công-tơ GIỮA KỲ =====
+-- Khi có người trả phòng / chuyển đi giữa tháng, ghi lại chỉ số điện của phòng NGAY HÔM ĐÓ.
+-- Tháng được cắt thành các chặng giữa 2 lần chốt; mỗi chặng chia cho người có mặt theo số ngày ở.
+-- Nếu không có lần chốt nào -> cả tháng là 1 chặng (y như trước).
+CREATE TABLE IF NOT EXISTS meter_reads (
+  id         SERIAL PRIMARY KEY,
+  room_id    INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+  read_date  DATE NOT NULL,
+  reading    NUMERIC(10,1) NOT NULL,
+  reason     TEXT NOT NULL DEFAULT 'manual',   -- checkout | transfer | manual
+  student_id INTEGER REFERENCES students(id) ON DELETE SET NULL, -- ai rời phòng mà phát sinh lần chốt này
+  note       TEXT DEFAULT '',
+  created_by TEXT DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (room_id, read_date)                  -- 1 phòng 1 ngày chỉ 1 chỉ số
+);
+CREATE INDEX IF NOT EXISTS idx_meter_reads_room ON meter_reads(room_id, read_date);
+
+-- ===== Lịch sử ở phòng =====
+-- Trước đây chuyển phòng chỉ ĐÈ students.room_id -> mất dấu người đó từng ở phòng cũ,
+-- nên tiền điện nửa tháng đầu của họ bị đổ sang đầu người ở lại. Bảng này giữ lại từng lượt ở.
+CREATE TABLE IF NOT EXISTS room_stays (
+  id         SERIAL PRIMARY KEY,
+  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  room_id    INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+  from_date  DATE NOT NULL,
+  to_date    DATE,                              -- NULL = còn đang ở phòng này
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_room_stays_room    ON room_stays(room_id, from_date);
+CREATE INDEX IF NOT EXISTS idx_room_stays_student ON room_stays(student_id);
+
+-- Nạp lần đầu từ dữ liệu hiện có (phòng hiện tại + ngày vào/ra). Chỉ chạy cho HV chưa có lượt nào,
+-- nên chạy lại file này nhiều lần cũng không đẻ thêm dòng.
+INSERT INTO room_stays (student_id, room_id, from_date, to_date)
+SELECT s.id, s.room_id, s.check_in_date, s.check_out_date
+  FROM students s
+ WHERE s.room_id IS NOT NULL AND s.check_in_date IS NOT NULL AND s.deleted_at IS NULL
+   AND NOT EXISTS (SELECT 1 FROM room_stays rs WHERE rs.student_id = s.id);

@@ -321,6 +321,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);b
 .auth-card .ac-ico .ic-svg{width:20px;height:20px;color:var(--brand-d)}
 .auth-amen span .ic-svg{width:14px;height:14px;vertical-align:-.16em;margin-right:3px;color:var(--gold-line)}
 .hint .ic-svg{width:17px;height:17px;flex-shrink:0;margin-top:1px;color:var(--brand-d)}
+/* .hint là flex -> MỖI thẻ con thành MỘT CỘT. Chèn <strong>/<a> thẳng vào là chữ vỡ thành
+   nhiều cột chồng nhau, đọc không nổi. Muốn có chữ đậm/liên kết thì bọc toàn bộ chữ trong 1 <span>. */
+.hint>span{flex:1;min-width:0}
 .stat .l .ic-svg{width:15px;height:15px}
 .login-card .brand .ic .ic-svg{width:38px;height:38px;color:var(--brand-d)}
 .dot-svg{width:11px;height:11px;display:inline-block;vertical-align:-.05em}

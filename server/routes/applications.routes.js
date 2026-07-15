@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const { query, withTransaction, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { checkRoomAssignment, logOverload, blockOrConfirm } = require('../room-rules');
+const roomStays = require('../room-stays');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
@@ -70,6 +71,8 @@ router.post('/:id/approve', async (req, res, next) => {
          app.cccd_front || null, app.cccd_back || null]
       );
       const st = rows[0];
+      // Mở lượt ở phòng ngay từ đầu -> về sau chuyển/trả phòng mới cắt chặng tính điện được
+      if (b.room_id) await roomStays.openStay(client, st.id, b.room_id, checkIn);
       await client.query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'in',$2,$3,'Duyệt đơn & vào ở','admin')`,
         [st.id, checkIn, b.room_id || null]);
       if (app.wants_parking || (app.plate && app.plate.trim())) {
