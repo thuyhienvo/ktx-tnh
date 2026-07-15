@@ -55,7 +55,10 @@ function computeInvoice({ student, room, month, fees, occupants, kwh, vehicleCou
   if (student.rental_type === 'phong') {
     roomFee = roomPriceByHang(room && room.hang, fees);
   } else {
-    roomFee = room && room.monthly_fee != null ? Number(room.monthly_fee) : Number(fees.room_fee);
+    // Phòng CHƯA đặt giá riêng (null/0) -> dùng đơn giá "Tiền phòng" trong Cài đặt.
+    // (Trước đây coi 0 là "giá thật = miễn phí" -> mọi HV thuê ghép bị tính tiền phòng = 0)
+    const rf = room && Number(room.monthly_fee) > 0 ? Number(room.monthly_fee) : Number(fees.room_fee);
+    roomFee = rf;
   }
   const room_charge = r0((roomFee / dim) * days); // chia đúng theo số ngày ở
 

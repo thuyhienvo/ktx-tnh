@@ -166,14 +166,8 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
     for (const k of DATE_FIELDS) if (b[k] != null && b[k] !== '' && !isValidYmd(b[k])) return res.status(400).json({ error: `Ngày không hợp lệ (${k})` });
     if (isValidYmd(b.check_in_date) && isValidYmd(b.check_out_date) && b.check_out_date < b.check_in_date)
       return res.status(400).json({ error: 'Ngày trả phòng không thể trước ngày nhận phòng' });
-    // Chặn xếp vượt công suất phòng ghép
-    if (b.room_id) {
-      const rq = (await query(`SELECT capacity, COALESCE(room_type,'shared') AS rt,
-        (SELECT COUNT(*) FROM students s WHERE s.room_id=r.id AND s.deleted_at IS NULL AND s.status='in')::int AS occ
-        FROM rooms r WHERE id=$1 AND deleted_at IS NULL`, [b.room_id])).rows[0];
-      if (rq && rq.rt === 'shared' && rq.capacity > 0 && rq.occ >= rq.capacity)
-        return res.status(400).json({ error: `Phòng đã đủ chỗ (${rq.occ}/${rq.capacity}), không thể xếp thêm.` });
-    }
+    // KHÔNG chặn xếp vượt công suất: nghiệp vụ cho phép HV vào ở chờ bạn cùng phòng xuất cảnh.
+    // Tình trạng quá tải được HIỂN THỊ cảnh báo ở Điều hành / Phòng để cấp trên nắm.
     let uname = null, pass = null;
     if (b.create_login) {
       uname = (b.login_username || b.code || '').trim();

@@ -597,7 +597,11 @@ async function viewExec() {
   const occ = ST.students.filter(isOccupying).length;
   const capacity = rentCapOf(ST.rooms);               // giường thuộc quỹ cho thuê (ghép + nguyên phòng)
   const availBeds = availBedsOf(ST.rooms);            // giường trống: chỉ phòng ghép còn slot
-  const occRate = capacity ? Math.round((capacity - availBeds) / capacity * 100) : 0;
+  const usedBeds = Math.max(0, capacity - availBeds); // giường ĐANG có người trong quỹ cho thuê (khớp với %)
+  const occRate = capacity ? Math.round(usedBeds / capacity * 100) : 0;
+  // QUÁ TẢI: phòng ghép có số người > công suất (HV vào ở chờ bạn cùng phòng xuất cảnh) — cấp trên cần thấy
+  const overRooms = ST.rooms.filter(r => roomIsShared(r) && r.capacity > 0 && r.occupancy > r.capacity);
+  const overPeople = overRooms.reduce((a, r) => a + (r.occupancy - r.capacity), 0);
   const outstanding = totalYear - paidYear;
   const dep = ST.students.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason) && String(s.check_out_date).slice(0, 4) === year).length;
   const svcs = [
@@ -639,7 +643,7 @@ async function viewExec() {
   el('content').innerHTML = `<div id="printArea">
     <div class="print-only" style="margin-bottom:14px"><h2 style="font-family:var(--serif);margin:0">${esc(ST.settings.dorm_name || 'Ký túc xá')} — Báo cáo điều hành ${year}</h2><div class="muted">Xuất ngày ${fmtDate(today())}</div></div>
     <div class="kpis">
-      ${kpi(IC.userCheck, 'ic-green', occRate + '%', 'Tỉ lệ lấp đầy', occ + '/' + capacity + ' giường', "stuFilter='in';adminGo('students')")}
+      ${kpi(IC.userCheck, 'ic-green', occRate + '%', 'Tỉ lệ lấp đầy', `${usedBeds}/${capacity} giường${overPeople ? ` · <strong style="color:var(--red-ink)">${IC.alert} quá tải ${overPeople} người (${overRooms.length} phòng)</strong>` : ''}`, "adminGo('rooms')")}
       ${kpi(IC.trendingUp, 'ic-brand', money(totalYear), 'Dự báo doanh thu ' + year, yoy != null ? (yoy >= 0 ? '▲' : '▼') + Math.abs(yoy) + '% vs ' + (+year - 1) : '', "adminGo('revenue')")}
       ${kpi(IC.users, 'ic-blue', occ, 'Học viên đang ở', '', "stuFilter='in';adminGo('students')")}
       ${kpi(IC.planeTakeoff, 'ic-gray', dep, 'Xuất cảnh năm ' + year, '', "stuFilter='departure';adminGo('students')")}
@@ -836,7 +840,7 @@ async function viewRooms() {
         <td><strong>${esc(r.name)}</strong>${r.upcoming ? ` <span class="badge blue" title="Sắp vào">+${r.upcoming}</span>` : ''}<div class="sub2">Tầng ${r.floor || '—'} · ${esc(legalEntity(r.gender))}</div>${r.note ? `<div class="sub2" style="white-space:pre-wrap;margin-top:3px">${esc(r.note)}</div>` : ''}</td>
         <td>${r.gender === 'female' ? '<span class="badge red">Nữ</span>' : '<span class="badge blue">Nam</span>'} <span class="badge gray">Hạng ${esc(r.hang || 'B')}</span>${!roomIsShared(r) ? ' ' + roomTypeBadge(r) : ''}</td>
         <td class="num">${roomIsShared(r) ? `<span class="badge ${full ? 'red' : r.occupancy ? 'green' : 'gray'}">${r.occupancy}/${r.capacity || 0}</span>` : `<span class="badge gray">${r.occupancy} người</span>`}</td>
-        <td class="num">${money(r.monthly_fee)}<span class="muted">/người</span><div class="sub2">Nguyên phòng: ${money(ST.settings['room_price_' + (r.hang || 'B')])}</div></td>
+        <td class="num">${money(+r.monthly_fee > 0 ? r.monthly_fee : ST.settings.room_fee)}<span class="muted">/người</span>${+r.monthly_fee > 0 ? '' : '<div class="sub2">(theo đơn giá Cài đặt)</div>'}<div class="sub2">Nguyên phòng: ${money(ST.settings['room_price_' + (r.hang || 'B')])}</div></td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${del ? `<button class="btn sm green" onclick="restoreRoom(${r.id})">${IC.undo} Khôi phục</button>`
                 : `<button class="btn sm" onclick="roomForm(${r.id})">Sửa</button><button class="btn sm ghost" onclick="delRoom(${r.id})">${IC.trash}</button>`}
@@ -2391,7 +2395,7 @@ function viewSettings() {
       </div>
       <div class="grid2">
         <div class="field"><label>Phí gửi xe</label><input id="set_bravo_parking" value="${esc(s.bravo_parking || '')}" placeholder="GP00182"></div>
-        <div class="field"><label>Phí máy giặt</label><input id="set_bravo_washing" value="${esc(s.bravo_washing || '')}" placeholder="(mã Bravo nếu có)"></div>
+        <div class="field"><label>Phí máy giặt</label><input id="set_bravo_washing" value="${esc(s.bravo_washing || '')}" placeholder="GP00197"></div>
       </div>
       <button class="btn pri" onclick="saveBravo()">Lưu mã Bravo</button>
     </div></div>
