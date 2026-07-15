@@ -7,6 +7,7 @@ const { recalcInvoice } = require('../invoice-calc');
 const storage = require('../storage');
 const { cccdUrls, SIDE_COL } = require('../cccd-url');
 const { isValidYmd, isValidPhone, rejectUnknown } = require('../valid');
+const { checkRoomAssignment, logOverload, blockOrConfirm } = require('../room-rules');
 const DATE_FIELDS = ['birth_date', 'check_in_date', 'check_out_date', 'contract_date', 'deposit_date', 'class_start_date', 'expected_departure', 'checkout_notice_date'];
 
 const router = express.Router();
@@ -171,8 +172,9 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
     for (const k of DATE_FIELDS) if (b[k] != null && b[k] !== '' && !isValidYmd(b[k])) return res.status(400).json({ error: `Ngày không hợp lệ (${k})` });
     if (isValidYmd(b.check_in_date) && isValidYmd(b.check_out_date) && b.check_out_date < b.check_in_date)
       return res.status(400).json({ error: 'Ngày trả phòng không thể trước ngày nhận phòng' });
-    // KHÔNG chặn xếp vượt công suất: nghiệp vụ cho phép HV vào ở chờ bạn cùng phòng xuất cảnh.
-    // Tình trạng quá tải được HIỂN THỊ cảnh báo ở Điều hành / Phòng để cấp trên nắm.
+    // LUẬT XẾP PHÒNG (một nơi duy nhất): giới tính + thuê nguyên phòng -> chặn; quá tải -> cảnh báo + xác nhận + ghi vết
+    const chk = await checkRoomAssignment({ studentId: null, gender: b.gender, rentalType: b.rental_type, roomId: b.room_id });
+    if (blockOrConfirm(res, chk, b.confirm_overload === true)) return;
     let uname = null, pass = null;
     if (b.create_login) {
       uname = (b.login_username || b.code || '').trim();
@@ -234,8 +236,10 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
       }
       return st;
     });
+    // Ghi vết: ai xếp · lúc nào · HV nào · phòng nào · vượt mấy người
+    for (const w of chk.warnings) await logOverload(req, { studentId: student.id, studentName: student.name, warning: w });
 
-    res.status(201).json(await signCccd(student));
+    res.status(201).json({ ...(await signCccd(student)), warnings: chk.warnings });
   } catch (e) { next(e); }
 });
 
@@ -251,6 +255,11 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
     for (const k of DATE_FIELDS) if (raw[k] != null && raw[k] !== '' && !isValidYmd(raw[k])) return res.status(400).json({ error: `Ngày không hợp lệ (${k})` });
     if (isValidYmd(b.check_in_date) && isValidYmd(b.check_out_date) && String(b.check_out_date).slice(0, 10) < String(b.check_in_date).slice(0, 10))
       return res.status(400).json({ error: 'Ngày trả phòng không thể trước ngày nhận phòng' });
+    if (b.phone != null && String(b.phone).trim() !== '' && !isValidPhone(b.phone))
+      return res.status(400).json({ error: `Số điện thoại không hợp lệ: "${b.phone}" (cần 8–15 chữ số)` });
+    // LUẬT XẾP PHÒNG — áp cả ở đường SỬA HỒ SƠ (trước đây chỉ chặn lúc tạo mới nên đi vòng là lách được)
+    const chkU = await checkRoomAssignment({ studentId: +req.params.id, gender: b.gender, rentalType: b.rental_type, roomId: b.room_id });
+    if (blockOrConfirm(res, chkU, raw.confirm_overload === true)) return;
     const f = studentFields(b);
     const cols = `code=$1, name=$2, gender=$3, phone=$4, id_card=$5, birth_date=$6, class_name=$7, room_id=$8,
       check_in_date=$9, note=$10, uses_washing=$11, rental_type=$12, residency_status=$13,
@@ -273,7 +282,8 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
     const { rows } = await query(
       `UPDATE students SET ${cols}${extra} WHERE id=$${params.length} RETURNING *`, params);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
-    res.json(await signCccd(rows[0]));
+    for (const w of chkU.warnings) await logOverload(req, { studentId: rows[0].id, studentName: rows[0].name, warning: w });
+    res.json({ ...(await signCccd(rows[0])), warnings: chkU.warnings });
   } catch (e) { next(e); }
 });
 
@@ -302,7 +312,16 @@ router.post('/:id/washing', requireRole('admin', 'staff'), async (req, res, next
 // Check-in
 router.post('/:id/checkin', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
+    const bad = rejectUnknown(req.body, ['date', 'room_id', 'note', 'confirm_overload']);
+    if (bad) return res.status(400).json({ error: bad });
     const { date, room_id, note } = req.body;
+    if (date != null && !isValidYmd(date)) return res.status(400).json({ error: 'Ngày nhận phòng không hợp lệ' });
+    // LUẬT XẾP PHÒNG — áp cả ở đường CHECK-IN LẠI
+    const me = (await query('SELECT gender, rental_type, name FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    if (!me) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    const chkI = await checkRoomAssignment({ studentId: +req.params.id, gender: me.gender, rentalType: me.rental_type, roomId: room_id });
+    if (blockOrConfirm(res, chkI, req.body.confirm_overload === true)) return;
+    for (const w of chkI.warnings) await logOverload(req, { studentId: +req.params.id, studentName: me.name, warning: w });
     const d = date || new Date().toISOString().slice(0, 10);
     const { rows } = await query(
       `UPDATE students SET status='in', room_id=$1, check_in_date=$2, check_out_date=NULL,
@@ -356,11 +375,18 @@ router.post('/:id/checkout', requireRole('admin', 'staff'), async (req, res, nex
 // Chuyển phòng
 router.post('/:id/transfer', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
+    const bad = rejectUnknown(req.body, ['room_id', 'date', 'note', 'confirm_overload']);
+    if (bad) return res.status(400).json({ error: bad });
     const { room_id, date, note } = req.body;
     if (!room_id) return res.status(400).json({ error: 'Chọn phòng mới' });
+    if (date != null && !isValidYmd(date)) return res.status(400).json({ error: 'Ngày chuyển phòng không hợp lệ' });
     const d = date || new Date().toISOString().slice(0, 10);
-    const cur = await query('SELECT room_id FROM students WHERE id=$1', [req.params.id]);
+    const cur = await query('SELECT room_id, gender, rental_type, name FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id]);
     if (!cur.rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    // LUẬT XẾP PHÒNG — áp cả ở đường CHUYỂN PHÒNG
+    const chkT = await checkRoomAssignment({ studentId: +req.params.id, gender: cur.rows[0].gender, rentalType: cur.rows[0].rental_type, roomId: room_id });
+    if (blockOrConfirm(res, chkT, req.body.confirm_overload === true)) return;
+    for (const w of chkT.warnings) await logOverload(req, { studentId: +req.params.id, studentName: cur.rows[0].name, warning: w });
     const oldRoom = cur.rows[0].room_id;
     const { rows } = await query(`UPDATE students SET room_id=$1 WHERE id=$2 RETURNING *`, [room_id, req.params.id]);
     const oldName = oldRoom ? (await query('SELECT name FROM rooms WHERE id=$1', [oldRoom])).rows[0]?.name : '—';

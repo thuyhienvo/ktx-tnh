@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { query, withTransaction, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
+const { checkRoomAssignment, logOverload, blockOrConfirm } = require('../room-rules');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
@@ -39,6 +40,10 @@ router.post('/:id/approve', async (req, res, next) => {
     const takeDeposit = !!b.deposit_paid;
     const depositAmt = b.deposit_amount != null ? +b.deposit_amount : (+settings.deposit_fee || 0);
     const cStatus = ['done', 'scanned', 'unsigned', 'none'].includes(b.contract_status) ? b.contract_status : 'unsigned';
+
+    // LUẬT XẾP PHÒNG — áp cả ở đường DUYỆT ĐƠN (trước đây duyệt thẳng vào phòng đầy/sai giới tính đều lọt)
+    const chkA = await checkRoomAssignment({ studentId: null, gender: app.gender, rentalType: b.rental_type || app.rental_type, roomId: b.room_id });
+    if (blockOrConfirm(res, chkA, b.confirm_overload === true)) return;
 
     let uname = null, pass = null;
     if (b.create_login) {
@@ -79,12 +84,19 @@ router.post('/:id/approve', async (req, res, next) => {
       return st;
     });
 
-    res.json({ ok: true, student, account });
+    for (const w of chkA.warnings) await logOverload(req, { studentId: student.id, studentName: student.name, warning: w });
+    res.json({ ok: true, student, account, warnings: chkA.warnings });
   } catch (e) { next(e); }
 });
 
 router.post('/:id/reject', async (req, res, next) => {
   try {
+    // Không cho từ chối đơn ĐÃ DUYỆT: người ta đã vào ở rồi, đơn ghi "từ chối" là hồ sơ nói một đằng thực tế một nẻo
+    const app = (await query('SELECT status, student_id FROM applications WHERE id=$1', [req.params.id])).rows[0];
+    if (!app) return res.status(404).json({ error: 'Không tìm thấy đơn' });
+    if (app.status === 'approved')
+      return res.status(400).json({ error: 'Đơn đã được duyệt và học viên đã vào ở — không thể từ chối. Nếu người này không ở nữa, dùng chức năng Check-out / Xoá học viên.' });
+    if (app.status === 'rejected') return res.json({ ok: true, already: true });
     await query(`UPDATE applications SET status='rejected', reviewed_at=now() WHERE id=$1`, [req.params.id]);
     res.json({ ok: true });
   } catch (e) { next(e); }
