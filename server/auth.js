@@ -8,12 +8,20 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // Cookie Secure bật theo kết nối HTTPS thật, khai báo tường minh — KHÔNG suy theo NODE_ENV.
 const COOKIE_SECURE = process.env.COOKIE_SECURE === 'true';
 
+// tv = token_epoch tại thời điểm cấp vé. Không khớp với DB nữa -> vé bị thu hồi.
+// KHÔNG dùng role trong token để phân quyền — role luôn đọc lại từ DB ở requireAuth.
 function signToken(user) {
   return jwt.sign(
-    { id: user.id, username: user.username, role: user.role, student_id: user.student_id || null },
+    { id: user.id, username: user.username, role: user.role, student_id: user.student_id || null, tv: user.token_epoch || 0 },
     JWT_SECRET,
     { expiresIn: '30d' }
   );
+}
+
+// Tăng số hiệu phiên -> thu hồi NGAY mọi token cũ của tài khoản này.
+async function revokeTokens(userId) {
+  const { query } = require('./db');
+  await query('UPDATE users SET token_epoch = token_epoch + 1 WHERE id = $1', [userId]);
 }
 
 const COOKIE_NAME = 'ktx_token';
@@ -42,16 +50,40 @@ function clearAuthCookie(res) {
   res.clearCookie(COOKIE_NAME, { path: '/' });
 }
 
-// Middleware: yêu cầu đã đăng nhập
-function requireAuth(req, res, next) {
+// Khi tài khoản đang bị BẮT BUỘC đổi mật khẩu, chỉ cho phép đúng 3 đường này.
+const MUST_CHANGE_ALLOW = ['/api/auth/change-password', '/api/auth/logout', '/api/auth/me'];
+
+// Middleware: yêu cầu đã đăng nhập.
+// Vé (token) CHỈ dùng để biết "ai" — còn "còn quyền không / vai trò gì" thì HỎI LẠI DB MỖI REQUEST.
+// Trước đây chỉ jwt.verify rồi tin thẳng vào vé -> giáng chức / xoá tài khoản / đăng xuất đều vô nghĩa trong 30 ngày.
+async function requireAuth(req, res, next) {
   const token = readToken(req);
   if (!token) return res.status(401).json({ error: 'Chưa đăng nhập' });
+  let p;
+  try { p = jwt.verify(token, JWT_SECRET); }
+  catch (err) { return res.status(401).json({ error: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn' }); }
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    const { query } = require('./db');
+    const { rows } = await query(
+      `SELECT id, username, role, full_name, student_id, must_change_password, token_epoch
+       FROM users WHERE id = $1 AND deleted_at IS NULL`, [p.id]);
+    const u = rows[0];
+    if (!u) return res.status(401).json({ error: 'Tài khoản không còn hiệu lực' });
+    if ((p.tv || 0) !== (u.token_epoch || 0)) {
+      return res.status(401).json({ error: 'Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại.' });
+    }
+    // Học viên bị xoá hồ sơ -> tài khoản hết hiệu lực
+    if (u.role === 'student' && u.student_id) {
+      const s = await query('SELECT 1 FROM students WHERE id=$1 AND deleted_at IS NULL', [u.student_id]);
+      if (!s.rows[0]) return res.status(401).json({ error: 'Tài khoản không còn hiệu lực' });
+    }
+    req.user = { id: u.id, username: u.username, role: u.role, full_name: u.full_name, student_id: u.student_id };
+    // Bắt buộc đổi mật khẩu: chặn ở SERVER, không chỉ ở giao diện
+    if (u.must_change_password && !MUST_CHANGE_ALLOW.includes((req.originalUrl || '').split('?')[0])) {
+      return res.status(403).json({ error: 'Bạn phải đổi mật khẩu trước khi sử dụng hệ thống.' });
+    }
     next();
-  } catch (err) {
-    return res.status(401).json({ error: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn' });
-  }
+  } catch (e) { next(e); }
 }
 
 // Middleware: yêu cầu vai trò cụ thể
@@ -64,4 +96,4 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { signToken, requireAuth, requireRole, JWT_SECRET, setAuthCookie, clearAuthCookie };
+module.exports = { signToken, requireAuth, requireRole, revokeTokens, readToken, JWT_SECRET, setAuthCookie, clearAuthCookie };

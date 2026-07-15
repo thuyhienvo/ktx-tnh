@@ -1,7 +1,8 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { query } = require('../db');
-const { signToken, requireAuth, setAuthCookie, clearAuthCookie } = require('../auth');
+const { signToken, requireAuth, setAuthCookie, clearAuthCookie, revokeTokens, readToken } = require('../auth');
+const jwt = require('jsonwebtoken');
 
 const router = express.Router();
 
@@ -31,8 +32,13 @@ router.post('/login', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Đăng xuất — xóa cookie phiên
-router.post('/logout', (req, res) => {
+// Đăng xuất — THU HỒI vé (không chỉ xoá cookie ở máy client).
+// Trước đây chỉ clearCookie -> ai đã copy được token thì vẫn dùng tiếp 30 ngày sau khi chủ tài khoản đăng xuất.
+router.post('/logout', async (req, res) => {
+  try {
+    const t = readToken(req);
+    if (t) { const p = jwt.verify(t, require('../auth').JWT_SECRET); await revokeTokens(p.id); }
+  } catch (e) { /* token hỏng/hết hạn -> không cần thu hồi */ }
   clearAuthCookie(res);
   res.json({ ok: true });
 });
@@ -61,6 +67,10 @@ router.post('/change-password', requireAuth, async (req, res, next) => {
     }
     await query('UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2',
       [bcrypt.hashSync(newPassword, 10), user.id]);
+    // Đổi mật khẩu -> thu hồi mọi vé cũ (ai đang dùng token cũ bị đá ra), rồi cấp vé mới cho CHÍNH phiên này
+    await revokeTokens(user.id);
+    const fresh = (await query('SELECT id, username, role, student_id, token_epoch FROM users WHERE id=$1', [user.id])).rows[0];
+    setAuthCookie(res, signToken(fresh));
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

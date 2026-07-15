@@ -86,7 +86,8 @@ const API = {
   updateInvoice: (id, b) => api('/invoices/' + id, { method: 'PUT', body: b }),
   setInvoiceStatus: (id, status) => api('/invoices/' + id + '/status', { method: 'POST', body: { status } }),
   recalcInvoice: id => api('/invoices/' + id + '/recalc', { method: 'POST' }),
-  markPaid: month => api('/invoices/mark-paid', { method: 'POST', body: month ? { month } : {} }),
+  // Bắt buộc có kỳ + xác nhận. KHÔNG bao giờ gửi rỗng (rỗng = đánh dấu đã thu toàn bộ mọi kỳ).
+  markPaid: (month, confirm) => api('/invoices/mark-paid', { method: 'POST', body: { month, confirm: confirm === true } }),
   deleteInvoice: id => api('/invoices/' + id, { method: 'DELETE' }),
 
   revenue: year => api('/reports/revenue' + (year ? '?year=' + year : '')),

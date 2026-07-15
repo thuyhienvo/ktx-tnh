@@ -106,6 +106,9 @@ CREATE TABLE IF NOT EXISTS users (
 );
 -- Bắt buộc đổi mật khẩu lần đăng nhập đầu (tài khoản admin khởi tạo từ ENV)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false;
+-- Số hiệu phiên đăng nhập. Token mang theo số này; tăng số = MỌI token cũ của tài khoản đó hết hiệu lực ngay.
+-- Dùng để THU HỒI quyền: đăng xuất, đổi vai trò, xoá tài khoản, đặt lại mật khẩu.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS token_epoch INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS logs (
   id          SERIAL PRIMARY KEY,

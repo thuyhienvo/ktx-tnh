@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { query } = require('../db');
-const { requireAuth, requireRole } = require('../auth');
+const { requireAuth, requireRole, revokeTokens } = require('../auth');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin'));
@@ -53,6 +53,8 @@ router.put('/users/:id', async (req, res, next) => {
       `UPDATE users SET full_name=$1, role=$2 WHERE id=$3 AND role IN ('admin','staff','maintenance') RETURNING id`,
       [(req.body.full_name || '').trim(), ROLE(req.body.role), id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy tài khoản' });
+    // Đổi vai trò -> THU HỒI vé cũ ngay. Nếu không, người vừa bị giáng chức vẫn giữ quyền admin 30 ngày.
+    await revokeTokens(id);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
@@ -63,6 +65,7 @@ router.post('/users/:id/password', async (req, res, next) => {
     if (password.length < 4) return res.status(400).json({ error: 'Mật khẩu tối thiểu 4 ký tự' });
     // Đặt lại mật khẩu -> buộc người dùng đổi lại ở lần đăng nhập kế tiếp
     await query('UPDATE users SET password_hash=$1, must_change_password=true WHERE id=$2', [bcrypt.hashSync(password, 10), req.params.id]);
+    await revokeTokens(+req.params.id); // đá mọi phiên đang mở của tài khoản đó
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
@@ -76,6 +79,7 @@ router.delete('/users/:id', async (req, res, next) => {
     if (target && target.role === 'admin' && admins <= 1) return res.status(400).json({ error: 'Phải còn ít nhất 1 quản trị viên' });
     // Vô hiệu hóa (xóa mềm) — giữ lại lịch sử thao tác của tài khoản
     await query("UPDATE users SET deleted_at=now() WHERE id=$1 AND role IN ('admin','staff','maintenance')", [id]);
+    await revokeTokens(id); // đá ngay mọi phiên đang mở của tài khoản vừa bị vô hiệu hoá
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

@@ -249,15 +249,23 @@ router.put('/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Đánh dấu đã thu hàng loạt (cả tháng, hoặc tất cả nếu không truyền month)
-router.post('/mark-paid', async (req, res, next) => {
+// Đánh dấu đã thu hàng loạt — CHỈ cho ĐÚNG MỘT KỲ, chỉ admin, bắt buộc xác nhận.
+// Trước đây: bỏ trống month = đánh dấu đã thu TOÀN BỘ mọi kỳ, mọi HV, không hoàn tác (nhân viên cũng gọi được).
+// Không có màn hình nào dùng chức năng này; giữ lại nhưng khoá chặt.
+router.post('/mark-paid', requireRole('admin'), async (req, res, next) => {
   try {
-    const month = req.body.month;
+    const month = String(req.body.month || '');
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ error: 'Phải chọn đúng một kỳ (dạng YYYY-MM). Không cho phép đánh dấu đã thu cho toàn bộ các kỳ.' });
+    }
+    if (req.body.confirm !== true) {
+      const n = (await query(`SELECT COUNT(*)::int c FROM invoices WHERE month=$1 AND status<>'paid' AND deleted_at IS NULL`, [month])).rows[0].c;
+      return res.status(400).json({ error: `Thao tác này sẽ đánh dấu ĐÃ THU cho ${n} phiếu của kỳ ${month} và KHÔNG hoàn tác được. Gửi lại kèm "confirm": true nếu chắc chắn.`, would_update: n, month });
+    }
     const date = new Date().toISOString().slice(0, 10);
-    const r = month
-      ? await query(`UPDATE invoices SET status='paid', paid_date=$1 WHERE month=$2 AND status<>'paid' AND deleted_at IS NULL RETURNING id`, [date, month])
-      : await query(`UPDATE invoices SET status='paid', paid_date=$1 WHERE status<>'paid' AND deleted_at IS NULL RETURNING id`, [date]);
-    res.json({ ok: true, updated: (r.rows ? r.rows.length : (r.rowCount || r.affectedRows || 0)) });
+    const r = await query(
+      `UPDATE invoices SET status='paid', paid_date=$1 WHERE month=$2 AND status<>'paid' AND deleted_at IS NULL RETURNING id`, [date, month]);
+    res.json({ ok: true, updated: r.rows.length, month });
   } catch (e) { next(e); }
 });
 
