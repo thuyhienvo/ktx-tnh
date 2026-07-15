@@ -175,7 +175,11 @@ router.get('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { rows } = await query(`
       SELECT s.*, r.name AS room_name, r.floor AS room_floor, r.gender AS room_gender, r.hang AS room_hang,
-        u.username AS login_username
+        u.username AS login_username,
+        -- Số hiệu phiên bản của dòng. xmin là cột hệ thống PostgreSQL tự đổi MỖI LẦN dòng bị sửa
+        -- -> dùng làm mốc "tôi đọc hồ sơ ở trạng thái nào", không phải thêm cột hay trigger.
+        -- Gửi lại lúc lưu để phát hiện người khác vừa sửa (xem PUT /:id).
+        s.xmin::text AS _v
       FROM students s
       LEFT JOIN rooms r ON r.id = s.room_id
       LEFT JOIN users u ON u.student_id = s.id
@@ -330,9 +334,23 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
       params.push(resolved);
     }
     params.push(req.params.id);
+    // Hai người mở CÙNG một hồ sơ, người sau bấm Lưu sẽ ĐÈ MẤT thay đổi của người trước mà
+    // không ai biết. Chặn bằng số hiệu phiên bản đọc lúc mở form (xem GET /:id): dòng đã bị
+    // sửa từ lúc đó thì xmin đổi -> UPDATE không khớp -> 0 dòng -> báo cho người dùng biết.
+    let doiPhienBan = '';
+    if (raw._v) { params.push(String(raw._v)); doiPhienBan = ` AND xmin::text = $${params.length}`; }
     const { rows } = await query(
-      `UPDATE students SET ${cols}${extra} WHERE id=$${params.length} RETURNING *`, params);
-    if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+      `UPDATE students SET ${cols}${extra} WHERE id=$${params.length - (doiPhienBan ? 1 : 0)}${doiPhienBan} RETURNING *`, params);
+    if (!rows[0]) {
+      const con = await query('SELECT name FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id]);
+      if (!con.rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+      // Hồ sơ vẫn còn đó -> nghĩa là nó vừa bị người khác sửa sau khi mình mở form
+      return res.status(409).json({
+        conflict: true,
+        error: `Hồ sơ "${con.rows[0].name}" vừa được người khác sửa sau khi bạn mở form.\n\n`
+             + 'Lưu bây giờ sẽ đè mất thay đổi của họ. Hãy đóng form, mở lại để xem bản mới nhất rồi sửa tiếp.',
+      });
+    }
     // Sửa ô Phòng/Ngày trong hồ sơ = ĐÍNH CHÍNH (chuyển phòng thật phải qua chức năng Chuyển phòng)
     await roomStays.reconcile(null, rows[0].id, rows[0].room_id, rows[0].check_in_date && String(rows[0].check_in_date).slice(0, 10), rows[0].check_out_date && String(rows[0].check_out_date).slice(0, 10));
     for (const w of chkU.warnings) await logOverload(req, { studentId: rows[0].id, studentName: rows[0].name, warning: w });

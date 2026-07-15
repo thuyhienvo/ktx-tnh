@@ -1068,6 +1068,7 @@ function previewCccd(input) {
 }
 async function studentForm(id) {
   const s = id ? await guard(() => API.student(id)) : { name: '', code: '', gender: 'female', phone: '', id_card: '', room_id: '', check_in_date: today(), note: '', uses_washing: false, rental_type: 'ghep', residency_status: 'unregistered', contract_status: 'unsigned', class_name: '', birth_date: '', contract_no: '', contract_date: '', class_start_date: '', expected_departure: '', parent_phone: '' };
+  window._svV = s._v || null;   // ghi nhớ hồ sơ này ở phiên bản nào lúc mình MỞ form
   _cccdData = s.cccd_image || null; _cccdChanged = false;
   const opt = (val, cur, label) => `<option value="${val}" ${cur === val ? 'selected' : ''}>${label}</option>`;
   openModal(`
@@ -1151,6 +1152,9 @@ async function saveStudent(id) {
     birth_date: el('f_birth').dataset.iso || null, gender: el('f_gender').value, phone: el('f_phone').value.trim(),
     room_id: el('f_room').value || null, rental_type: el('f_rental').value, check_in_date: el('f_in').value,
     room_fee_discount_pct: +el('f_rdisc').value || 0,
+    // Số hiệu phiên bản đọc lúc MỞ form. Server so lại: khác nghĩa là người khác vừa sửa
+    // trong lúc mình đang điền -> báo cho biết thay vì đè mất công của họ.
+    _v: window._svV || undefined,
     residency_status: el('f_residency').value, contract_no: el('f_cno').value.trim(),
     contract_date: el('f_cdate').value || null, contract_status: el('f_cstatus').value,
     class_start_date: el('f_cstart').dataset.iso || null, expected_departure: el('f_departure').dataset.iso || null,

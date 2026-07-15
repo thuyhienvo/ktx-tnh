@@ -44,6 +44,8 @@ async function withDuplicateGuide(run) {
   try { return await run(); }
   catch (e) {
     if (e && e.status === 409 && e.data && e.data.duplicate) { duplicateModal(e.data); return null; }
+    // Người khác vừa sửa hồ sơ này -> báo rõ, đừng để đè mất công của họ trong im lặng
+    if (e && e.status === 409 && e.data && e.data.conflict) { alert(e.data.error); return null; }
     throw e;
   }
 }
