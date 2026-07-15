@@ -557,8 +557,9 @@ const facilityName = id => { const f = ST.facilities.find(x => x.id === id); ret
 /* ---------- ĐIỀU HÀNH (DASHBOARD LÃNH ĐẠO) ---------- */
 // Biểu đồ cột: tổng (xám) + đã thu (vàng) chồng lên
 function svgBars(rows) {
-  const W = 720, H = 240, pt = 16, pb = 30, pl = 6, pr = 6;
   const n = rows.length || 1;
+  // Khung hẹp lại khi ít cột (1 cột không nằm lọt thỏm giữa vùng trắng mênh mông)
+  const W = Math.max(260, Math.min(720, n * 60)), H = 240, pt = 16, pb = 30, pl = 6, pr = 6;
   const max = Math.max(1, ...rows.map(r => r.total));
   const cw = (W - pl - pr) / n, bw = Math.min(34, cw * 0.5), ch = H - pt - pb;
   const yOf = v => pt + ch - (v / max) * ch;
@@ -568,7 +569,8 @@ function svgBars(rows) {
       `<rect x="${x}" y="${yp}" width="${bw}" height="${(pt + ch - yp).toFixed(1)}" rx="3" fill="var(--brand)"><title>${monthLabel(r.month)} · Dự báo ${money(r.paid)}</title></rect>` +
       `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${r.label}</text></g>`;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:var(--sans)">${g}</svg>`;
+  // Khoá chiều cao ${H}px: trước đây width:100% làm SVG phóng to theo bề ngang -> cao ~450px, nhìn như hỏng
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="font-family:var(--sans);width:100%;height:${H}px;display:block">${g}</svg>`;
 }
 // Biểu đồ tròn (donut)
 function svgDonut(segs) {
@@ -763,9 +765,11 @@ async function viewDashboard() {
   // act = biểu thức onclick đầy đủ (đặt đúng bộ lọc / tab rồi mới điều hướng) → bấm vào đúng danh sách cần xử lý
   const todo = (ico, tx, n, act, cls) => `<div class="todo ${n ? cls : 'calm'}" ${act && n ? `onclick="${act}"` : ''}><span class="ic">${ico}</span><span class="tx">${tx}</span><span class="n">${n}</span></div>`;
 
-  const zone = g => { const arr = occ.filter(s => s.gender === g); const need = arr.filter(contractRequired); const sg = need.filter(contractSigned).length; return { sg, un: need.length - sg, wash: arr.filter(s => s.uses_washing).length, veh: arr.reduce((a, s) => a + (+s.vehicle_count || 0), 0), total: arr.length }; };
+  // noc = không cần ký HĐ (ngắn hạn ký phiếu bàn giao, thuê nguyên phòng, phòng an ninh/nhân viên)
+  // -> Đã ký + Chưa ký + Không cần HĐ = Tổng (bảng cộng ra đúng)
+  const zone = g => { const arr = occ.filter(s => s.gender === g); const need = arr.filter(contractRequired); const sg = need.filter(contractSigned).length; const un = need.length - sg; return { sg, un, noc: arr.length - sg - un, wash: arr.filter(s => s.uses_washing).length, veh: arr.reduce((a, s) => a + (+s.vehicle_count || 0), 0), total: arr.length }; };
   const zE = zone('female'), zS = zone('male');
-  const zRow = (name, z, tot) => `<tr ${tot ? 'style="background:#faf6f2"' : ''}><td><strong>${name}</strong></td><td class="num">${z.sg}</td><td class="num">${z.un}</td><td class="num">${z.wash}</td><td class="num">${z.veh}</td><td class="num"><strong>${z.total}</strong></td></tr>`;
+  const zRow = (name, z, tot) => `<tr ${tot ? 'style="background:#faf6f2"' : ''}><td><strong>${name}</strong></td><td class="num">${z.sg}</td><td class="num">${z.un}</td><td class="num muted">${z.noc}</td><td class="num">${z.wash}</td><td class="num">${z.veh}</td><td class="num"><strong>${z.total}</strong></td></tr>`;
 
   el('content').innerHTML = `
     <div class="kpis">
@@ -797,21 +801,21 @@ async function viewDashboard() {
       </div></div>
 
       <div class="panel" style="margin:0"><div class="hd"><h2>${IC.fileText} Hợp đồng (${legalEntity('female')} · ${legalEntity('male')})</h2></div>
-        <div class="table-wrap"><table><thead><tr><th>Pháp nhân</th><th class="num">Đã ký</th><th class="num">Chưa ký</th><th class="num">${IC.washer}</th><th class="num">${IC.bike}</th><th class="num">Tổng</th></tr></thead><tbody>
+        <div class="table-wrap"><table><thead><tr><th>Pháp nhân</th><th class="num">Đã ký</th><th class="num">Chưa ký</th><th class="num" title="Ngắn hạn ký phiếu bàn giao, thuê nguyên phòng, phòng an ninh/nhân viên">Không cần HĐ</th><th class="num">${IC.washer} Máy giặt</th><th class="num">${IC.bike} Xe</th><th class="num">Tổng</th></tr></thead><tbody>
           ${zRow(legalEntity('female') + ' · Nữ', zE)}
           ${zRow(legalEntity('male') + ' · Nam', zS)}
-          ${zRow('Tổng cộng', { sg: zE.sg + zS.sg, un: zE.un + zS.un, wash: zE.wash + zS.wash, veh: zE.veh + zS.veh, total: zE.total + zS.total }, true)}
+          ${zRow('Tổng cộng', { sg: zE.sg + zS.sg, un: zE.un + zS.un, noc: zE.noc + zS.noc, wash: zE.wash + zS.wash, veh: zE.veh + zS.veh, total: zE.total + zS.total }, true)}
         </tbody></table></div>
       </div>
     </div>
 
     <div class="panel"><div class="hd"><h2>${IC.history} Hoạt động gần đây</h2><button class="btn sm" onclick="adminGo('checkin')">Xem tất cả</button></div>
-      <div class="table-wrap">${logsTable(logs.slice(0, 6))}</div></div>`;
+      <div class="table-wrap">${logsTable(logs.filter(l => String(l.date).slice(0, 10) <= today()).slice(0, 6))}</div></div>`;
 }
 function logsTable(logs) {
   if (!logs.length) return `<div class="empty">Chưa có hoạt động nào.</div>`;
   return `<table><thead><tr><th>Ngày</th><th>Học viên</th><th>Hoạt động</th><th>Phòng</th><th>Nguồn</th><th>Ghi chú</th></tr></thead><tbody>
-    ${logs.map(l => `<tr><td>${fmtDate(l.date)}</td><td>${esc(l.student_name)}</td>
+    ${logs.map(l => `<tr><td>${fmtDate(l.date)}${String(l.date).slice(0, 10) > today() ? ' <span class="badge blue" style="font-size:10px">sắp tới</span>' : ''}</td><td>${esc(l.student_name)}</td>
       <td>${l.type === 'in' ? '<span class="badge green">Check-in</span>' : '<span class="badge red">Check-out</span>'}</td>
       <td>${esc(l.room_name || '—')}</td>
       <td>${l.source === 'self' ? '<span class="badge blue">Học viên</span>' : '<span class="badge gray">Quản lý</span>'}</td>
@@ -930,6 +934,9 @@ function viewStudents() {
   const cnt = f => ST.students.filter(f).length;
   if (stuSort.key) list = list.slice().sort((a, b) => { const x = stuSortVal(a), y = stuSortVal(b); return (x < y ? -1 : x > y ? 1 : 0) * stuSort.dir; });
   const sTh = (key, label, cls) => `<th class="sortable${cls ? ' ' + cls : ''}${stuSort.key === key ? (stuSort.dir === 1 ? ' asc' : ' desc') : ''}" data-sort="${key}">${label}<span class="sort-ar">${stuSort.key === key ? (stuSort.dir === 1 ? '▲' : '▼') : ''}</span></th>`;
+  const xcOf = s => s.expected_departure || (['departure', 'urgent_visa'].includes(s.checkout_reason) && s.check_out_date ? s.check_out_date : '');
+  const hasXC = list.some(xcOf); // không ai có ngày dự kiến xuất cảnh -> ẩn cột cho đỡ rỗng
+  const nCols = hasXC ? 7 : 6;
   el('content').innerHTML = `
     <div class="pill-row">
       <button class="btn sm ${stuFilter === 'all' ? 'pri' : ''}" onclick="stuFilter='all';viewStudents()">Tất cả (${ST.students.length})</button>
@@ -948,7 +955,7 @@ function viewStudents() {
     <div class="panel"><div class="hd"><h2>Học viên (<span id="stuCount">${list.length}</span>)</h2>
       <div class="search"><span class="i">${IC.search}</span><input id="ss" placeholder="Tìm tên, mã, lớp, SĐT, số phòng..." value="${esc(stuSearch)}"></div>
     </div><div class="table-wrap">
-      ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}<th>Dự kiến XC</th>${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
+      ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}${hasXC ? '<th>Dự kiến XC</th>' : ''}${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
       ${list.map(s => {
         const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.alert}</span>` : ''}${contractOverdue(s) ? `<span title="Thuê ghép >7 ngày chưa ký HĐ" style="color:var(--red-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
         const ds = esc((s.name + ' ' + (s.code || '') + ' ' + (s.phone || '') + ' ' + (s.class_name || '') + ' ' + (s.room_name || '')).toLowerCase());
@@ -959,14 +966,14 @@ function viewStudents() {
         </div></div></td>
         <td>${s.room_name ? `<strong>${esc(s.room_name)}</strong>` : '<span class="muted">Chưa xếp</span>'}<div class="sub2">${RENTAL_LABEL[s.rental_type] || 'Thuê ghép'}</div></td>
         <td><span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span>${s.contract_no ? `<div class="sub2">${esc(s.contract_no)}</div>` : ''}</td>
-        <td>${depositBadge(s)}${s.deposit_status === 'none' && isOccupying(s) ? ` <button class="btn sm ghost" title="Ghi nhận đóng cọc" onclick="depositForm(${s.id})">＋</button>` : ''}</td>
-        <td class="muted" style="font-size:12px;white-space:nowrap">${s.expected_departure ? fmtDate(s.expected_departure) : (['departure', 'urgent_visa'].includes(s.checkout_reason) && s.check_out_date ? fmtDate(s.check_out_date) : '—')}</td>
+        <td>${depositBadge(s)}${s.deposit_status === 'none' && isOccupying(s) ? ` <button class="btn sm ghost" style="white-space:nowrap" title="Ghi nhận đóng cọc" onclick="depositForm(${s.id})">＋ Thu cọc</button>` : ''}</td>
+        ${hasXC ? `<td class="muted" style="font-size:12px;white-space:nowrap">${xcOf(s) ? fmtDate(xcOf(s)) : '—'}</td>` : ''}
         <td>${statusBadge(s)}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
-          ${isOccupying(s) ? `<button class="btn sm danger" onclick="checkOutForm(${s.id})">Check-out</button>` : `<button class="btn sm green" onclick="checkInForm(${s.id})">Check-in</button>`}
+          ${isOccupying(s) ? `<button class="btn sm danger" onclick="checkOutForm(${s.id})">Check-out</button>` : `<button class="btn sm" title="Nhận lại học viên đã trả phòng" onclick="checkInForm(${s.id})">Check-in</button>`}
           <button class="btn sm pri" onclick="studentDetail(${s.id})">Chi tiết</button>
         </div></td></tr>`; }).join('')}
-      <tr class="no-result" style="display:none"><td colspan="7"><div class="empty">Không tìm thấy học viên phù hợp.</div></td></tr>
+      <tr class="no-result" style="display:none"><td colspan="${nCols}"><div class="empty">Không tìm thấy học viên phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có học viên phù hợp.</div>`}
     </div></div>`;
   const ss = el('ss'); if (ss) { ss.addEventListener('input', () => stuSearch = ss.value); attachRowSearch(ss, 'stuCount'); }
@@ -1493,19 +1500,18 @@ async function viewServices() {
     el('svcBody').innerHTML = `<div class="panel"><div class="hd"><h2>${IC.bike} Gửi xe — HV đang ở (<span id="vehCount">${totalVeh}</span> xe)</h2>
       <div class="search"><span class="i">${IC.search}</span><input id="vs" placeholder="Tìm biển số, loại, chủ xe, phòng..." value="${esc(vehSearch)}"></div></div>
       <div class="pad muted" style="font-size:12px">${IC.info} Thêm/sửa xe (biển số, mã dán) trong <strong>Chi tiết học viên</strong>.</div>
-      <div class="table-wrap">${totalVeh ? `<table><thead><tr><th>Biển số</th><th>Loại xe</th><th>Mã dán</th><th>Chủ xe</th><th>Phòng</th><th class="num">Phí/tháng</th></tr></thead><tbody>
+      <div class="table-wrap">${totalVeh ? `<table><thead><tr><th>Biển số</th><th>Loại xe</th><th>Mã dán</th><th>Chủ xe</th><th>Phòng</th></tr></thead><tbody>
         ${veh.map(v => `<tr data-s="${esc((v.plate + ' ' + (v.vehicle_type || '') + ' ' + (v.student_name || '') + ' ' + (v.room_name || '') + ' ' + (v.sticker || '')).toLowerCase())}">
           <td><strong>${esc(v.plate || '—')}</strong></td><td>${esc(v.vehicle_type || '—')}</td><td>${esc(v.sticker || '—')}</td>
           <td><a href="#" onclick="studentDetail(${v.student_id});return false">${esc(v.student_name)}</a></td><td>${esc(v.room_name || '—')}</td>
-          <td class="num">${money(parkFee)}</td>
         </tr>`).join('')}
-        <tr class="no-result" style="display:none"><td colspan="6"><div class="empty">Không tìm thấy xe phù hợp.</div></td></tr>
+        <tr class="no-result" style="display:none"><td colspan="5"><div class="empty">Không tìm thấy xe phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Chưa có HV đang ở gửi xe. Thêm xe trong <strong>Chi tiết học viên</strong>.</div>`}</div></div>`;
     const vs = el('vs'); if (vs) { vs.addEventListener('input', () => vehSearch = vs.value); attachRowSearch(vs, 'vehCount'); }
   } else {
-    el('svcBody').innerHTML = `<div class="panel"><div class="hd"><h2>${IC.washer} Máy giặt (${washUsers.length})</h2><button class="btn sm pri" onclick="addWashingForm()">${IC.plus} Thêm HV dùng máy giặt</button></div>
-      <div class="table-wrap">${washUsers.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Phí / tháng</th><th></th></tr></thead><tbody>
-        ${washUsers.map(s => `<tr><td><a href="#" onclick="studentDetail(${s.id});return false"><strong>${esc(s.name)}</strong></a>${s.code ? `<div class="muted" style="font-size:11px">${esc(s.code)}</div>` : ''}</td><td>${esc(s.room_name || '—')}</td><td class="num">${money(washFee)}</td><td class="num"><button class="btn sm ghost" onclick="toggleWashing(${s.id}, false)">${IC.trash} Ngưng</button></td></tr>`).join('')}
+    el('svcBody').innerHTML = `<div class="panel"><div class="hd"><h2>${IC.washer} Máy giặt</h2><button class="btn sm pri" onclick="addWashingForm()">${IC.plus} Thêm HV dùng máy giặt</button></div>
+      <div class="table-wrap">${washUsers.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th></th></tr></thead><tbody>
+        ${washUsers.map(s => `<tr><td><a href="#" onclick="studentDetail(${s.id});return false"><strong>${esc(s.name)}</strong></a>${s.code ? `<div class="muted" style="font-size:11px">${esc(s.code)}</div>` : ''}</td><td>${esc(s.room_name || '—')}</td><td class="num"><button class="btn sm ghost" onclick="toggleWashing(${s.id}, false)">${IC.trash} Ngưng</button></td></tr>`).join('')}
       </tbody></table>` : '<div class="empty">Chưa có HV đăng ký máy giặt. Bấm "Thêm HV dùng máy giặt".</div>'}</div></div>`;
   }
 }
@@ -2340,7 +2346,8 @@ function exportCSV(rows) {
 /* ---------- CÀI ĐẶT ---------- */
 function viewSettings() {
   const s = ST.settings;
-  const fee = (lbl, key, note = '') => `<div class="field"><label>${lbl} ${note ? `<span class="opt">${note}</span>` : ''}</label><input id="set_${key}" type="number" min="0" value="${esc(s[key] || 0)}"></div>`;
+  // Số tiền 7 chữ số rất dễ gõ dư/thiếu số 0 -> hiện luôn bản đã phân cách nghìn ngay dưới ô, cập nhật khi gõ
+  const fee = (lbl, key, note = '') => `<div class="field"><label>${lbl} ${note ? `<span class="opt">${note}</span>` : ''}</label><input id="set_${key}" type="number" min="0" value="${esc(s[key] || 0)}" oninput="feeHint('${key}')"><div class="sub2" id="hint_${key}" style="margin-top:4px">${money(s[key] || 0)}</div></div>`;
   el('content').innerHTML = `
     <div class="panel"><div class="hd"><h2>${IC.home} Thông tin hiển thị trên phiếu báo</h2></div><div class="pad">
       <div class="field"><label>Tên ký túc xá</label><input id="set_dorm_name" value="${esc(s.dorm_name || '')}"></div>
@@ -2671,6 +2678,7 @@ async function saveBravo() {
   await guard(() => API.updateSettings(body));
   await refreshCache(); toast('Đã lưu mã Bravo'); viewSettings();
 }
+function feeHint(key) { const h = el('hint_' + key), i = el('set_' + key); if (h && i) h.textContent = money(i.value || 0); }
 async function saveSettings() {
   const keys = ['room_fee', 'deposit_fee', 'water_fee', 'electric_unit', 'service_fee', 'washing_fee', 'parking_fee', 'partial_half_min', 'partial_full_min', 'room_price_A', 'room_price_B', 'room_price_C', 'room_price_D'];
   const body = {}; keys.forEach(k => body[k] = +el('set_' + k).value || 0);
