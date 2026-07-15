@@ -1,5 +1,31 @@
 # KẾT QUẢ TEST ĐỐI KHÁNG — TOÀN BỘ 48 CASE
 
+> ## 📌 CẬP NHẬT SAU KHI SỬA — 15/07/2026 (cuối ngày)
+>
+> **Đã sửa xong 36/43 lỗi.** Bộ test nay nằm trong repo: **`npm test` → 88 case**, xem `tests/README.md`.
+>
+> **TC-10 (chuyển phòng giữa tháng) — ĐÃ SỬA.** Sếp chốt quy tắc: *khi có người rời phòng thì chốt chỉ số
+> công-tơ ngay hôm đó; tháng cắt thành các chặng; mỗi chặng chia cho người có mặt theo số ngày ở.*
+> Kiểm chứng trên CSDL thật (phòng dùng 300 kWh, X chuyển đi 15/07):
+>
+> | | Cách cũ | Cách mới |
+> |---|---:|---:|
+> | X (chuyển đi) | **0đ** | **111.364đ** |
+> | A1 (ở lại) | 525.000đ | 469.318đ |
+> | A2 (ở lại) | 525.000đ | 469.318đ |
+> | **Tổng** | 1.050.000đ | **1.050.000đ** |
+>
+> **Sửa lại chỗ em chấm SAI:** **TC-25b (2 HV trùng mã) — em xếp FAIL là chấm sai, thực tế KHÔNG phải lỗi.**
+> Mã `Nhân viên` dùng chung cho nhiều người là **cố ý** trong nghiệp vụ. App cũng không dựa vào mã HV làm khoá;
+> chỗ duy nhất mã HV có thể gây hại là dùng làm tên đăng nhập mặc định, và chỗ đó **app đã chặn đúng**.
+> Đã **không** thêm ràng buộc `UNIQUE(code)` — thêm là gãy nghiệp vụ. **Việc này đóng.**
+>
+> **Lỗi mới tìm ra trong lúc sửa:**
+> - **N-05** — chống dò mật khẩu đếm **cả lần đăng nhập ĐÚNG**. Người dùng thật đăng nhập vài thiết bị là bị
+>   khoá 15 phút, mà app báo *"đăng nhập **sai** quá nhiều lần"* — sai sự thật. Đã sửa: chỉ đếm lần sai.
+> - **Lỗi giao diện** — `.hint` là flex nên mỗi thẻ con thành một cột; dòng giải thích bị **vỡ thành 3 cột
+>   chồng nhau**, đọc không nổi. Đã sửa + thêm rào chắn CSS cho các hint sau này.
+
 **Ngày:** 15/07/2026
 **Môi trường:** `http://localhost:3000` (bản LOCAL). **Không đụng vào staging** (`ktx-tnh.onrender.com`) một request nào.
 **Xác thực:** đã kiểm chứng — app nhận **cả cookie lẫn `Authorization: Bearer`** (`server/auth.js:27-28`), đúng như mẹo trong bộ test.
@@ -92,7 +118,7 @@ Mọi số liệu dưới đây là kết quả **sau khi sửa** các sai sót 
 | **TC-22a/b/c/d** | 🔴 FAIL | Phòng 2 giường đủ 2 người: **sửa hồ sơ** → 3/2 · **chuyển phòng** → 3/2 · **check-in lại** → 4/2 · **duyệt đơn** → 5/2. Tất cả **HTTP 200/201**. |
 | **TC-23** | 🔴 FAIL | 2 request song song vào phòng 3/4 → cả hai **201** → **5/4**. *(Không phải lỗi tranh chấp đồng thời — xem lỗi mới N-02.)* |
 | **TC-24** | 🔴 FAIL | `capacity:-5` → lưu được. `capacity:99` cho hạng D → lưu được. |
-| **TC-25** | 🔴 FAIL | 2 phòng cùng tên → được · 2 HV cùng mã → được · **2 HV cùng CCCD → được** · 2 lần gợi ý số HĐ đồng thời → **ra CÙNG số `01/2026/HDKTX-E2`**. |
+| **TC-25** | 🔴 FAIL | 2 phòng cùng tên → được · ~~2 HV cùng mã → được~~ *(**chấm sai — không phải lỗi**, xem cập nhật đầu file)* · **2 HV cùng CCCD → được** · 2 lần gợi ý số HĐ đồng thời → **ra CÙNG số `01/2026/HDKTX-E2`**. |
 | **TC-26** | 🔴 FAIL | Tạo "Nam" rồi "nam" tuần tự → **400 (chặn đúng)**. Nhưng gửi **song song** "Race"/"race" → cả hai **201** → DB có **2 tài khoản trùng tên**. → Login tìm không phân biệt hoa thường → **đăng nhập nhầm người**. |
 | **TC-27** | 🔴 FAIL | `"305"` → tầng 3 ✅ · `"A203"` → tầng 2 ✅ · **`"Nhà 2 - 305"` → tầng 2 (phải là 3)** ❌ · **`"1305"` → tầng 1 (phải là 13)** ❌ → tầng sai → pháp nhân E2/S2 sai → **số hợp đồng cấp sai**. |
 
@@ -203,7 +229,7 @@ Ngoài việc ra 0 kWh (TC-09), app **vẫn lưu lại `đầu=5000, cuối=4000
 **1. Quy tắc chỉ nằm trên giao diện** → TC-21 (giới tính), TC-22a-d + N-02 (sức chứa), TC-24, TC-05 (nguyên phòng), TC-08 (điều kiện hoàn cọc), TC-37b, TC-39 (SĐT), TC-09.
 Cứ gọi thẳng API — hoặc chỉ cần **đi đường khác trong chính giao diện** (sửa hồ sơ thay vì tạo mới) — là mọi luật bốc hơi.
 
-**2. CSDL không có tuyến phòng thủ nào** → TC-03 (tiền âm), TC-24 (sức chứa âm), TC-25 (trùng mã/CCCD/số HĐ), TC-26 (trùng tên đăng nhập khi chạy song song), TC-34 (kỳ "xyz"), TC-44 (ngưỡng "abc"), TC-40 (trùng biển số).
+**2. CSDL không có tuyến phòng thủ nào** → TC-03 (tiền âm), TC-24 (sức chứa âm), TC-25 (trùng CCCD/số HĐ — **không tính trùng mã HV: đó là cố ý, không phải lỗi**), TC-26 (trùng tên đăng nhập khi chạy song song), TC-34 (kỳ "xyz"), TC-44 (ngưỡng "abc"), TC-40 (trùng biển số).
 Không một ràng buộc nào ở tầng dữ liệu. Sai lọt vào là nằm lại vĩnh viễn.
 
 **3. Quyền không thu hồi được** → TC-13, TC-14, TC-15, TC-15b.
