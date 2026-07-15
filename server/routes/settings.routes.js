@@ -2,6 +2,7 @@ const express = require('express');
 const { query, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { testConnection } = require('../mailer');
+const { checkSetting } = require('../valid');
 
 const router = express.Router();
 
@@ -47,6 +48,16 @@ router.put('/', requireAuth, requireRole('admin'), async (req, res, next) => {
       'intro_price_title', 'intro_price_desc', 'intro_contact_title', 'intro_contact_desc',
       'imgcap_khuon-vien-1', 'imgcap_khuon-vien-2', 'imgcap_khuon-vien-3',
       'imgcap_phong-1', 'imgcap_phong-2', 'imgcap_phong-3'];
+    // Kiểm KIỂU trước khi ghi: đơn giá / ngưỡng phải là số trong khoảng hợp lệ.
+    // Sai 1 ký tự ở ô đơn giá điện từng làm toàn bộ tiền điện về 0 mà không cảnh báo.
+    const errs = [];
+    for (const key of allowed) {
+      if (req.body[key] === undefined) continue;
+      const e = checkSetting(key, req.body[key]);
+      if (e) errs.push(e);
+    }
+    if (errs.length) return res.status(400).json({ error: errs.join(' · ') });
+
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
         // Không ghi đè mật khẩu SMTP bằng chuỗi rỗng (form ẩn pass, để trống = giữ nguyên)

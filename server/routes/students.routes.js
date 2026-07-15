@@ -6,7 +6,7 @@ const { depositRefundEligible } = require('../billing');
 const { recalcInvoice } = require('../invoice-calc');
 const storage = require('../storage');
 const { cccdUrls, SIDE_COL } = require('../cccd-url');
-const { isValidYmd } = require('../valid');
+const { isValidYmd, isValidPhone, rejectUnknown } = require('../valid');
 const DATE_FIELDS = ['birth_date', 'check_in_date', 'check_out_date', 'contract_date', 'deposit_date', 'class_start_date', 'expected_departure', 'checkout_notice_date'];
 
 const router = express.Router();
@@ -162,6 +162,11 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
     const b = req.body;
     // ---- KIỂM TRA trước khi mở transaction (tránh rò transaction khi return sớm) ----
     if (!b.name || !b.name.trim()) return res.status(400).json({ error: 'Nhập họ tên học viên' });
+    // SĐT: đơn đăng ký công khai đã kiểm 8–15 chữ số; form quản trị trước đây KHÔNG kiểm -> lưu được "abc", "123"
+    if (b.phone != null && String(b.phone).trim() !== '' && !isValidPhone(b.phone))
+      return res.status(400).json({ error: `Số điện thoại không hợp lệ: "${b.phone}" (cần 8–15 chữ số)` });
+    if (b.parent_phone != null && String(b.parent_phone).trim() !== '' && !isValidPhone(b.parent_phone))
+      return res.status(400).json({ error: `SĐT phụ huynh không hợp lệ: "${b.parent_phone}" (cần 8–15 chữ số)` });
     // Chặn ngày ảo (đúng format nhưng không có thật) → tránh sập 500
     for (const k of DATE_FIELDS) if (b[k] != null && b[k] !== '' && !isValidYmd(b[k])) return res.status(400).json({ error: `Ngày không hợp lệ (${k})` });
     if (isValidYmd(b.check_in_date) && isValidYmd(b.check_out_date) && b.check_out_date < b.check_in_date)
@@ -314,8 +319,18 @@ router.post('/:id/checkin', requireRole('admin', 'staff'), async (req, res, next
 // Check-out (kèm ngày báo + lý do, tự xét hoàn cọc)
 router.post('/:id/checkout', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
+    // Chặn field lạ: gửi "check_out_date" (đúng tên cột DB) từng bị NUỐT IM LẶNG rồi tự lấy ngày hôm nay
+    const bad = rejectUnknown(req.body, ['date', 'notice_date', 'reason', 'note']);
+    if (bad) return res.status(400).json({ error: bad });
     const { date, notice_date, reason, note } = req.body;
+    if (date != null && !isValidYmd(date)) return res.status(400).json({ error: 'Ngày trả phòng không hợp lệ' });
+    if (notice_date != null && notice_date !== '' && !isValidYmd(notice_date)) return res.status(400).json({ error: 'Ngày báo trả phòng không hợp lệ' });
     const d = date || new Date().toISOString().slice(0, 10);
+    // Ngày rời đi KHÔNG được trước ngày nhận phòng (đường tạo HV và cổng bảo trì đã chặn, đường này thì chưa)
+    const ci = (await query('SELECT check_in_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    if (!ci) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    if (ci.check_in_date && d < String(ci.check_in_date).slice(0, 10))
+      return res.status(400).json({ error: `Ngày trả phòng (${d}) không thể trước ngày nhận phòng (${String(ci.check_in_date).slice(0, 10)})` });
     const rs = ['departure', 'personal', 'facility', 'dropout', 'reserve', 'other'].includes(reason) ? reason : 'other';
     const cur = await query('SELECT room_id FROM students WHERE id=$1', [req.params.id]);
     if (!cur.rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
@@ -329,7 +344,12 @@ router.post('/:id/checkout', requireRole('admin', 'staff'), async (req, res, nex
     // Tính lại hóa đơn tháng trả phòng theo số ngày ở thực tế (nếu đã lập)
     let recalced = null;
     try { recalced = await recalcInvoice(req.params.id, d.slice(0, 7)); } catch (e) {}
-    res.json({ student: rows[0], refund: elig, recalced });
+    // HV đã rời -> DỌN phiếu của các KỲ SAU. Trước đây phiếu tháng sau vẫn nguyên và vẫn đòi tiền
+    // người không còn ở (check-out chỉ tính lại đúng tháng trả phòng).
+    const dropped = await query(
+      `UPDATE invoices SET deleted_at=now() WHERE student_id=$1 AND month > $2 AND deleted_at IS NULL RETURNING month, total`,
+      [req.params.id, d.slice(0, 7)]);
+    res.json({ student: rows[0], refund: elig, recalced, dropped_future_invoices: dropped.rows.map(r => r.month) });
   } catch (e) { next(e); }
 });
 
@@ -354,8 +374,12 @@ router.post('/:id/transfer', requireRole('admin', 'staff'), async (req, res, nex
 // Ghi nhận đóng cọc
 router.post('/:id/deposit', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
+    const bad = rejectUnknown(req.body, ['amount', 'date']);
+    if (bad) return res.status(400).json({ error: bad });
     const settings = await getSettings();
     const amount = req.body.amount != null ? +req.body.amount : (+settings.deposit_fee || 0);
+    if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: `Tiền cọc phải là số không âm (đang nhận: ${req.body.amount})` });
+    if (req.body.date != null && !isValidYmd(req.body.date)) return res.status(400).json({ error: 'Ngày đóng cọc không hợp lệ' });
     const date = req.body.date || new Date().toISOString().slice(0, 10);
     const { rows } = await query(
       `UPDATE students SET deposit_amount=$1, deposit_status='held', deposit_date=$2, deposit_refund_date=NULL WHERE id=$3 RETURNING *`,
@@ -369,9 +393,38 @@ router.post('/:id/deposit', requireRole('admin', 'staff'), async (req, res, next
 // Xử lý cọc khi trả phòng: hoàn (kèm STK/ngân hàng + khấu trừ hư hao) hoặc giữ cọc
 router.post('/:id/deposit-settle', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
+    const bad = rejectUnknown(req.body, ['action', 'date', 'deduction', 'bank', 'account', 'deduction_note', 'override_reason']);
+    if (bad) return res.status(400).json({ error: bad });
     const action = req.body.action === 'refund' ? 'refunded' : 'forfeited';
+    if (req.body.date != null && !isValidYmd(req.body.date)) return res.status(400).json({ error: 'Ngày hoàn cọc không hợp lệ' });
     const date = req.body.date || new Date().toISOString().slice(0, 10);
     const deduction = +req.body.deduction || 0;
+
+    const stu = (await query('SELECT deposit_amount, deposit_status, checkout_notice_date, check_out_date, checkout_reason FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    if (!stu) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    const coc = Number(stu.deposit_amount) || 0;
+    // Khấu trừ hư hao: không âm (âm = TRẢ cho HV nhiều hơn số họ cọc) và không vượt số cọc
+    if (!Number.isFinite(deduction) || deduction < 0)
+      return res.status(400).json({ error: `Khấu trừ hư hao không được âm (đang nhận: ${req.body.deduction})` });
+    if (deduction > coc)
+      return res.status(400).json({ error: `Khấu trừ ${deduction.toLocaleString('vi-VN')} vượt quá số cọc đang giữ ${coc.toLocaleString('vi-VN')}. Nếu cần đòi thêm, lập khoản thu riêng.` });
+
+    // Hoàn cọc: phải ĐỦ ĐIỀU KIỆN. Trước đây kết luận "không đủ điều kiện" chỉ là dòng chữ gợi ý,
+    // khâu tất toán không hỏi lại -> bấm hoàn là hoàn.
+    if (action === 'refunded') {
+      const elig = depositRefundEligible({ noticeDate: stu.checkout_notice_date || null, checkoutDate: stu.check_out_date || null, reason: stu.checkout_reason || 'other' });
+      if (!elig.eligible) {
+        const ov = String(req.body.override_reason || '').trim();
+        if (ov.length < 10) {
+          return res.status(400).json({
+            error: `Không đủ điều kiện hoàn cọc: ${elig.reason}. Nếu vẫn quyết định hoàn, gửi kèm "override_reason" (lý do ghi đè, tối thiểu 10 ký tự) — lý do này sẽ được ghi vào hồ sơ và nhật ký.`,
+            refund_check: elig,
+          });
+        }
+        // Có lý do ghi đè -> cho phép nhưng GHI VẾT vào ghi chú khấu trừ để tra được về sau
+        req.body.deduction_note = `[HOÀN NGOẠI LỆ — ${elig.reason}] ${ov}${req.body.deduction_note ? ' · ' + req.body.deduction_note : ''}`;
+      }
+    }
     const { rows } = await query(
       `UPDATE students SET deposit_status=$1, deposit_refund_date=$2, deposit_bank=$3, deposit_account=$4,
          deposit_deduction=$5, deposit_deduction_note=$6 WHERE id=$7 RETURNING *`,

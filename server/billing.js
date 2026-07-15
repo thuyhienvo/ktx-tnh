@@ -39,14 +39,40 @@ function partialFactor(days, dim, halfMin, fullMin) {
 
 const r0 = n => Math.round(Number(n) || 0);
 
+// Chia tiền điện của PHÒNG theo SỐ NGÀY Ở THỰC TẾ của từng người.
+// roster: [{ student_id, days }] — mọi người ở phòng đó trong kỳ.
+//
+// Trước đây: chia đều đầu người, không nhân ngày -> người ở 1 ngày trả bằng người ở cả tháng,
+// còn người ở lại thì được giảm sai vì bị chia thêm suất.
+// Dùng phương pháp "phần dư lớn nhất" để TỔNG các phần khớp TUYỆT ĐỐI với tiền điện của phòng
+// (không hụt/dư đồng nào, kể cả khi đơn giá không chia hết).
+function splitElectricByDays(roomElectric, roster) {
+  const out = {};
+  const list = (roster || []).filter(r => (r.days || 0) > 0);
+  const totalDays = list.reduce((a, r) => a + r.days, 0);
+  if (!(roomElectric > 0) || totalDays <= 0) { (roster || []).forEach(r => { out[r.student_id] = 0; }); return out; }
+  const parts = list.map(r => {
+    const exact = (roomElectric * r.days) / totalDays;
+    const base = Math.floor(exact);
+    return { id: r.student_id, base, frac: exact - base };
+  });
+  let rem = r0(roomElectric) - parts.reduce((a, p) => a + p.base, 0);
+  parts.slice().sort((a, b) => (b.frac - a.frac) || (a.id - b.id)).forEach(p => { if (rem > 0) { p.base += 1; rem -= 1; } });
+  parts.forEach(p => { out[p.id] = p.base; });
+  (roster || []).forEach(r => { if (out[r.student_id] === undefined) out[r.student_id] = 0; });
+  return out;
+}
+
 // Giá thuê nguyên phòng theo hạng
 function roomPriceByHang(hang, fees) {
   return Number(fees['room_price_' + (hang || 'B')] || fees.room_fee);
 }
 
 // Tính 1 hóa đơn tháng cho 1 học viên
-// opts: { student, room, month, fees, occupants, kwh, vehicleCount }
-function computeInvoice({ student, room, month, fees, occupants, kwh, vehicleCount }) {
+// opts: { student, room, month, fees, roster, occupants, kwh, vehicleCount }
+//   roster = [{student_id, days}] của TẤT CẢ người ở cùng phòng trong kỳ -> chia điện theo ngày ở (đúng).
+//   occupants = số người (CÁCH CŨ: chia đều đầu người) — chỉ dùng khi không truyền roster.
+function computeInvoice({ student, room, month, fees, occupants, roster, kwh, vehicleCount }) {
   const dim = daysInMonth(month);
   const days = daysStayedInMonth(student, month);
 
@@ -70,9 +96,16 @@ function computeInvoice({ student, room, month, fees, occupants, kwh, vehicleCou
   const nVehicles = vehicleCount != null ? vehicleCount : (student.uses_parking ? 1 : 0);
   const parking_charge = r0(Number(fees.parking_fee) * nVehicles * f);
 
-  // Điện: tổng kWh phòng × đơn giá, chia đều số người ở phòng
+  // Điện: tổng kWh phòng × đơn giá, chia theo SỐ NGÀY Ở của từng người
   const roomElectric = r0(Number(kwh || 0) * Number(fees.electric_unit));
-  const electric_charge = occupants > 0 ? r0(roomElectric / occupants) : 0;
+  let electric_charge;
+  if (Array.isArray(roster) && roster.length) {
+    const share = splitElectricByDays(roomElectric, roster);
+    electric_charge = share[student.id] != null ? share[student.id] : 0;
+  } else {
+    // Không có roster -> quay về cách cũ (chia đều đầu người). Chỉ còn dùng cho script/di sản.
+    electric_charge = occupants > 0 ? r0(roomElectric / occupants) : 0;
+  }
 
   const total = room_charge + electric_charge + water_charge + service_charge + washing_charge + parking_charge;
 
@@ -115,5 +148,5 @@ function isOccupying(s, today) { const st = liveStatus(s, today); return st === 
 module.exports = {
   daysInMonth, firstDay, lastDay, daysStayedInMonth,
   partialFactor, computeInvoice, depositRefundEligible,
-  roomPriceByHang, liveStatus, isOccupying,
+  roomPriceByHang, liveStatus, isOccupying, splitElectricByDays,
 };

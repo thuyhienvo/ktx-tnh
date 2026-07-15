@@ -844,7 +844,7 @@ async function viewRooms() {
         <td><strong>${esc(r.name)}</strong>${r.upcoming ? ` <span class="badge blue" title="Sắp vào">+${r.upcoming}</span>` : ''}<div class="sub2">Tầng ${r.floor || '—'} · ${esc(legalEntity(r.gender))}</div>${r.note ? `<div class="sub2" style="white-space:pre-wrap;margin-top:3px">${esc(r.note)}</div>` : ''}</td>
         <td>${r.gender === 'female' ? '<span class="badge red">Nữ</span>' : '<span class="badge blue">Nam</span>'} <span class="badge gray">Hạng ${esc(r.hang || 'B')}</span>${!roomIsShared(r) ? ' ' + roomTypeBadge(r) : ''}</td>
         <td class="num">${roomIsShared(r) ? `<span class="badge ${full ? 'red' : r.occupancy ? 'green' : 'gray'}">${r.occupancy}/${r.capacity || 0}</span>` : `<span class="badge gray">${r.occupancy} người</span>`}</td>
-        <td class="num">${money(+r.monthly_fee > 0 ? r.monthly_fee : ST.settings.room_fee)}<span class="muted">/người</span>${+r.monthly_fee > 0 ? '' : '<div class="sub2">(theo đơn giá Cài đặt)</div>'}<div class="sub2">Nguyên phòng: ${money(ST.settings['room_price_' + (r.hang || 'B')])}</div></td>
+        <td class="num">${money(+r.monthly_fee > 0 ? r.monthly_fee : ST.settings.room_fee)}<span class="muted">/người</span><div class="sub2">Nguyên phòng: ${money(ST.settings['room_price_' + (r.hang || 'B')])}</div></td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${del ? `<button class="btn sm green" onclick="restoreRoom(${r.id})">${IC.undo} Khôi phục</button>`
                 : `<button class="btn sm" onclick="roomForm(${r.id})">Sửa</button><button class="btn sm ghost" onclick="delRoom(${r.id})">${IC.trash}</button>`}

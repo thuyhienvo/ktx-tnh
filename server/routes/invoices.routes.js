@@ -2,10 +2,24 @@ const express = require('express');
 const { query, pool, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const billing = require('../billing');
-const { recalcInvoice } = require('../invoice-calc');
+const { recalcInvoice, roomRoster } = require('../invoice-calc');
+const { isValidMonth } = require('../valid');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
+
+// Mọi khoản tiền phải là số KHÔNG ÂM. Ô nhập có min=0 nhưng đó chỉ là thuộc tính HTML —
+// gọi thẳng API thì room_charge=-99999999 vẫn lọt, kéo tụt doanh thu năm.
+const MONEY_FIELDS = ['room_charge', 'electric_charge', 'water_charge', 'service_charge', 'washing_charge', 'parking_charge', 'other_charge', 'electric_kwh', 'days_stayed'];
+function badMoney(b) {
+  for (const k of MONEY_FIELDS) {
+    if (b[k] === undefined || b[k] === null || b[k] === '') continue;
+    const n = Number(b[k]);
+    if (!Number.isFinite(n)) return `"${k}" phải là số (đang nhận: "${b[k]}")`;
+    if (n < 0) return `"${k}" không được âm (đang nhận: ${n})`;
+  }
+  return null;
+}
 
 // Tính lại 1 hóa đơn theo dữ liệu hiện tại (số ngày ở, dịch vụ...)
 router.post('/:id/recalc', async (req, res, next) => {
@@ -84,9 +98,14 @@ router.post('/generate', async (req, res, next) => {
     const er = (await client.query('SELECT room_id, kwh FROM electric_readings WHERE month=$1', [month])).rows;
     const kwhByRoom = {}; er.forEach(r => { kwhByRoom[r.room_id] = Number(r.kwh); });
 
-    // Số người ở mỗi phòng trong tháng (để chia điện)
-    const occByRoom = {};
-    students.forEach(s => { if (s.room_id) occByRoom[s.room_id] = (occByRoom[s.room_id] || 0) + 1; });
+    // Danh sách người ở mỗi phòng KÈM SỐ NGÀY Ở (để chia điện theo ngày ở thực tế).
+    // Trước đây chỉ đếm đầu người -> ai ở 1 ngày cũng gánh 1 suất điện như người ở cả tháng.
+    const rosterByRoom = {};
+    students.forEach(s => {
+      if (!s.room_id) return;
+      const d = billing.daysStayedInMonth(s, month);
+      if (d > 0) (rosterByRoom[s.room_id] = rosterByRoom[s.room_id] || []).push({ student_id: s.id, days: d });
+    });
 
     // Cache thông tin phòng
     const rooms = {};
@@ -110,7 +129,7 @@ router.post('/generate', async (req, res, next) => {
       const room = s.room_id ? rooms[s.room_id] : null;
       const inv = billing.computeInvoice({
         student: s, room, month, fees,
-        occupants: s.room_id ? (occByRoom[s.room_id] || 1) : 1,
+        roster: s.room_id ? (rosterByRoom[s.room_id] || []) : [],
         kwh: s.room_id ? (kwhByRoom[s.room_id] || 0) : 0,
         vehicleCount: vehByStudent[s.id] || 0,
       });
@@ -162,17 +181,12 @@ router.post('/generate-one', async (req, res, next) => {
     if (dup && dup.status === 'paid') return res.status(400).json({ error: 'Hóa đơn kỳ này đã đóng — không sửa' });
 
     const room = s.room_id ? (await query('SELECT * FROM rooms WHERE id=$1', [s.room_id])).rows[0] : null;
-    const mStart = billing.firstDay(month), mEnd = billing.lastDay(month);
-    let occupants = 1;
-    if (s.room_id) {
-      occupants = (await query(
-        `SELECT COUNT(*)::int c FROM students WHERE room_id=$1 AND deleted_at IS NULL AND check_in_date IS NOT NULL AND check_in_date <= $2 AND (check_out_date IS NULL OR check_out_date >= $3)`,
-        [s.room_id, mEnd, mStart])).rows[0].c || 1;
-    }
+    // Danh sách người ở phòng kèm số ngày ở -> chia điện theo ngày ở thực tế
+    const roster = await roomRoster(s.room_id, month);
     const kwhRow = s.room_id ? (await query('SELECT kwh FROM electric_readings WHERE room_id=$1 AND month=$2', [s.room_id, month])).rows[0] : null;
     const vehicleCount = (await query('SELECT COUNT(*)::int c FROM vehicles WHERE student_id=$1 AND deleted_at IS NULL', [student_id])).rows[0].c;
 
-    const inv = billing.computeInvoice({ student: s, room, month, fees, occupants, kwh: kwhRow ? Number(kwhRow.kwh) : 0, vehicleCount });
+    const inv = billing.computeInvoice({ student: s, room, month, fees, roster, kwh: kwhRow ? Number(kwhRow.kwh) : 0, vehicleCount });
     let row;
     if (dup) {
       const other = Number(dup.other_charge) || 0;
@@ -199,6 +213,10 @@ router.post('/', async (req, res, next) => {
   try {
     const b = req.body;
     if (!b.student_id || !b.month) return res.status(400).json({ error: 'Thiếu học viên hoặc kỳ' });
+    // Kỳ phải có thật (chặn "2026-13", "xyz" -> làm hỏng ràng buộc 1-HV-1-phiếu-mỗi-kỳ và báo cáo năm)
+    if (!isValidMonth(b.month)) return res.status(400).json({ error: `Kỳ không hợp lệ: "${b.month}". Định dạng đúng: YYYY-MM (tháng 01–12).` });
+    const neg = badMoney(b);
+    if (neg) return res.status(400).json({ error: neg });
     const st = await query('SELECT room_id FROM students WHERE id=$1', [b.student_id]);
     const roomId = st.rows[0]?.room_id || null;
     const total = ['room_charge', 'electric_charge', 'water_charge', 'service_charge', 'washing_charge', 'parking_charge', 'other_charge']
@@ -234,6 +252,12 @@ router.post('/', async (req, res, next) => {
 router.put('/:id', async (req, res, next) => {
   try {
     const b = req.body;
+    const neg = badMoney(b);
+    if (neg) return res.status(400).json({ error: neg });
+    // KHÓA hoá đơn đã thu tiền: số đã chốt với Bravo không được sửa sau lưng
+    const cur = (await query('SELECT status FROM invoices WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    if (!cur) return res.status(404).json({ error: 'Không tìm thấy hóa đơn' });
+    if (cur.status === 'paid') return res.status(400).json({ error: 'Hoá đơn đã thu tiền — không sửa được. Nếu cần điều chỉnh, chuyển trạng thái về "chưa thu" trước (thao tác này được ghi nhật ký).' });
     const total = ['room_charge', 'electric_charge', 'water_charge', 'service_charge', 'washing_charge', 'parking_charge', 'other_charge']
       .reduce((a, k) => a + (+b[k] || 0), 0);
     const { rows } = await query(

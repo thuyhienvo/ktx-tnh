@@ -62,8 +62,9 @@ router.get('/info', async (req, res, next) => {
 // Thống kê nhanh cho màn hình đăng nhập
 router.get('/stats', async (req, res, next) => {
   try {
-    const rooms = (await query('SELECT COUNT(*)::int c FROM rooms')).rows[0].c;
-    const students = (await query('SELECT COUNT(*)::int c FROM students')).rows[0].c;
+    // Loại bản ghi đã xoá — trước đây trang công khai khoe cả phòng/học viên đã xoá, lệch với trang quản trị
+    const rooms = (await query('SELECT COUNT(*)::int c FROM rooms WHERE deleted_at IS NULL')).rows[0].c;
+    const students = (await query('SELECT COUNT(*)::int c FROM students WHERE deleted_at IS NULL')).rows[0].c;
     res.json({ rooms, students, zones: 2 });
   } catch (e) { next(e); }
 });
