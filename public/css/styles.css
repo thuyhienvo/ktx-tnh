@@ -1,7 +1,12 @@
 :root{
   /* Nền & chữ — giấy ấm, editorial, nhiều khoảng thở */
   --bg:#f4efe6; --bg2:#efe8dc; --card:#ffffff; --line:#e7e0d1; --line2:#dbd2c1;
-  --ink:#23262f; --ink2:#494d57; --muted:#867d6e;
+  /* --muted: đo 16/07/2026 thấy #867d6e chỉ đạt tương phản 3.3–4.1 trên các nền của app,
+     dưới chuẩn WCAG AA (4.5). Chữ phụ (mã HV, lớp, ghi chú, nhãn thẻ) bị nhạt — khó đọc trên
+     điện thoại giữa trời sáng, mà bảo trì thì dùng app NGOÀI HIỆN TRƯỜNG.
+     #6f6759 đạt 4.6–5.6 trên cả 3 nền (giấy #f4efe6, thẻ trắng, nền phụ #efe8dc) mà vẫn giữ
+     tông nâu xám của thiết kế. Đổi ở đây là ăn cả app vì mọi chỗ đều dùng var(--muted). */
+  --ink:#23262f; --ink2:#494d57; --muted:#6f6759;
   /* Thương hiệu — vàng đồng cổ điển (điểm nhấn), than chì (hành động) */
   --brand:#b58a34; --brand-d:#8a6414; --brand-soft:#f3e9d2;
   --gold:#b58a34; --gold-line:#d8c290;
@@ -17,7 +22,8 @@
   --shadow:0 1px 2px rgba(40,34,22,.04), 0 6px 22px rgba(40,34,22,.05);
   --shadow-lg:0 16px 44px rgba(30,26,18,.16);
   /* Charcoal — thanh bên & lớp nền tối */
-  --dark:#22252e; --dark2:#2b2f39; --dark-line:#343845; --dark-ink:#c6c1b6; --dark-ink2:#87887f;
+  /* --dark-ink2: #87887f chỉ đạt 4.27 trên nền thanh menu #22252e, dưới chuẩn AA. #9b9c93 = 5.52. */
+  --dark:#22252e; --dark2:#2b2f39; --dark-line:#343845; --dark-ink:#c6c1b6; --dark-ink2:#9b9c93;
   /* Serif hiển thị thanh lịch — Cormorant, fallback Palatino cho offline */
   --serif:"ClearDigits","Playfair Display","Palatino Linotype","Book Antiqua",Palatino,Georgia,"Times New Roman",serif;
   --sans:"Inter","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
@@ -535,3 +541,8 @@ th.sortable.asc .sort-ar,th.sortable.desc .sort-ar{opacity:1;color:var(--brand-d
 
 /* Ngày trong lịch nằm ngoài khoảng cho phép (vd ngày sinh ở tương lai) */
 .cal-d.cam{opacity:.28;cursor:not-allowed;pointer-events:none}
+
+/* Chữ phụ TRONG thanh menu tối phải dùng bảng màu của nền tối.
+   Dùng var(--muted) (màu của nền giấy sáng) trên nền than #22252e chỉ đạt tương phản 2.74 —
+   nhãn vai trò "Quản trị viên / Nhân viên" gần như chìm vào nền. */
+.side .muted{color:var(--dark-ink2)}
