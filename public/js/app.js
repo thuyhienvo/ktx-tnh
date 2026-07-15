@@ -130,7 +130,6 @@ async function renderPublicRegister() {
         <div class="field"><label>Mã học viên</label><input id="a_code"></div>
         <div class="field"><label>Lớp</label><input id="a_class"></div>
       </div>
-      <div class="field"><label>Hình thức thuê</label><select id="a_rental"><option value="ghep">Thuê ghép (ở chung)</option><option value="phong">Thuê nguyên phòng</option></select></div>
       <div class="field"><label>Dịch vụ đăng ký thêm</label>
         <label class="check"><input type="checkbox" id="a_wash"> ${IC.washer} Máy giặt (${money(info.washing_fee)}/tháng)</label>
         <label class="check" style="margin-top:8px"><input type="checkbox" id="a_park" onchange="el('plateBox').style.display=this.checked?'block':'none'"> ${IC.bike} Gửi xe (${money(info.parking_fee)}/xe/tháng)</label>
@@ -151,11 +150,15 @@ async function renderPublicRegister() {
   attachDate(el('a_birth'), '');
   el('applyForm').addEventListener('submit', async e => {
     e.preventDefault();
-    const btn = e.submitter; btn.disabled = true; btn.textContent = 'Đang gửi...';
+    // e.submitter có thể null (gửi form bằng lệnh, không qua nút bấm) -> tra ngược nút Gửi.
+    // Đây là form học viên LẠ tự đăng ký: văng lỗi ở đây là mất đơn mà không ai biết.
+    const btn = e.submitter || e.target.querySelector('[type=submit]') || {};
+    btn.disabled = true; btn.textContent = 'Đang gửi...';
     const body = {
       name: el('a_name').value.trim(), phone: el('a_phone').value.trim(), gender: el('a_gender').value,
       birth_date: el('a_birth').dataset.iso || null, code: el('a_code').value.trim(), class_name: el('a_class').value.trim(),
-      rental_type: el('a_rental').value, note: el('a_note').value.trim(),
+      rental_type: 'ghep', // KTX không cho thuê nguyên phòng nữa — bỏ ô chọn, mọi đơn mới đều là thuê ghép
+      note: el('a_note').value.trim(),
       facility_id: el('a_facility') ? +el('a_facility').value : null,
       wants_washing: el('a_wash').checked, wants_parking: el('a_park').checked, plate: el('a_plate').value.trim(),
       cccd_front: window._pubCccd.front || null, cccd_back: window._pubCccd.back || null,
@@ -1392,10 +1395,7 @@ function appForm() {
         <div class="field"><label>Mã học viên (MSHV)</label><input id="ap_code" placeholder="TXTS-..."></div>
         <div class="field"><label>Lớp</label><input id="ap_class" placeholder="Esu..."></div>
       </div>
-      <div class="grid2">
-        <div class="field"><label>Hình thức</label><select id="ap_rental"><option value="ghep">Thuê ghép</option><option value="phong">Thuê nguyên phòng</option></select></div>
-        <div class="field"><label>Cơ sở</label><select id="ap_fac">${facOpts}</select></div>
-      </div>
+      <div class="field"><label>Cơ sở</label><select id="ap_fac">${facOpts}</select></div>
       <div class="field"><label>Nguyện vọng phòng</label><input id="ap_pref" placeholder="VD: tầng thấp, gần thang máy..."></div>
       <div class="grid2">
         <label class="chk" style="align-self:center"><input type="checkbox" id="ap_wash"> Đăng ký máy giặt</label>
@@ -1414,7 +1414,8 @@ async function saveApp() {
   const body = {
     name, phone, gender: el('ap_gender').value, birth_date: el('ap_birth').dataset.iso || null,
     code: el('ap_code').value.trim(), class_name: el('ap_class').value.trim(),
-    rental_type: el('ap_rental').value, facility_id: +el('ap_fac').value || null,
+    rental_type: 'ghep', // KTX không cho thuê nguyên phòng nữa — bỏ ô chọn, mọi đơn mới đều là thuê ghép
+    facility_id: +el('ap_fac').value || null,
     pref: el('ap_pref').value.trim(), note: el('ap_note').value.trim(),
     wants_washing: el('ap_wash').checked, wants_parking: el('ap_park').checked, plate: el('ap_plate').value.trim(),
   };
