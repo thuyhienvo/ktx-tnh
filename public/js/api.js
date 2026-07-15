@@ -31,6 +31,16 @@ async function api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
+// Người này đã có hồ sơ (trùng mã HV / CCCD). Đừng chỉ hiện dòng lỗi đỏ rồi bỏ mặc —
+// nhân viên tạo hồ sơ mới là vì họ CẦN đổi phòng cho bạn ấy, nên phải chỉ thẳng sang chức năng đúng.
+async function withDuplicateGuide(run) {
+  try { return await run(); }
+  catch (e) {
+    if (e && e.status === 409 && e.data && e.data.duplicate) { duplicateModal(e.data); return null; }
+    throw e;
+  }
+}
+
 // Chạy một thao tác xếp phòng. Nếu server báo QUÁ TẢI (409) thì hỏi người dùng,
 // đồng ý thì gửi lại kèm xác nhận. Nghiệp vụ CHO PHÉP quá tải (HV vào ở chờ bạn xuất cảnh),
 // nhưng bắt buộc người xếp phải thấy cảnh báo và tự xác nhận — việc này được ghi vào nhật ký.
@@ -132,6 +142,7 @@ const API = {
 
   // Admin: nhật ký + tài khoản nhân viên
   auditLog: limit => api('/admin/audit' + (limit ? '?limit=' + limit : '')),
+  dataHealth: () => api('/admin/data-health'),
   adminUsers: () => api('/admin/users'),
   createUser: b => api('/admin/users', { method: 'POST', body: b }),
   updateUser: (id, b) => api('/admin/users/' + id, { method: 'PUT', body: b }),

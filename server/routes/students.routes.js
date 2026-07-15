@@ -82,6 +82,38 @@ const D = v => (v ? v : null);
 // Chặn ở 0–100: nhập 500 thì app đi TRẢ TIỀN cho học viên, nhập âm thì thu thêm.
 const PCT = v => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0; };
 
+// ---- CHẶN TẠO TRÙNG HỒ SƠ ----
+// Nhân viên hay tạo hồ sơ MỚI khi học viên CHUYỂN PHÒNG, vì app cũ không có chỗ giữ lịch sử
+// nên đó là cách duy nhất để "giữ" phòng cũ. Hậu quả: người đó có 2 hồ sơ, 2 phiếu, bị thu tiền
+// 2 lần — tháng 07/2026 thu dư 5.709.087đ trên 5 người.
+// Giờ chức năng "Chuyển phòng" đã giữ đủ lịch sử (bảng room_stays) nên KHÔNG còn lý do tạo mới.
+// Chặn ngay tại đây và CHỈ ĐƯỜNG sang Chuyển phòng — đừng bắt nhân viên nhớ quy trình.
+async function findDuplicate({ code, id_card }, exceptId) {
+  const c = String(code || '').trim(), ic = String(id_card || '').trim();
+  const where = [], params = [];
+  if (c) { params.push(c); where.push(`lower(btrim(s.code)) = lower(btrim($${params.length}))`); }
+  if (ic) { params.push(ic); where.push(`btrim(s.id_card) = btrim($${params.length})`); }
+  if (!where.length) return null;
+  let sql = `SELECT s.id, s.name, s.code, s.id_card, s.status, s.check_out_date, r.name AS room_name
+               FROM students s LEFT JOIN rooms r ON r.id = s.room_id
+              WHERE s.deleted_at IS NULL AND (${where.join(' OR ')})`;
+  if (exceptId) { params.push(exceptId); sql += ` AND s.id <> $${params.length}`; }
+  const { rows } = await query(sql + ' LIMIT 1', params);
+  const d = rows[0];
+  if (!d) return null;
+
+  const trungMa = c && String(d.code || '').trim().toLowerCase() === c.toLowerCase();
+  const dangO = d.status === 'in';
+  return {
+    student: d,
+    error: `${d.name} đã có hồ sơ trong hệ thống (${trungMa ? `trùng mã HV "${d.code}"` : `trùng CCCD "${d.id_card}"`})`
+      + (dangO ? ` — đang ở phòng ${d.room_name || 'chưa xếp'}.` : ` — đã trả phòng${d.check_out_date ? ' ngày ' + String(d.check_out_date).slice(0, 10) : ''}.`)
+      + (dangO
+        ? ' Nếu bạn ấy ĐỔI PHÒNG, hãy dùng chức năng "Chuyển phòng" trên hồ sơ cũ — tạo hồ sơ mới sẽ khiến bạn ấy bị tính tiền 2 lần.'
+        : ' Nếu bạn ấy quay lại ở, hãy dùng "Check-in" trên hồ sơ cũ thay vì tạo mới.'),
+  };
+}
+
 router.get('/', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const where = req.query.deleted === '1' ? 'WHERE s.deleted_at IS NOT NULL' : 'WHERE s.deleted_at IS NULL';
@@ -180,6 +212,9 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
     for (const k of DATE_FIELDS) if (b[k] != null && b[k] !== '' && !isValidYmd(b[k])) return res.status(400).json({ error: `Ngày không hợp lệ (${k})` });
     if (isValidYmd(b.check_in_date) && isValidYmd(b.check_out_date) && b.check_out_date < b.check_in_date)
       return res.status(400).json({ error: 'Ngày trả phòng không thể trước ngày nhận phòng' });
+    // Trùng mã HV / CCCD -> gần như chắc chắn đang tạo LẠI người đã có hồ sơ (thường là do chuyển phòng)
+    const dup0 = await findDuplicate(b);
+    if (dup0) return res.status(409).json({ error: dup0.error, existing: dup0.student, duplicate: true });
     // LUẬT XẾP PHÒNG (một nơi duy nhất): giới tính + thuê nguyên phòng -> chặn; quá tải -> cảnh báo + xác nhận + ghi vết
     const chk = await checkRoomAssignment({ studentId: null, gender: b.gender, rentalType: b.rental_type, roomId: b.room_id });
     if (blockOrConfirm(res, chk, b.confirm_overload === true)) return;
@@ -270,6 +305,9 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
       return res.status(400).json({ error: 'Ngày trả phòng không thể trước ngày nhận phòng' });
     if (b.phone != null && String(b.phone).trim() !== '' && !isValidPhone(b.phone))
       return res.status(400).json({ error: `Số điện thoại không hợp lệ: "${b.phone}" (cần 8–15 chữ số)` });
+    // Chặn trùng cả ở đường SỬA: tạo hồ sơ mã A rồi sửa thành mã B (đã có) là lách được tuyến trên
+    const dupU = await findDuplicate(b, +req.params.id);
+    if (dupU) return res.status(409).json({ error: dupU.error, existing: dupU.student, duplicate: true });
     // LUẬT XẾP PHÒNG — áp cả ở đường SỬA HỒ SƠ (trước đây chỉ chặn lúc tạo mới nên đi vòng là lách được)
     const chkU = await checkRoomAssignment({ studentId: +req.params.id, gender: b.gender, rentalType: b.rental_type, roomId: b.room_id });
     if (blockOrConfirm(res, chkU, raw.confirm_overload === true)) return;

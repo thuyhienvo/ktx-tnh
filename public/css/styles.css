@@ -518,3 +518,11 @@ th.sortable.asc .sort-ar,th.sortable.desc .sort-ar{opacity:1;color:var(--brand-d
   .chore-row{grid-template-columns:1fr;gap:5px;padding:12px}
   .chore-when{order:-1}
 }
+
+/* ===== Tình trạng dữ liệu (Cài đặt) ===== */
+/* Cột "Cụ thể" liệt kê nhiều người trên một dòng -> phải cho XUỐNG DÒNG.
+   td mặc định là white-space:nowrap nên nếu không vá thì dòng dài bị cắt cụt giữa chừng. */
+#dataHealth td{white-space:normal;word-break:break-word}
+#dataHealth td:first-child{white-space:nowrap;width:1%}
+#dataHealth .table-wrap{max-height:none}
+#dataHealth code{background:var(--bg2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:12px}

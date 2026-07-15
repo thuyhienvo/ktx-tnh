@@ -1159,10 +1159,12 @@ async function saveStudent(id) {
   } else if (_cccdChanged) {
     body.cccd_image = _cccdData;
   }
-  // Xếp vào phòng đã đầy -> server hỏi lại (409); đồng ý thì gửi kèm xác nhận (được ghi nhật ký)
-  const saved = await guard(() => withOverloadConfirm(ok =>
-    id ? API.updateStudent(id, { ...body, confirm_overload: ok }) : API.createStudent({ ...body, confirm_overload: ok })));
-  if (saved === null) return; // người dùng bấm Hủy ở hộp xác nhận quá tải
+  // Hai lớp hỏi lại của server, đều trả 409:
+  //   - TRÙNG hồ sơ (mã HV/CCCD đã có) -> chỉ đường sang Chuyển phòng / Check-in lại
+  //   - Phòng QUÁ TẢI -> hỏi có xếp nữa không (đồng ý thì ghi nhật ký)
+  const saved = await guard(() => withDuplicateGuide(() => withOverloadConfirm(ok =>
+    id ? API.updateStudent(id, { ...body, confirm_overload: ok }) : API.createStudent({ ...body, confirm_overload: ok }))));
+  if (saved === null) return; // người dùng bấm Hủy, hoặc đã được chỉ sang hồ sơ cũ
   await refreshCache(); closeModal(); toast('Đã lưu học viên'); viewStudents();
 }
 // Gợi ý số HĐ tự động theo pháp nhân + ngày ký (điểm 7)
@@ -1304,6 +1306,31 @@ async function delVehicle(vid, studentId) {
   if (!confirm('Xóa xe này?')) return;
   await guard(() => API.deleteVehicle(vid)); await refreshCache(); toast('Đã xóa xe'); studentDetail(studentId);
 }
+/* Người này đã có hồ sơ rồi — hiện lỗi kèm NÚT ĐI THẲNG tới việc họ thực sự cần làm.
+   Đây là chỗ đã gây thu dư 5.709.087đ trong tháng 07/2026: nhân viên tạo hồ sơ mới khi
+   học viên chuyển phòng, nên người đó có 2 hồ sơ và nhận 2 phiếu. */
+function duplicateModal(d) {
+  const s = d.existing || {};
+  const dangO = s.status === 'in';
+  openModal(`
+    <div class="mh"><h3>${IC.alert} Bạn này đã có hồ sơ</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <div class="hint" style="margin:0 0 16px"><span>${esc(d.error)}</span></div>
+      <div class="asset-item" style="padding:14px">
+        <div><div style="font-weight:700">${esc(s.name || '')}</div>
+          <div class="sub2">${s.code ? 'Mã HV: ' + esc(s.code) : ''}${s.room_name ? ' · Phòng ' + esc(s.room_name) : ''}</div></div>
+        ${dangO ? '<span class="badge green">Đang ở</span>' : '<span class="badge gray">Đã trả phòng</span>'}
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Đóng</button>
+      ${s.id ? (dangO
+        ? `<button class="btn" onclick="closeModal();studentForm(${s.id})">Xem hồ sơ</button>
+           <button class="btn pri" onclick="closeModal();transferForm(${s.id})">${IC.transfer} Chuyển phòng cho bạn ấy</button>`
+        : `<button class="btn pri" onclick="closeModal();checkInForm(${s.id})">${IC.doorOpen} Check-in lại cho bạn ấy</button>`) : ''}
+    </div>`);
+}
+
 /* Ô chốt chỉ số công-tơ, dùng chung cho Trả phòng và Chuyển phòng.
    KHÔNG bắt buộc: bỏ trống thì app quay về chia tiền điện cả tháng theo số ngày ở (như trước). */
 function meterField(id, roomName, verb) {
@@ -2026,7 +2053,8 @@ async function doApprove(id) {
     contract_no: el('ap_cno').value.trim(), contract_date: el('ap_cdate').value || null, contract_status: el('ap_cstatus').value,
   };
   if (el('ap_login').checked) { body.create_login = true; body.login_username = el('ap_user').value.trim(); body.login_password = el('ap_pass').value.trim(); }
-  const r = await guard(() => withOverloadConfirm(ok => API.approveApplication(id, { ...body, confirm_overload: ok })));
+  const r = await guard(() => withDuplicateGuide(() => withOverloadConfirm(ok => API.approveApplication(id, { ...body, confirm_overload: ok }))));
+  if (r === null) return; // đã có hồ sơ / người dùng huỷ — modal kia đã chỉ đường
   if (r === null) return; // hủy ở hộp xác nhận quá tải
   await refreshCache(); closeModal();
   if (r.account) alert(`Đã thêm học viên & tạo tài khoản:\n\nTên đăng nhập: ${r.account.username}\nMật khẩu: ${r.account.password}\n\nGửi thông tin này cho học viên để đăng nhập.`);
@@ -2546,6 +2574,8 @@ function viewSettings() {
       <div class="pad muted" style="font-size:12.5px">${IC.bulb} Phí bồi hoàn dùng để khấu trừ vào cọc khi học viên trả phòng (nếu tài sản hư/mất/không vệ sinh).</div>
     </div>
 
+    ${dataHealthBlock()}
+
     ${rulesDocBlock()}
 
     <div class="panel"><div class="hd"><h2>${IC.filePen} Nội dung trang giới thiệu</h2><a class="btn sm" href="/dang-ky" target="_blank">Xem trang</a></div><div class="pad">
@@ -2618,6 +2648,7 @@ function viewSettings() {
     </div></div>`;
   loadAdminUsers();
   refreshRulesDocStatus();
+  loadDataHealth();
 }
 /* ---------- Quản lý tài khoản nhân viên (chỉ quản trị) ---------- */
 const ROLE_LABEL = { admin: ['Quản trị viên', 'gray'], staff: ['Nhân viên', 'blue'], maintenance: ['Bảo trì', 'amber'] };
@@ -2717,6 +2748,42 @@ async function removeRulesDoc() {
   if (!confirm('Xóa file nội quy?\n\nHọc viên sẽ không còn thấy mục "Nội quy ký túc xá" trong trang Phòng của tôi.')) return;
   await guard(() => API.deleteMedia('noi-quy')); toast('Đã xóa nội quy'); viewSettings();
 }
+/* ---- Tình trạng dữ liệu ----
+   CSDL có tuyến phòng thủ chặn rác (tiền âm, trùng mã, trùng CCCD...). Nhưng ràng buộc CHỈ áp được
+   khi dữ liệu đang sạch — chỗ nào còn vi phạm thì ràng buộc đó nằm im. Màn này bày ra ĐÍCH DANH
+   bản ghi cần sửa; không có nó thì ràng buộc trượt trong im lặng và ai cũng tưởng đã được bảo vệ. */
+function dataHealthBlock() {
+  return `<div class="panel"><div class="hd"><h2>${IC.shield} Tình trạng dữ liệu</h2>
+    <button class="btn sm" onclick="loadDataHealth()">${IC.refresh} Kiểm tra lại</button></div>
+    <div class="pad" id="dataHealth"><span class="muted">Đang kiểm tra...</span></div></div>`;
+}
+async function loadDataHealth() {
+  const box = el('dataHealth'); if (!box) return;
+  box.innerHTML = '<span class="muted">Đang kiểm tra...</span>';
+  let d; try { d = await API.dataHealth(); } catch (e) { box.innerHTML = `<span class="muted">Không kiểm tra được: ${esc(e.message)}</span>`; return; }
+
+  if (d.sach) {
+    box.innerHTML = `<div class="hint" style="margin:0">${IC.checkCircle}<span><strong>Dữ liệu sạch.</strong>
+      Toàn bộ ràng buộc bảo vệ đang hoạt động — không rác nào lọt vào được, kể cả gọi thẳng API.</span></div>`;
+    return;
+  }
+  const loi = d.checks.filter(c => c.so_luong > 0);
+  box.innerHTML = `
+    ${d.guards.length ? `<div class="hint" style="margin:0 0 16px;border-color:var(--red);background:var(--red-bg)">${IC.alert}<span>
+      <strong>${d.guards.length} ràng buộc bảo vệ đang TẮT</strong> vì dữ liệu bên dưới còn vi phạm:
+      ${d.guards.map(g => `<code>${esc(g.ten)}</code>`).join(' · ')}.
+      Sửa xong các mục bên dưới thì ràng buộc <strong>tự bật lại</strong> — không cần báo em.</span></div>` : ''}
+    ${loi.map(c => `
+      <div style="margin-bottom:18px">
+        <h4 class="asset-h" style="color:var(--red-ink)">${IC.alert} ${esc(c.ten)} — ${c.so_luong} chỗ</h4>
+        <p class="muted" style="margin:0 0 8px;font-size:13px">${esc(c.vi_sao)}<br><strong>Cách sửa:</strong> ${esc(c.cach_sua)}</p>
+        <div class="table-wrap"><table><thead><tr><th>Trùng ở</th><th>Cụ thể</th></tr></thead><tbody>
+          ${c.rows.map(r => `<tr><td><strong>${esc(r.khoa || '—')}</strong></td><td>${esc(r.chi_tiet || '')}</td></tr>`).join('')}
+        </tbody></table></div>
+      </div>`).join('')}
+    ${!loi.length ? `<div class="hint" style="margin:0">${IC.checkCircle}<span>Không tìm thấy dữ liệu vi phạm nào ở các mục đang kiểm.</span></div>` : ''}`;
+}
+
 // viewSettings() là hàm đồng bộ, không đợi API được -> vẽ khung trước, hỏi trạng thái file sau.
 function rulesDocBlock() {
   return `<div class="panel"><div class="hd"><h2>${IC.clipboard} Nội quy ký túc xá</h2></div><div class="pad">

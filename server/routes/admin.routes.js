@@ -7,6 +7,57 @@ const router = express.Router();
 router.use(requireAuth, requireRole('admin'));
 
 /* ---------- Nhật ký thao tác (audit) ---------- */
+// ---- TÌNH TRẠNG DỮ LIỆU ----
+// Ràng buộc ở CSDL chỉ áp được khi dữ liệu sạch. Cái nào chưa áp được thì nằm trong schema_guard —
+// nhưng chị quản lý không đọc nhật ký máy chủ, nên phải bày ra đây kèm ĐÍCH DANH bản ghi cần sửa.
+// Không có màn này thì ràng buộc trượt trong im lặng: ai cũng tưởng được bảo vệ, thật ra không.
+const KIEM_TRA = [
+  {
+    ma: 'ma_hv_trung', ten: 'Học viên trùng mã',
+    vi_sao: 'Một người có 2 hồ sơ → nhận 2 phiếu → bị thu tiền 2 lần.',
+    cach_sua: 'Giữ 1 hồ sơ, xoá hồ sơ thừa. Nếu bạn ấy chuyển phòng, dùng nút "Chuyển phòng" trên hồ sơ giữ lại.',
+    sql: `SELECT s.code AS khoa, string_agg(s.name || ' (#' || s.id || COALESCE(' · ' || r.name, '') || ')', ' + ' ORDER BY s.id) AS chi_tiet
+            FROM students s LEFT JOIN rooms r ON r.id = s.room_id
+           WHERE s.deleted_at IS NULL AND COALESCE(btrim(s.code),'') <> ''
+           GROUP BY s.code HAVING COUNT(*) > 1 ORDER BY s.code`,
+  },
+  {
+    ma: 'ngay_ra_truoc_ngay_vao', ten: 'Ngày trả phòng trước ngày nhận phòng',
+    vi_sao: 'Thường là gõ nhầm NĂM. Số ngày ở tính ra 0 → phiếu sai.',
+    cach_sua: 'Mở hồ sơ, sửa lại năm cho đúng.',
+    sql: `SELECT name AS khoa, 'vào ' || check_in_date || ' · ra ' || check_out_date || ' (#' || id || ')' AS chi_tiet
+            FROM students WHERE deleted_at IS NULL AND check_out_date < check_in_date ORDER BY check_out_date - check_in_date`,
+  },
+  {
+    ma: 'cccd_trung', ten: 'Học viên trùng CCCD',
+    vi_sao: 'Hai người không thể chung một CCCD → chắc chắn có hồ sơ thừa.',
+    cach_sua: 'Giữ 1 hồ sơ, xoá hồ sơ thừa.',
+    sql: `SELECT id_card AS khoa, string_agg(name || ' (#' || id || ')', ' + ' ORDER BY id) AS chi_tiet
+            FROM students WHERE deleted_at IS NULL AND COALESCE(btrim(id_card),'') <> ''
+            GROUP BY id_card HAVING COUNT(*) > 1`,
+  },
+  {
+    ma: 'so_hd_trung', ten: 'Trùng số hợp đồng',
+    vi_sao: 'Hai người cầm cùng một số hợp đồng.',
+    cach_sua: 'Đối chiếu hợp đồng giấy, sửa lại số cho đúng người.',
+    sql: `SELECT contract_no AS khoa, string_agg(name || ' (#' || id || ')', ' + ' ORDER BY id) AS chi_tiet
+            FROM students WHERE deleted_at IS NULL AND COALESCE(btrim(contract_no),'') <> ''
+            GROUP BY contract_no HAVING COUNT(*) > 1 ORDER BY contract_no`,
+  },
+];
+
+router.get('/data-health', async (req, res, next) => {
+  try {
+    const guards = (await query('SELECT ten, loi FROM schema_guard ORDER BY ten')).rows;
+    const out = [];
+    for (const k of KIEM_TRA) {
+      const { rows } = await query(k.sql);
+      out.push({ ma: k.ma, ten: k.ten, vi_sao: k.vi_sao, cach_sua: k.cach_sua, so_luong: rows.length, rows: rows.slice(0, 30) });
+    }
+    res.json({ guards, checks: out, sach: guards.length === 0 && out.every(c => c.so_luong === 0) });
+  } catch (e) { next(e); }
+});
+
 router.get('/audit', async (req, res, next) => {
   try {
     const limit = Math.min(500, +req.query.limit || 200);

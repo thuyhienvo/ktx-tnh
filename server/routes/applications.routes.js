@@ -42,6 +42,19 @@ router.post('/:id/approve', async (req, res, next) => {
     const depositAmt = b.deposit_amount != null ? +b.deposit_amount : (+settings.deposit_fee || 0);
     const cStatus = ['done', 'scanned', 'unsigned', 'none'].includes(b.contract_status) ? b.contract_status : 'unsigned';
 
+    // Trùng mã HV / CCCD -> người này đã có hồ sơ. Duyệt đơn là đẻ thêm hồ sơ thứ hai -> thu tiền 2 lần.
+    if (String(app.code || '').trim()) {
+      const { rows: dup } = await query(
+        `SELECT s.id, s.name, s.status, r.name AS room_name FROM students s LEFT JOIN rooms r ON r.id=s.room_id
+          WHERE s.deleted_at IS NULL AND lower(btrim(s.code)) = lower(btrim($1)) LIMIT 1`, [app.code]);
+      if (dup[0]) return res.status(409).json({
+        duplicate: true, existing: dup[0],
+        error: `${dup[0].name} đã có hồ sơ (trùng mã HV "${app.code}")` +
+          (dup[0].status === 'in' ? ` — đang ở phòng ${dup[0].room_name || 'chưa xếp'}.` : ' — đã trả phòng.') +
+          ' Duyệt đơn này sẽ tạo hồ sơ thứ hai và bạn ấy bị tính tiền 2 lần. Nếu bạn ấy đổi phòng / quay lại ở,' +
+          ' hãy xử lý trên hồ sơ cũ rồi Từ chối đơn này.',
+      });
+    }
     // LUẬT XẾP PHÒNG — áp cả ở đường DUYỆT ĐƠN (trước đây duyệt thẳng vào phòng đầy/sai giới tính đều lọt)
     const chkA = await checkRoomAssignment({ studentId: null, gender: app.gender, rentalType: b.rental_type || app.rental_type, roomId: b.room_id });
     if (blockOrConfirm(res, chkA, b.confirm_overload === true)) return;

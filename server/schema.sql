@@ -345,6 +345,101 @@ SELECT s.id, s.room_id, s.check_in_date, s.check_out_date
  WHERE s.room_id IS NOT NULL AND s.check_in_date IS NOT NULL AND s.deleted_at IS NULL
    AND NOT EXISTS (SELECT 1 FROM room_stays rs WHERE rs.student_id = s.id);
 
+-- ============================================================================
+-- ===== TUYẾN PHÒNG THỦ Ở CSDL =====
+-- Trước đây CSDL nhận mọi thứ: tiền âm, 2 người cùng CCCD, 2 xe cùng biển số,
+-- kỳ "xyz"... Mọi kiểm tra đều nằm ở tầng ứng dụng, mà tầng đó có 15 đường ghi —
+-- vá sót một đường là rác lọt vào và nằm đó vĩnh viễn. Ràng buộc ở đây là tuyến CUỐI:
+-- không đường nào đi vòng được, kể cả gọi thẳng API hay chạy SQL tay.
+--
+-- BỌC TRONG DO/EXCEPTION vì file này chạy MỖI LẦN máy chủ khởi động và db.js KHÔNG bắt lỗi:
+-- một ràng buộc không áp được (dữ liệu đang vi phạm) sẽ làm MÁY CHỦ KHÔNG LÊN NỔI.
+--
+-- Cái nào trượt thì GHI VÀO BẢNG schema_guard, KHÔNG dùng RAISE WARNING: cảnh báo của
+-- PostgreSQL đi qua kênh "notice" mà node-postgres không in ra -> ràng buộc trượt trong im lặng,
+-- ai cũng tưởng có phòng thủ trong khi thật ra không có. Ghi vào bảng thì đọc lại được,
+-- db.js in ra lúc khởi động và không ai đoán mò.
+-- Dọn dữ liệu xong, khởi động lại -> ràng buộc TỰ ÁP và dòng cảnh báo tự biến mất.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS schema_guard (
+  ten        TEXT PRIMARY KEY,
+  loi        TEXT NOT NULL,
+  checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+DO $ktx$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN SELECT * FROM (VALUES
+    -- Trùng CCCD = một người có 2 hồ sơ -> bị tính tiền 2 lần. Bỏ qua hồ sơ đã xoá & CCCD trống.
+    ('uq_students_id_card',
+     $q$CREATE UNIQUE INDEX IF NOT EXISTS uq_students_id_card ON students (id_card)
+        WHERE deleted_at IS NULL AND COALESCE(id_card,'') <> ''$q$),
+    -- Trùng MÃ HV = một người có 2 hồ sơ -> 2 phiếu -> bị thu tiền 2 lần.
+    -- VŨ TRANG SẴN: hiện dữ liệu còn bản trùng nên ràng buộc này CHƯA áp được (xem cảnh báo lúc
+    -- khởi động). Dọn xong dữ liệu rồi khởi động lại là nó TỰ KHOÁ, không phải sửa code.
+    -- Nhân viên cũng KHÔNG được trùng mã (sếp chốt 16/07/2026) -> không loại trừ ai cả.
+    ('uq_students_code',
+     $q$CREATE UNIQUE INDEX IF NOT EXISTS uq_students_code ON students (lower(btrim(code)))
+        WHERE deleted_at IS NULL AND COALESCE(btrim(code),'') <> ''$q$),
+    -- Trùng biển số = 2 học viên cùng khai một xe -> thu phí gửi xe sai
+    ('uq_vehicles_plate',
+     $q$CREATE UNIQUE INDEX IF NOT EXISTS uq_vehicles_plate ON vehicles (lower(btrim(plate)))
+        WHERE deleted_at IS NULL AND COALESCE(plate,'') <> ''$q$),
+    -- Hai phòng cùng tên trong một cơ sở -> xếp người vào nhầm phòng
+    ('uq_rooms_name_per_facility',
+     $q$CREATE UNIQUE INDEX IF NOT EXISTS uq_rooms_name_per_facility ON rooms (facility_id, lower(btrim(name)))
+        WHERE deleted_at IS NULL$q$),
+    -- Tên đăng nhập trùng chỉ khác hoa/thường: app kiểm bằng lower() rồi mới ghi, nhưng 2 người
+    -- bấm cùng lúc thì cả hai đều thấy "chưa có" -> lọt. CSDL thì không.
+    ('uq_users_username_ci',
+     $q$CREATE UNIQUE INDEX IF NOT EXISTS uq_users_username_ci ON users (lower(username))
+        WHERE deleted_at IS NULL$q$),
+    -- Một phòng chỉ 1 chỉ số công-tơ cho một ngày
+    ('uq_meter_reads_room_date',
+     $q$CREATE UNIQUE INDEX IF NOT EXISTS uq_meter_reads_room_date ON meter_reads (room_id, read_date)$q$),
+
+    -- ---- Tiền KHÔNG BAO GIỜ được âm. Ô nhập có min=0 nhưng đó chỉ là thuộc tính HTML.
+    ('ck_invoices_no_negative',
+     $q$ALTER TABLE invoices ADD CONSTRAINT ck_invoices_no_negative CHECK (
+        room_charge >= 0 AND electric_charge >= 0 AND water_charge >= 0 AND service_charge >= 0
+        AND washing_charge >= 0 AND parking_charge >= 0 AND other_charge >= 0
+        AND leader_discount >= 0 AND room_discount >= 0
+        AND electric_kwh >= 0 AND days_stayed >= 0 AND total >= 0)$q$),
+    -- Kỳ phải đúng dạng YYYY-MM. Kỳ "xyz" lọt vào là mọi báo cáo doanh thu lệch.
+    ('ck_invoices_month',
+     $q$ALTER TABLE invoices ADD CONSTRAINT ck_invoices_month
+        CHECK (month ~ '^[0-9]{4}-(0[1-9]|1[0-2])$')$q$),
+    ('ck_rooms_sane',
+     $q$ALTER TABLE rooms ADD CONSTRAINT ck_rooms_sane
+        CHECK (capacity >= 0 AND capacity <= 20 AND monthly_fee >= 0)$q$),
+    ('ck_students_deposit',
+     $q$ALTER TABLE students ADD CONSTRAINT ck_students_deposit CHECK (deposit_amount >= 0)$q$),
+    -- Công-tơ chỉ quay tới: số cuối không nhỏ hơn số đầu
+    ('ck_electric_sane',
+     $q$ALTER TABLE electric_readings ADD CONSTRAINT ck_electric_sane
+        CHECK (reading_start >= 0 AND reading_end >= 0 AND kwh >= 0 AND reading_end >= reading_start)$q$),
+    -- Nhiệm kỳ phòng trưởng / lượt ở phòng: ngày kết thúc không thể trước ngày bắt đầu
+    ('ck_room_leaders_dates',
+     $q$ALTER TABLE room_leaders ADD CONSTRAINT ck_room_leaders_dates CHECK (to_date IS NULL OR to_date >= from_date)$q$),
+    ('ck_room_stays_dates',
+     $q$ALTER TABLE room_stays ADD CONSTRAINT ck_room_stays_dates CHECK (to_date IS NULL OR to_date >= from_date)$q$)
+  ) AS t(ten, sql)
+  LOOP
+    BEGIN
+      EXECUTE r.sql;
+      DELETE FROM schema_guard WHERE ten = r.ten;   -- áp được rồi -> xoá cảnh báo cũ (nếu có)
+    EXCEPTION
+      WHEN duplicate_object OR duplicate_table THEN
+        DELETE FROM schema_guard WHERE ten = r.ten; -- đã có sẵn từ trước, bình thường
+      WHEN others THEN
+        INSERT INTO schema_guard (ten, loi) VALUES (r.ten, SQLERRM)
+          ON CONFLICT (ten) DO UPDATE SET loi = EXCLUDED.loi, checked_at = now();
+    END;
+  END LOOP;
+END
+$ktx$;
+
 -- ===== Phòng trưởng =====
 -- Mỗi phòng có 1 phòng trưởng giúp BQL quản lý trong phòng. Đổi lại: MIỄN tiền nước + phí dịch vụ.
 -- Có ngày bắt đầu/kết thúc (không phải 1 ô đánh dấu) vì đổi phòng trưởng giữa tháng thì mỗi người

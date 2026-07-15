@@ -61,8 +61,20 @@ async function init() {
 
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   await pool.query(schema);
+  await reportSchemaGuard();
   await seedDefaults();
   console.log('✅ CSDL sẵn sàng');
+}
+
+// In TO ra màn hình những ràng buộc CHƯA áp được vì dữ liệu đang vi phạm.
+// Không có bước này thì ràng buộc trượt trong im lặng — tệ hơn cả không có ràng buộc,
+// vì ai cũng tưởng đã được bảo vệ.
+async function reportSchemaGuard() {
+  const { rows } = await pool.query('SELECT ten, loi FROM schema_guard ORDER BY ten');
+  if (!rows.length) return;
+  console.warn(`\n⚠️  ${rows.length} RÀNG BUỘC CHƯA ÁP ĐƯỢC — dữ liệu đang có bản vi phạm:`);
+  for (const r of rows) console.warn(`   • ${r.ten}\n     ${r.loi}`);
+  console.warn('   → Dọn dữ liệu rồi khởi động lại, ràng buộc sẽ tự áp. Xem: Cài đặt → Tình trạng dữ liệu.\n');
 }
 
 async function seedDefaults() {
