@@ -1,4 +1,7 @@
 const express = require('express');
+const roomLeaders = require('../room-leaders');
+const { isValidYmd } = require('../valid');
+const { recalcInvoice } = require('../invoice-calc');
 const { query } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 
@@ -121,6 +124,54 @@ router.post('/:id/restore', requireRole('admin', 'staff'), async (req, res, next
   try {
     await query('UPDATE rooms SET deleted_at=NULL WHERE id=$1', [req.params.id]);
     res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+/* ---- Phòng trưởng ---- */
+// Ai đang làm phòng trưởng của phòng này + lịch sử các nhiệm kỳ
+router.get('/:id/leader', async (req, res, next) => {
+  try {
+    const current = await roomLeaders.currentOf(null, req.params.id);
+    const { rows } = await query(
+      `SELECT rl.*, s.name AS student_name FROM room_leaders rl
+         JOIN students s ON s.id = rl.student_id
+        WHERE rl.room_id=$1 ORDER BY rl.from_date DESC`, [req.params.id]);
+    res.json({ current, history: rows });
+  } catch (e) { next(e); }
+});
+
+// Cử phòng trưởng. Người cũ (nếu có) tự động kết thúc nhiệm kỳ hết ngày hôm trước.
+router.post('/:id/leader', requireRole('admin', 'staff'), async (req, res, next) => {
+  try {
+    const { student_id, date, note } = req.body;
+    if (!student_id) return res.status(400).json({ error: 'Chọn học viên làm phòng trưởng' });
+    if (date != null && !isValidYmd(date)) return res.status(400).json({ error: 'Ngày nhận nhiệm vụ không hợp lệ' });
+    const d = date || new Date().toISOString().slice(0, 10);
+
+    const r = await roomLeaders.setLeader(null, { roomId: +req.params.id, studentId: +student_id, date: d, note, by: req.user && req.user.username });
+    if (r.error) return res.status(400).json({ error: r.error });
+    if (r.already) return res.json({ ok: true, already: true, leader: r.leader });
+
+    // Đổi phòng trưởng = đổi tiền: người mới được miễn nước+dịch vụ, người cũ mất phần từ ngày này.
+    // Tính lại phiếu cho CẢ HAI ngay, đừng để sổ sách nói một đằng thực tế một nẻo.
+    const month = d.slice(0, 7);
+    const ids = new Set([+student_id]);
+    if (r.replaced) ids.add(r.replaced.student_id);
+    const recalced = [];
+    for (const sid of ids) { try { if (await recalcInvoice(sid, month)) recalced.push(sid); } catch (e) {} }
+    res.json({ ok: true, leader: r.leader, replaced: r.replaced || null, recalced });
+  } catch (e) { next(e); }
+});
+
+// Miễn nhiệm phòng trưởng (phòng không còn phòng trưởng nữa)
+router.delete('/:id/leader', requireRole('admin', 'staff'), async (req, res, next) => {
+  try {
+    const d = req.query.date && isValidYmd(req.query.date) ? req.query.date : new Date().toISOString().slice(0, 10);
+    const closed = await roomLeaders.closeRoom(null, req.params.id, d);
+    if (!closed) return res.status(404).json({ error: 'Phòng này chưa có phòng trưởng' });
+    let recalced = null;
+    try { recalced = await recalcInvoice(closed.student_id, d.slice(0, 7)); } catch (e) {}
+    res.json({ ok: true, closed, recalced: recalced ? closed.student_id : null });
   } catch (e) { next(e); }
 });
 

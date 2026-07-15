@@ -144,7 +144,8 @@ function roomPriceByHang(hang, fees) {
 //   occupants = số người (CÁCH CŨ: chia đều đầu người) — chỉ dùng khi không truyền roster.
 //   electricCharge = tiền điện ĐÃ TÍNH SẴN của riêng học viên này (cộng qua mọi phòng họ ở trong tháng,
 //     cắt theo từng chặng chốt chỉ số) — ưu tiên cao nhất, đúng nhất. Xem invoice-calc.studentElectric.
-function computeInvoice({ student, room, month, fees, occupants, roster, electricCharge, kwh, vehicleCount }) {
+//   leaderDays = số ngày làm PHÒNG TRƯỞNG trong tháng -> miễn nước + dịch vụ theo tỉ lệ ngày làm.
+function computeInvoice({ student, room, month, fees, occupants, roster, electricCharge, leaderDays, kwh, vehicleCount }) {
   const dim = daysInMonth(month);
   const days = daysStayedInMonth(student, month);
 
@@ -159,6 +160,12 @@ function computeInvoice({ student, room, month, fees, occupants, roster, electri
     roomFee = rf;
   }
   const room_charge = r0((roomFee / dim) * days); // chia đúng theo số ngày ở
+
+  // Giảm tiền phòng theo % riêng của từng người (vd quản lý KTX ở phòng 104 được giảm 50%).
+  // Để ở HỒ SƠ HỌC VIÊN chứ không viết cứng số phòng vào code: đổi phòng hay đổi người thì
+  // chị quản lý tự sửa được, không phải gọi lập trình viên.
+  const pct = Math.min(100, Math.max(0, Number(student.room_fee_discount_pct) || 0));
+  const room_discount = r0((room_charge * pct) / 100);
 
   // Hệ số phí cố định (nước, dịch vụ, máy giặt, xe)
   const f = partialFactor(days, dim, +fees.partial_half_min, +fees.partial_full_min);
@@ -185,7 +192,12 @@ function computeInvoice({ student, room, month, fees, occupants, roster, electri
     electric_charge = occupants > 0 ? r0(roomElectric / occupants) : 0;
   }
 
-  const total = room_charge + electric_charge + water_charge + service_charge + washing_charge + parking_charge;
+  const leader_discount = leaderDiscount({ leaderDays, days, water_charge, service_charge });
+
+  // Mọi khoản giảm đều ghi RIÊNG một dòng, không âm thầm hạ tiền phòng/tiền nước xuống —
+  // học viên thấy được ưu đãi, cấp trên thống kê được chế độ này tốn bao nhiêu.
+  const total = room_charge + electric_charge + water_charge + service_charge + washing_charge + parking_charge
+    - leader_discount - room_discount;
 
   return {
     days_stayed: days,
@@ -196,9 +208,26 @@ function computeInvoice({ student, room, month, fees, occupants, roster, electri
     service_charge,
     washing_charge,
     parking_charge,
+    leader_discount,
+    room_discount,
     other_charge: 0,
     total,
   };
+}
+
+// Khoản giảm cho PHÒNG TRƯỞNG (sếp chốt 15/07/2026).
+//   giảm = (tiền nước + phí dịch vụ) × (số ngày làm phòng trưởng ÷ số ngày ở)
+//
+// Vì sao tính theo TỈ LỆ của chính tiền nước+dịch vụ, chứ không trừ một số cố định 150.000:
+//   - Làm phòng trưởng trọn tháng -> giảm = đúng 100% -> MIỄN HẲN, kể cả sau này sếp tăng giá nước.
+//   - Người ở nửa tháng chỉ bị tính 75.000 nước+dịch vụ -> giảm 75.000 -> về 0.
+//     Trừ cứng 150.000 ở đây sẽ ra ÂM 75.000, tức là app đi TRẢ TIỀN cho học viên.
+//   - Đổi phòng trưởng giữa tháng: người cũ 20 ngày + người mới 11 ngày -> tổng giảm vẫn đúng
+//     bằng MỘT suất, không phát thành hai.
+function leaderDiscount({ leaderDays, days, water_charge, service_charge }) {
+  const ld = Math.min(Number(leaderDays) || 0, days); // không thể làm phòng trưởng nhiều ngày hơn số ngày ở
+  if (ld <= 0 || days <= 0) return 0;
+  return r0(((water_charge + service_charge) * ld) / days);
 }
 
 // Xét điều kiện hoàn cọc khi trả phòng
@@ -227,5 +256,5 @@ module.exports = {
   daysInMonth, firstDay, lastDay, addDays, daysStayedInMonth, daysStayedInRange,
   partialFactor, computeInvoice, depositRefundEligible,
   roomPriceByHang, liveStatus, isOccupying,
-  splitElectricByDays, splitElectricExact, buildSegments,
+  splitElectricByDays, splitElectricExact, buildSegments, leaderDiscount,
 };

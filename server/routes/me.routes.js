@@ -11,7 +11,9 @@ router.use(requireAuth, requireRole('student'));
 router.get('/profile', async (req, res, next) => {
   try {
     const { rows } = await query(`
-      SELECT s.*, r.name AS room_name, r.floor AS room_floor, r.monthly_fee
+      SELECT s.*, r.name AS room_name, r.floor AS room_floor, r.monthly_fee,
+        EXISTS (SELECT 1 FROM room_leaders rl
+                 WHERE rl.student_id=s.id AND rl.room_id=s.room_id AND rl.to_date IS NULL) AS is_leader
       FROM students s LEFT JOIN rooms r ON r.id = s.room_id
       WHERE s.id = $1 AND s.deleted_at IS NULL`, [req.user.student_id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy hồ sơ học viên' });
@@ -26,11 +28,16 @@ router.get('/roommates', async (req, res, next) => {
   try {
     const me = (await query('SELECT room_id FROM students WHERE id=$1 AND deleted_at IS NULL', [req.user.student_id])).rows[0];
     if (!me || !me.room_id) return res.json([]);
+    // Kèm cờ phòng trưởng để học viên biết trong phòng ai là người BQL giao quản lý.
+    // Sắp phòng trưởng lên đầu — đó là thông tin người ta cần tìm trước tiên.
     const { rows } = await query(
-      `SELECT name FROM students
-       WHERE room_id=$1 AND id<>$2 AND deleted_at IS NULL
-         AND check_in_date <= CURRENT_DATE AND (check_out_date IS NULL OR check_out_date > CURRENT_DATE)
-       ORDER BY name`, [me.room_id, req.user.student_id]);
+      `SELECT s.name,
+         EXISTS (SELECT 1 FROM room_leaders rl
+                  WHERE rl.student_id=s.id AND rl.room_id=$1 AND rl.to_date IS NULL) AS is_leader
+       FROM students s
+       WHERE s.room_id=$1 AND s.id<>$2 AND s.deleted_at IS NULL
+         AND s.check_in_date <= CURRENT_DATE AND (s.check_out_date IS NULL OR s.check_out_date > CURRENT_DATE)
+       ORDER BY is_leader DESC, s.name`, [me.room_id, req.user.student_id]);
     res.json(rows);
   } catch (e) { next(e); }
 });

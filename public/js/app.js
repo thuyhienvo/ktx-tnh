@@ -842,21 +842,70 @@ async function viewRooms() {
         ${del ? '' : `<button class="btn sm" onclick="roomShowDeleted=true;viewRooms()">${IC.trash} Đã xóa</button>`}
       </div>
     </div><div class="table-wrap">
-      ${list.length ? `<table><thead><tr><th>Phòng</th><th>Loại</th><th class="num">Đang ở</th><th class="num">Giá thuê</th><th></th></tr></thead><tbody>
+      ${list.length ? `<table><thead><tr><th>Phòng</th><th>Loại</th><th class="num">Đang ở</th><th>${IC.star} Phòng trưởng</th><th class="num">Giá thuê</th><th></th></tr></thead><tbody>
       ${list.map(r => { const full = r.occupancy >= r.capacity && r.capacity > 0; return `<tr data-s="${esc((r.name + ' ' + genderLabel(r.gender) + ' tầng' + r.floor + ' hạng' + (r.hang || 'b')).toLowerCase())}">
         <td><strong>${esc(r.name)}</strong>${r.upcoming ? ` <span class="badge blue" title="Sắp vào">+${r.upcoming}</span>` : ''}<div class="sub2">Tầng ${r.floor || '—'} · ${esc(legalEntity(r.gender))}</div>${r.note ? `<div class="sub2" style="white-space:pre-wrap;margin-top:3px">${esc(r.note)}</div>` : ''}</td>
         <td>${r.gender === 'female' ? '<span class="badge red">Nữ</span>' : '<span class="badge blue">Nam</span>'} <span class="badge gray">Hạng ${esc(r.hang || 'B')}</span>${!roomIsShared(r) ? ' ' + roomTypeBadge(r) : ''}</td>
         <td class="num">${roomIsShared(r) ? `<span class="badge ${full ? 'red' : r.occupancy ? 'green' : 'gray'}">${r.occupancy}/${r.capacity || 0}</span>` : `<span class="badge gray">${r.occupancy} người</span>`}</td>
+        <td>${leaderCell(r)}</td>
         <td class="num">${money(+r.monthly_fee > 0 ? r.monthly_fee : ST.settings.room_fee)}<span class="muted">/người</span><div class="sub2">Nguyên phòng: ${money(ST.settings['room_price_' + (r.hang || 'B')])}</div></td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${del ? `<button class="btn sm green" onclick="restoreRoom(${r.id})">${IC.undo} Khôi phục</button>`
-                : `<button class="btn sm" onclick="roomForm(${r.id})">Sửa</button><button class="btn sm ghost" onclick="delRoom(${r.id})">${IC.trash}</button>`}
+                : `<button class="btn sm ghost" title="Cử phòng trưởng" onclick="leaderForm(${r.id})">${IC.star}</button><button class="btn sm" onclick="roomForm(${r.id})">Sửa</button><button class="btn sm ghost" onclick="delRoom(${r.id})">${IC.trash}</button>`}
         </div></td></tr>`; }).join('')}
-      <tr class="no-result" style="display:none"><td colspan="5"><div class="empty">Không tìm thấy phòng phù hợp.</div></td></tr>
+      <tr class="no-result" style="display:none"><td colspan="6"><div class="empty">Không tìm thấy phòng phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">${del ? 'Không có phòng đã xóa.' : `Chưa có phòng nào. Bấm <strong>${IC.plus} Thêm phòng</strong>.`}</div>`}
     </div></div>`;
   const rs = el('rs'); if (rs) { rs.addEventListener('input', () => roomSearch = rs.value); attachRowSearch(rs, 'roomCount'); }
 }
+/* ---- Phòng trưởng ----
+   Mỗi phòng 1 phòng trưởng giúp BQL quản lý trong phòng, đổi lại được miễn tiền nước + phí dịch vụ
+   (tính theo số ngày làm — xem billing.leaderDiscount). */
+const leaderOf = roomId => ST.students.find(s => s.room_id === roomId && s.is_leader && isOccupying(s));
+function leaderCell(r) {
+  const L = leaderOf(r.id);
+  return L ? `<span class="badge amber">${IC.star} ${esc(L.name)}</span>` : '<span class="muted">—</span>';
+}
+function leaderForm(roomId) {
+  const r = ST.rooms.find(x => x.id === roomId) || {};
+  const cur = leaderOf(roomId);
+  const inRoom = ST.students.filter(s => s.room_id === roomId && isOccupying(s));
+  openModal(`
+    <div class="mh"><h3>${IC.star} Phòng trưởng: ${esc(r.name || '')}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      ${!inRoom.length ? '<p class="muted">Phòng này chưa có ai ở — chưa cử phòng trưởng được.</p>' : `
+      <div class="field"><label>Chọn phòng trưởng</label><select id="l_stu">
+        ${inRoom.map(s => `<option value="${s.id}" ${cur && cur.id === s.id ? 'selected' : ''}>${esc(s.name)}${cur && cur.id === s.id ? ' — đang làm' : ''}</option>`).join('')}
+      </select></div>
+      <div class="field"><label>Nhận nhiệm vụ từ ngày</label><input id="l_date" type="date" value="${today()}"></div>
+      <div class="field"><label>Ghi chú</label><input id="l_note" placeholder="VD: cử thay bạn A xuất cảnh..."></div>
+      <div class="hint">${IC.info}<span>Phòng trưởng được <strong>miễn tiền nước và phí dịch vụ</strong>, tính theo <strong>số ngày làm</strong>:
+        đổi người giữa tháng thì mỗi bạn được giảm theo phần của mình, không ai được trọn cả tháng.
+        Người đang làm sẽ tự kết thúc nhiệm kỳ vào hôm trước ngày này.</span></div>`}
+    </div>
+    <div class="mf">
+      ${cur ? `<button class="btn danger" onclick="unsetLeader(${roomId})">Miễn nhiệm ${esc(cur.name)}</button>` : ''}
+      <button class="btn" onclick="closeModal()">Hủy</button>
+      ${inRoom.length ? `<button class="btn pri" onclick="doSetLeader(${roomId})">Cử làm phòng trưởng</button>` : ''}
+    </div>`);
+}
+async function doSetLeader(roomId) {
+  const student_id = el('l_stu').value;
+  if (!student_id) return toast('Chọn học viên', 'err');
+  const r = await guard(() => API.setLeader(roomId, { student_id: +student_id, date: el('l_date').value, note: el('l_note').value.trim() }));
+  await refreshCache(); closeModal();
+  const n = r && r.recalced ? r.recalced.length : 0;
+  toast(r && r.already ? 'Bạn này đang là phòng trưởng rồi'
+    : n ? `Đã cử phòng trưởng · tính lại ${n} phiếu` : 'Đã cử phòng trưởng');
+  adminGo(ST.view);
+}
+async function unsetLeader(roomId) {
+  const cur = leaderOf(roomId);
+  if (!confirm(`Miễn nhiệm phòng trưởng ${cur ? cur.name : ''}?\n\nTừ hôm nay bạn ấy không còn được miễn tiền nước và phí dịch vụ nữa.`)) return;
+  await guard(() => API.unsetLeader(roomId, today()));
+  await refreshCache(); closeModal(); toast('Đã miễn nhiệm phòng trưởng'); adminGo(ST.view);
+}
+
 function facilityOptions(sel) {
   return ST.facilities.map(f => `<option value="${f.id}" ${sel === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('');
 }
@@ -1041,6 +1090,11 @@ async function studentForm(id) {
         <div class="field"><label>Hình thức thuê</label><select id="f_rental">
           ${opt('ghep', s.rental_type, 'Thuê ghép (giá/người)')}${opt('phong', s.rental_type, 'Thuê nguyên phòng (giá theo hạng)')}</select></div>
       </div>
+      <div class="field"><label>Giảm tiền phòng <span class="opt">(% — để trống nếu thu đủ)</span></label>
+        <input id="f_rdisc" type="number" min="0" max="100" step="1" placeholder="0" value="${+s.room_fee_discount_pct > 0 ? +s.room_fee_discount_pct : ''}">
+        <div class="hint">${IC.info}<span>Ưu đãi riêng cho từng người, vd quản lý ký túc xá ở phòng 104 được giảm <strong>50%</strong> tiền phòng.
+          Phiếu vẫn ghi tiền phòng đủ, kèm dòng "Giảm tiền phòng" riêng. Bỏ trống = thu đủ.</span></div>
+      </div>
       <div class="grid2">
         <div class="field"><label>Ngày vào (check-in)</label><input id="f_in" type="date" value="${esc((s.check_in_date || today()).slice(0, 10))}"></div>
         <div class="field"><label>Tạm trú</label><select id="f_residency">
@@ -1090,6 +1144,7 @@ async function saveStudent(id) {
     name: el('f_name').value.trim(), code: el('f_code').value.trim(), class_name: el('f_class').value.trim(),
     birth_date: el('f_birth').dataset.iso || null, gender: el('f_gender').value, phone: el('f_phone').value.trim(),
     room_id: el('f_room').value || null, rental_type: el('f_rental').value, check_in_date: el('f_in').value,
+    room_fee_discount_pct: +el('f_rdisc').value || 0,
     residency_status: el('f_residency').value, contract_no: el('f_cno').value.trim(),
     contract_date: el('f_cdate').value || null, contract_status: el('f_cstatus').value,
     class_start_date: el('f_cstart').dataset.iso || null, expected_departure: el('f_departure').dataset.iso || null,
@@ -2144,7 +2199,7 @@ async function viewInvoices() {
         ${all.length ? `<button class="btn sm" onclick='exportCSV(${JSON.stringify(list).replace(/'/g, "&#39;")})'>${IC.download} Xuất Excel (CSV)</button>` : ''}</div></div>
       <div class="table-wrap">
       ${all.length === 0 ? `<div class="empty">Chưa có hóa đơn nào cho kỳ này.<br><br><button class="btn pri" onclick="generateForm()">${IC.receipt} Tạo hóa đơn</button></div>` :
-      list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Tổng</th><th></th></tr></thead><tbody>
+      list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Giảm</th><th class="num">Tổng</th><th></th></tr></thead><tbody>
         ${list.map(i => `<tr data-s="${esc(((i.student_name || '') + ' ' + (i.student_code || '') + ' ' + (i.room_name || '')).toLowerCase())}">
           <td><strong>${esc(i.student_name)}</strong>${i.student_code ? `<div class="muted" style="font-size:11px">${esc(i.student_code)}</div>` : ''}</td>
           <td>${esc(i.room_name || '—')}</td>
@@ -2155,6 +2210,9 @@ async function viewInvoices() {
           <td class="num">${moneyN(i.service_charge)}</td>
           <td class="num">${i.washing_charge ? moneyN(i.washing_charge) : '—'}</td>
           <td class="num">${i.parking_charge ? moneyN(i.parking_charge) : '—'}</td>
+          <td class="num">${(+i.leader_discount || 0) + (+i.room_discount || 0)
+            ? `<span class="badge green" title="${[+i.room_discount ? 'Giảm tiền phòng ' + money(i.room_discount) : '', +i.leader_discount ? 'Giảm phòng trưởng ' + money(i.leader_discount) : ''].filter(Boolean).join(' · ')}">−${moneyN((+i.leader_discount || 0) + (+i.room_discount || 0))}</span>`
+            : '—'}</td>
           <td class="num"><strong>${moneyN(i.total)}</strong></td>
           <td class="num"><div class="rowbtns" style="justify-content:flex-end">
             <button class="btn sm pri" onclick='phieuBao(${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.fileText} Phiếu báo</button>
@@ -2162,7 +2220,7 @@ async function viewInvoices() {
             <button class="btn sm ghost" onclick='invoiceForm(${i.id}, ${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.pencil}</button>
             <button class="btn sm ghost" onclick="delInvoice(${i.id})">${IC.trash}</button>
           </div></td></tr>`).join('')}
-        <tr class="no-result" style="display:none"><td colspan="11"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
+        <tr class="no-result" style="display:none"><td colspan="12"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có hóa đơn ${invFilter === 'paid' ? 'đã đóng' : 'chưa đóng'} trong kỳ này.</div>`}
     </div></div>
     ${elecPanel}`;
@@ -2336,6 +2394,9 @@ async function phieuBao(inv) {
   if (+inv.washing_charge) row('Máy giặt', `${money(set.washing_fee)}/tháng`, inv.washing_charge);
   if (+inv.parking_charge) row('Gửi xe', `${money(set.parking_fee)}/xe`, inv.parking_charge);
   if (+inv.other_charge) row(inv.other_note || 'Khoản khác', '', inv.other_charge);
+  // Các khoản GIẢM đứng riêng, ghi số âm — người đọc thấy rõ được ưu đãi gì, vì sao tổng thấp hơn
+  if (+inv.room_discount) row('Giảm tiền phòng', `Ưu đãi riêng ${+s.room_fee_discount_pct || 0}% tiền phòng`, -inv.room_discount);
+  if (+inv.leader_discount) row('Giảm phòng trưởng', 'Miễn tiền nước + phí dịch vụ', -inv.leader_discount);
 
   openModal(`
     <div class="mh rc-noprint"><h3>${IC.fileText} Phiếu báo tiền phòng</h3><button class="x" onclick="closeModal()">×</button></div>
@@ -2393,8 +2454,8 @@ function downloadPhieuBao(fname) {
   toast('Đã tải phiếu báo');
 }
 function exportCSV(rows) {
-  const head = ['Ho ten', 'Ma HV', 'Phong', 'Ky', 'So ngay o', 'Tien phong', 'Dien (kWh)', 'Tien dien', 'Nuoc', 'Dich vu', 'May giat', 'Gui xe', 'Khac', 'Tong'];
-  const data = rows.map(i => [i.student_name, i.student_code || '', i.room_name || '', i.month, i.days_stayed, i.room_charge, i.electric_kwh, i.electric_charge, i.water_charge, i.service_charge, i.washing_charge, i.parking_charge, i.other_charge, i.total]);
+  const head = ['Ho ten', 'Ma HV', 'Phong', 'Ky', 'So ngay o', 'Tien phong', 'Dien (kWh)', 'Tien dien', 'Nuoc', 'Dich vu', 'May giat', 'Gui xe', 'Khac', 'Giam tien phong', 'Giam phong truong', 'Tong'];
+  const data = rows.map(i => [i.student_name, i.student_code || '', i.room_name || '', i.month, i.days_stayed, i.room_charge, i.electric_kwh, i.electric_charge, i.water_charge, i.service_charge, i.washing_charge, i.parking_charge, i.other_charge, i.room_discount || 0, i.leader_discount || 0, i.total]);
   const csv = '﻿' + [head, ...data].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -2825,8 +2886,10 @@ async function loadStudentPortal() {
 
     <div class="panel"><div class="hd"><h2>${IC.users} Thành viên cùng phòng${profile.room_name ? ` — ${esc(profile.room_name)} (${mates.length})` : ''}</h2></div><div class="pad">
       ${!profile.room_name ? '<p class="muted" style="margin:0">Bạn chưa được xếp phòng.</p>'
-        : mates.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px">${mates.map(m => `<span class="badge blue" style="font-size:13px;padding:6px 12px">${IC.user} ${esc(m.name)}</span>`).join('')}</div>`
+        : mates.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px">${mates.map(m =>
+            `<span class="badge ${m.is_leader ? 'amber' : 'blue'}" style="font-size:13px;padding:6px 12px">${m.is_leader ? IC.star : IC.user} ${esc(m.name)}${m.is_leader ? ' — Phòng trưởng' : ''}</span>`).join('')}</div>`
         : '<p class="muted" style="margin:0">Hiện bạn ở một mình trong phòng.</p>'}
+      ${profile.room_name ? leaderNote(profile, mates) : ''}
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.washer} Dịch vụ máy giặt</h2></div><div class="pad">
@@ -2847,8 +2910,15 @@ async function loadStudentPortal() {
     </div></div>` : ''}
 
     <div class="panel"><div class="hd"><h2>${IC.receipt} Phiếu báo tiền phòng</h2></div><div class="table-wrap">
-      ${invs.length ? `<table><thead><tr><th>Kỳ</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Khác</th><th class="num">Tổng</th></tr></thead><tbody>
-        ${invs.map(i => `<tr><td>${monthLabel(i.month)}</td><td class="num">${money(i.room_charge)}</td><td class="num">${money(i.electric_charge)}</td><td class="num">${money((+i.water_charge) + (+i.service_charge) + (+i.washing_charge) + (+i.parking_charge))}</td><td class="num"><strong>${money(i.total)}</strong></td></tr>`).join('')}
+      ${invs.length ? `<table><thead><tr><th>Kỳ</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Khác</th><th class="num">Giảm</th><th class="num">Tổng</th></tr></thead><tbody>
+        ${invs.map(i => {
+          // Cột "Giảm" phải hiện, nếu không thì 4 cột đầu cộng lại KHÔNG ra Tổng — học viên tưởng app tính sai
+          const giam = (+i.leader_discount || 0) + (+i.room_discount || 0);
+          return `<tr><td>${monthLabel(i.month)}</td><td class="num">${money(i.room_charge)}</td><td class="num">${money(i.electric_charge)}</td>
+          <td class="num">${money((+i.water_charge) + (+i.service_charge) + (+i.washing_charge) + (+i.parking_charge) + (+i.other_charge || 0))}</td>
+          <td class="num">${giam ? `<span class="badge green">−${money(giam)}</span>` : '—'}</td>
+          <td class="num"><strong>${money(i.total)}</strong></td></tr>`;
+        }).join('')}
       </tbody></table>` : '<div class="empty">Chưa có phiếu báo.</div>'}
       <div class="pad muted" style="font-size:12.5px">${IC.creditCard} Đóng tiền qua mã QR quản lý gửi trên Zalo theo hạn hằng tháng.</div>
     </div></div>
@@ -2918,6 +2988,19 @@ async function submitCheckoutReq() {
   await guard(() => API.createMeCheckoutReq({ desired_date: d, reason: el('co_reason').value, note: el('co_note').value.trim() }));
   closeModal(); toast('Đã gửi đơn trả phòng'); loadStudentPortal();
 }
+/* Dòng chú thích phòng trưởng ở trang "Phòng của tôi".
+   Chính chủ là phòng trưởng thì KHÔNG nằm trong danh sách bạn cùng phòng -> phải báo riêng,
+   không thì họ mở trang lên thấy phòng mình "chưa có phòng trưởng". */
+function leaderNote(profile, mates) {
+  if (profile.is_leader) {
+    return `<div class="hint" style="margin:14px 0 0">${IC.star}<span><strong>Bạn là phòng trưởng</strong> của phòng này —
+      giúp Ban quản lý theo dõi tình hình trong phòng. Bạn được <strong>miễn tiền nước và phí dịch vụ</strong> hằng tháng
+      (vẫn hiện trên phiếu báo, kèm dòng "Giảm phòng trưởng").</span></div>`;
+  }
+  if (mates.some(m => m.is_leader)) return '';  // huy hiệu trên danh sách đã nói rõ rồi
+  return `<div class="hint" style="margin:14px 0 0">${IC.info}<span>Phòng chưa có phòng trưởng. Ban quản lý sẽ cử một bạn trong phòng.</span></div>`;
+}
+
 async function toggleMyWashing(on) {
   if (!on && !confirm('Hủy đăng ký máy giặt? Phí máy giặt sẽ không còn tính từ kỳ sau.')) return;
   await guard(() => API.meWashing(on));

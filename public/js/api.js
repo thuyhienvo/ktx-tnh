@@ -65,6 +65,9 @@ const API = {
   updateRoom: (id, b) => api('/rooms/' + id, { method: 'PUT', body: b }),
   deleteRoom: id => api('/rooms/' + id, { method: 'DELETE' }),
   restoreRoom: id => api('/rooms/' + id + '/restore', { method: 'POST' }),
+  roomLeader: id => api('/rooms/' + id + '/leader'),
+  setLeader: (id, b) => api('/rooms/' + id + '/leader', { method: 'POST', body: b }),
+  unsetLeader: (id, date) => api('/rooms/' + id + '/leader?date=' + encodeURIComponent(date || ''), { method: 'DELETE' }),
 
   students: deleted => api('/students' + (deleted ? '?deleted=1' : '')),
   student: id => api('/students/' + id),

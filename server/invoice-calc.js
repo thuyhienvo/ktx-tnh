@@ -1,5 +1,6 @@
 const { query, getSettings } = require('./db');
 const billing = require('./billing');
+const roomLeaders = require('./room-leaders');
 
 // Danh sách người ở 1 phòng trong kỳ + SỐ NGÀY Ở của từng người.
 // Dùng để chia tiền điện theo ngày ở thực tế (thay cho cách chia đều đầu người).
@@ -85,15 +86,19 @@ async function recalcInvoice(studentId, month) {
   }
   // Quét MỌI phòng HV từng ở trong tháng (không chỉ phòng hiện tại) -> chuyển phòng giữa tháng vẫn tính đủ
   const electricCharge = await studentElectric(studentId, month, Number(fees.electric_unit));
+  const leaderDays = await roomLeaders.leaderDaysInMonth(null, studentId, month);
 
-  const c = billing.computeInvoice({ student: s, room, month, fees, roster, electricCharge, kwh, vehicleCount: veh });
+  const c = billing.computeInvoice({ student: s, room, month, fees, roster, electricCharge, leaderDays, kwh, vehicleCount: veh });
   const other = Number(inv.other_charge) || 0;
-  const total = c.room_charge + c.electric_charge + c.water_charge + c.service_charge + c.washing_charge + c.parking_charge + other;
+  const total = c.room_charge + c.electric_charge + c.water_charge + c.service_charge + c.washing_charge + c.parking_charge
+    + other - c.leader_discount - c.room_discount;
 
   const { rows } = await query(
     `UPDATE invoices SET days_stayed=$1, room_charge=$2, electric_kwh=$3, electric_charge=$4, water_charge=$5,
-       service_charge=$6, washing_charge=$7, parking_charge=$8, total=$9 WHERE id=$10 RETURNING *`,
-    [c.days_stayed, c.room_charge, c.electric_kwh, c.electric_charge, c.water_charge, c.service_charge, c.washing_charge, c.parking_charge, total, inv.id]
+       service_charge=$6, washing_charge=$7, parking_charge=$8, leader_discount=$9, room_discount=$10, total=$11
+     WHERE id=$12 RETURNING *`,
+    [c.days_stayed, c.room_charge, c.electric_kwh, c.electric_charge, c.water_charge, c.service_charge, c.washing_charge,
+     c.parking_charge, c.leader_discount, c.room_discount, total, inv.id]
   );
   return rows[0];
 }

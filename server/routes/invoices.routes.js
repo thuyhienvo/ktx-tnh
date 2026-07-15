@@ -3,6 +3,7 @@ const { query, pool, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const billing = require('../billing');
 const { recalcInvoice, roomRoster, studentElectric } = require('../invoice-calc');
+const roomLeaders = require('../room-leaders');
 const { isValidMonth } = require('../valid');
 
 const router = express.Router();
@@ -87,7 +88,7 @@ router.post('/generate', async (req, res, next) => {
     // Học viên có ở trong tháng (vào trước cuối tháng & chưa rời trước đầu tháng)
     // Chỉ lấy cột cần dùng (không kéo ảnh CCCD/base64) -> nhẹ RAM & băng thông
     const students = (await client.query(
-      `SELECT id, room_id, rental_type, check_in_date, check_out_date, uses_washing, uses_parking
+      `SELECT id, room_id, rental_type, check_in_date, check_out_date, uses_washing, uses_parking, room_fee_discount_pct
        FROM students
        WHERE deleted_at IS NULL AND check_in_date IS NOT NULL AND check_in_date <= $1
          AND (check_out_date IS NULL OR check_out_date >= $2)`,
@@ -142,6 +143,19 @@ router.post('/generate', async (req, res, next) => {
     (await client.query('SELECT student_id, COUNT(*)::int c FROM vehicles WHERE deleted_at IS NULL GROUP BY student_id')).rows
       .forEach(v => { vehByStudent[v.student_id] = v.c; });
 
+    // Số ngày làm PHÒNG TRƯỞNG trong kỳ, nạp 1 lần cho cả kỳ (đừng hỏi CSDL từng học viên một).
+    // Cộng qua mọi nhiệm kỳ vì một người có thể làm trưởng 2 đoạn rời nhau trong cùng tháng.
+    const leaderDaysByStudent = {};
+    (await client.query(
+      `SELECT student_id, from_date, to_date FROM room_leaders
+        WHERE from_date <= $1 AND (to_date IS NULL OR to_date >= $2)`, [mEnd, mStart]))
+      .rows.forEach(r => {
+        const d = billing.daysStayedInRange(
+          { check_in_date: String(r.from_date).slice(0, 10), check_out_date: r.to_date ? String(r.to_date).slice(0, 10) : null },
+          mStart, mEnd);
+        leaderDaysByStudent[r.student_id] = (leaderDaysByStudent[r.student_id] || 0) + d;
+      });
+
     // Nạp sẵn hóa đơn hiện có của kỳ trong 1 truy vấn (diệt N+1: trước đây mỗi HV 1 SELECT)
     const existingByStudent = {};
     (await client.query('SELECT id, student_id, status, other_charge FROM invoices WHERE month=$1', [month])).rows
@@ -157,27 +171,31 @@ router.post('/generate', async (req, res, next) => {
         student: s, room, month, fees,
         roster: s.room_id ? (rosterByRoom[s.room_id] || []) : [],
         electricCharge: elecByStudent[s.id] != null ? elecByStudent[s.id] : null,
+        leaderDays: leaderDaysByStudent[s.id] || 0,
         kwh: s.room_id ? (kwhByRoom[s.room_id] || 0) : 0,
         vehicleCount: vehByStudent[s.id] || 0,
       });
 
       if (dup) {
         const other = Number(dup.other_charge) || 0;
-        const total = inv.room_charge + inv.electric_charge + inv.water_charge + inv.service_charge + inv.washing_charge + inv.parking_charge + other;
+        const total = inv.room_charge + inv.electric_charge + inv.water_charge + inv.service_charge + inv.washing_charge
+          + inv.parking_charge + other - inv.leader_discount - inv.room_discount;
         await client.query(
           `UPDATE invoices SET days_stayed=$1, room_charge=$2, electric_kwh=$3, electric_charge=$4, water_charge=$5,
-             service_charge=$6, washing_charge=$7, parking_charge=$8, total=$9, deleted_at=NULL WHERE id=$10`,
+             service_charge=$6, washing_charge=$7, parking_charge=$8, leader_discount=$9, room_discount=$10,
+             total=$11, deleted_at=NULL WHERE id=$12`,
           [inv.days_stayed, inv.room_charge, inv.electric_kwh, inv.electric_charge, inv.water_charge,
-           inv.service_charge, inv.washing_charge, inv.parking_charge, total, dup.id]
+           inv.service_charge, inv.washing_charge, inv.parking_charge, inv.leader_discount, inv.room_discount, total, dup.id]
         );
         updated++;
       } else {
         await client.query(
           `INSERT INTO invoices (student_id, room_id, month, days_stayed, room_charge, electric_kwh, electric_charge,
-             water_charge, service_charge, washing_charge, parking_charge, other_charge, total, status)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending')`,
+             water_charge, service_charge, washing_charge, parking_charge, leader_discount, room_discount, other_charge, total, status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'pending')`,
           [s.id, s.room_id, month, inv.days_stayed, inv.room_charge, inv.electric_kwh, inv.electric_charge,
-           inv.water_charge, inv.service_charge, inv.washing_charge, inv.parking_charge, inv.other_charge, inv.total]
+           inv.water_charge, inv.service_charge, inv.washing_charge, inv.parking_charge,
+           inv.leader_discount, inv.room_discount, inv.other_charge, inv.total]
         );
         created++;
       }
@@ -214,24 +232,28 @@ router.post('/generate-one', async (req, res, next) => {
     const vehicleCount = (await query('SELECT COUNT(*)::int c FROM vehicles WHERE student_id=$1 AND deleted_at IS NULL', [student_id])).rows[0].c;
     // Cộng phần điện ở MỌI phòng HV ở trong tháng (chuyển phòng giữa tháng vẫn tính đủ)
     const electricCharge = await studentElectric(student_id, month, Number(fees.electric_unit));
+    const leaderDays = await roomLeaders.leaderDaysInMonth(null, student_id, month);
 
-    const inv = billing.computeInvoice({ student: s, room, month, fees, roster, electricCharge, kwh: kwhRow ? Number(kwhRow.kwh) : 0, vehicleCount });
+    const inv = billing.computeInvoice({ student: s, room, month, fees, roster, electricCharge, leaderDays, kwh: kwhRow ? Number(kwhRow.kwh) : 0, vehicleCount });
     let row;
     if (dup) {
       const other = Number(dup.other_charge) || 0;
-      const total = inv.room_charge + inv.electric_charge + inv.water_charge + inv.service_charge + inv.washing_charge + inv.parking_charge + other;
+      const total = inv.room_charge + inv.electric_charge + inv.water_charge + inv.service_charge + inv.washing_charge
+        + inv.parking_charge + other - inv.leader_discount - inv.room_discount;
       row = (await query(
         `UPDATE invoices SET days_stayed=$1, room_charge=$2, electric_kwh=$3, electric_charge=$4, water_charge=$5,
-           service_charge=$6, washing_charge=$7, parking_charge=$8, total=$9, deleted_at=NULL WHERE id=$10 RETURNING *`,
+           service_charge=$6, washing_charge=$7, parking_charge=$8, leader_discount=$9, room_discount=$10,
+           total=$11, deleted_at=NULL WHERE id=$12 RETURNING *`,
         [inv.days_stayed, inv.room_charge, inv.electric_kwh, inv.electric_charge, inv.water_charge,
-         inv.service_charge, inv.washing_charge, inv.parking_charge, total, dup.id])).rows[0];
+         inv.service_charge, inv.washing_charge, inv.parking_charge, inv.leader_discount, inv.room_discount, total, dup.id])).rows[0];
     } else {
       row = (await query(
         `INSERT INTO invoices (student_id, room_id, month, days_stayed, room_charge, electric_kwh, electric_charge,
-           water_charge, service_charge, washing_charge, parking_charge, other_charge, total, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending') RETURNING *`,
+           water_charge, service_charge, washing_charge, parking_charge, leader_discount, room_discount, other_charge, total, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'pending') RETURNING *`,
         [student_id, s.room_id, month, inv.days_stayed, inv.room_charge, inv.electric_kwh, inv.electric_charge,
-         inv.water_charge, inv.service_charge, inv.washing_charge, inv.parking_charge, inv.other_charge, inv.total])).rows[0];
+         inv.water_charge, inv.service_charge, inv.washing_charge, inv.parking_charge,
+         inv.leader_discount, inv.room_discount, inv.other_charge, inv.total])).rows[0];
     }
     res.json({ ok: true, invoice: row, created: !dup });
   } catch (e) { next(e); }

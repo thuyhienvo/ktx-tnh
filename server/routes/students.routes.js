@@ -9,6 +9,8 @@ const { cccdUrls, SIDE_COL } = require('../cccd-url');
 const { isValidYmd, isValidPhone, rejectUnknown } = require('../valid');
 const { checkRoomAssignment, logOverload, blockOrConfirm } = require('../room-rules');
 const roomStays = require('../room-stays');
+const roomLeaders = require('../room-leaders');
+const billing = require('../billing');
 const meter = require('../meter');
 const DATE_FIELDS = ['birth_date', 'check_in_date', 'check_out_date', 'contract_date', 'deposit_date', 'class_start_date', 'expected_departure', 'checkout_notice_date'];
 
@@ -61,7 +63,8 @@ const LIST_SELECT = `
     s.status, s.note, s.uses_washing, s.deposit_amount, s.deposit_status, s.deposit_date, s.deposit_refund_date,
     s.checkout_notice_date, s.checkout_reason, s.birth_date, s.class_name, s.rental_type, s.residency_status,
     s.contract_no, s.contract_date, s.contract_status, s.deposit_bank, s.deposit_account,
-    s.class_start_date, s.expected_departure, s.parent_phone,
+    s.class_start_date, s.expected_departure, s.parent_phone, s.room_fee_discount_pct,
+    EXISTS (SELECT 1 FROM room_leaders rl WHERE rl.student_id=s.id AND rl.to_date IS NULL) AS is_leader,
     (s.cccd_front IS NOT NULL OR s.cccd_back IS NOT NULL OR s.cccd_image IS NOT NULL) AS has_cccd,
     r.name AS room_name, r.floor AS room_floor, r.gender AS room_gender, r.hang AS room_hang,
     u.username AS login_username,
@@ -75,6 +78,9 @@ const CONTRACT = c => (['done', 'scanned', 'unsigned', 'none', 'handover'].inclu
 const RENTAL = t => (t === 'phong' ? 'phong' : 'ghep');
 const RESIDENCY = r => (['registered', 'processing'].includes(r) ? r : 'unregistered');
 const D = v => (v ? v : null);
+// % giảm tiền phòng riêng (vd quản lý KTX ở phòng 104 = 50). Bỏ trống/nhập bậy -> 0 (không giảm).
+// Chặn ở 0–100: nhập 500 thì app đi TRẢ TIỀN cho học viên, nhập âm thì thu thêm.
+const PCT = v => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0; };
 
 router.get('/', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
@@ -204,12 +210,12 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
           (code, name, gender, phone, id_card, birth_date, class_name, room_id, check_in_date, note,
            uses_washing, rental_type, residency_status, contract_no, contract_date, contract_status, cccd_image,
            status, check_out_date, deposit_amount, deposit_status, deposit_date, cccd_front, cccd_back, checkout_reason,
-           class_start_date, expected_departure, parent_phone)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING *`,
+           class_start_date, expected_departure, parent_phone, room_fee_discount_pct)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29) RETURNING *`,
         [...f, status, checkOut, takeDeposit ? depositFee : 0, takeDeposit ? 'held' : 'none', takeDeposit ? checkIn : null,
          null, null,
          (checkOut && ['departure', 'personal', 'facility', 'dropout', 'reserve', 'other'].includes(b.checkout_reason)) ? b.checkout_reason : (checkOut ? 'other' : null),
-         D(b.class_start_date), D(b.expected_departure), b.parent_phone || '']
+         D(b.class_start_date), D(b.expected_departure), b.parent_phone || '', PCT(b.room_fee_discount_pct)]
       );
       const st = rows[0];
 
@@ -271,9 +277,9 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
     const cols = `code=$1, name=$2, gender=$3, phone=$4, id_card=$5, birth_date=$6, class_name=$7, room_id=$8,
       check_in_date=$9, note=$10, uses_washing=$11, rental_type=$12, residency_status=$13,
       contract_no=$14, contract_date=$15, contract_status=$16,
-      class_start_date=$17, expected_departure=$18, parent_phone=$19`;
+      class_start_date=$17, expected_departure=$18, parent_phone=$19, room_fee_discount_pct=$20`;
     const params = f.slice(0, 16);
-    params.push(D(b.class_start_date), D(b.expected_departure), b.parent_phone || '');
+    params.push(D(b.class_start_date), D(b.expected_departure), b.parent_phone || '', PCT(b.room_fee_discount_pct));
     let extra = '';
     // Ảnh CCCD: chỉ cập nhật nếu client GỬI kèm (dựa vào body gốc, không phải merged)
     const needCccd = CCCD_FIELDS.some(field => raw[field] !== undefined);
@@ -381,6 +387,9 @@ router.post('/:id/checkout', requireRole('admin', 'staff'), async (req, res, nex
       [d, notice_date || null, rs, req.params.id]
     );
     await roomStays.checkOut(null, +req.params.id, d); // đóng lượt ở, tính trọn ngày trả phòng
+    // Trả phòng thì thôi làm phòng trưởng. Bỏ sót chỗ này là họ được miễn nước+dịch vụ VĨNH VIỄN,
+    // và phòng cũ không cử được người mới (mỗi phòng chỉ 1 phòng trưởng).
+    await roomLeaders.closeStudent(null, +req.params.id, d);
     if (hasMeter) {
       await meter.recordRead(null, {
         roomId, date: d, reading: mr, reason: 'checkout', studentId: +req.params.id,
@@ -438,6 +447,8 @@ router.post('/:id/transfer', requireRole('admin', 'staff'), async (req, res, nex
     for (const w of chkT.warnings) await logOverload(req, { studentId: +req.params.id, studentName: cur.rows[0].name, warning: w });
     const { rows } = await query(`UPDATE students SET room_id=$1 WHERE id=$2 RETURNING *`, [room_id, req.params.id]);
     await roomStays.transfer(null, +req.params.id, room_id, d); // lượt cũ hết ngày D-1, lượt mới từ ngày D
+    // Chuyển đi thì thôi làm phòng trưởng phòng cũ (phòng mới muốn thì phải cử lại)
+    await roomLeaders.closeStudent(null, +req.params.id, billing.addDays(d, -1));
     const oldName = oldRoom ? (await query('SELECT name FROM rooms WHERE id=$1', [oldRoom])).rows[0]?.name : '—';
     const newName = (await query('SELECT name FROM rooms WHERE id=$1', [room_id])).rows[0]?.name;
     if (hasMeter) {
