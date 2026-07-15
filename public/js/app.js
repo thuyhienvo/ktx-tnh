@@ -1633,6 +1633,32 @@ function auditLabel(method, pathStr) {
   return verb + ' · ' + res;
 }
 const AUDIT_MCLR = { POST: 'green', PUT: 'amber', PATCH: 'amber', DELETE: 'red' };
+// Tên trường hiển thị trong nhật ký (thay vì JSON thô của lập trình viên)
+const AUDIT_FIELD = {
+  name: 'Họ tên', code: 'Mã HV', phone: 'SĐT', parent_phone: 'SĐT phụ huynh', gender: 'Giới tính',
+  birth_date: 'Ngày sinh', class_name: 'Lớp', room_id: 'Phòng', check_in_date: 'Ngày vào', check_out_date: 'Ngày trả',
+  status: 'Trạng thái', note: 'Ghi chú', admin_note: 'Ghi chú QL', uses_washing: 'Máy giặt', rental_type: 'Hình thức thuê',
+  residency_status: 'Tạm trú', contract_status: 'Trạng thái HĐ', contract_no: 'Số HĐ', contract_date: 'Ngày ký HĐ',
+  deposit_amount: 'Tiền cọc', deposit_status: 'Trạng thái cọc', deposit_date: 'Ngày đóng cọc',
+  hotline: 'Hotline', dorm_name: 'Tên KTX', capacity: 'Sức chứa', monthly_fee: 'Giá phòng', hang: 'Hạng',
+  room_type: 'Loại phòng', month: 'Kỳ', total: 'Tổng tiền', reason: 'Lý do', desired_date: 'Ngày mong muốn',
+  actual_date: 'Ngày thực tế', title: 'Nội dung', description: 'Mô tả', severity: 'Mức độ', type_name: 'Loại vi phạm',
+  student_id: 'Học viên', plate: 'Biển số', sticker: 'Mã dán', vehicle_type: 'Loại xe', on: 'Bật',
+};
+const auditVal = v => v === '' ? '(trống)' : v === true ? 'có' : v === false ? 'không' : v === null ? '(trống)'
+  : (typeof v === 'object' ? JSON.stringify(v) : String(v));
+// "[TỪ CHỐI 403] {"name":"x"}" -> badge đỏ + "Họ tên: x"
+function auditDetail(d) {
+  if (!d) return '<span class="muted">—</span>';
+  const m = /^\[TỪ CHỐI (\d+)\]\s*/.exec(d);
+  const badge = m ? `<span class="badge red" style="font-size:10px">Từ chối ${m[1]}</span> ` : '';
+  const rest = m ? d.slice(m[0].length) : d;
+  let o = null; try { o = JSON.parse(rest); } catch (e) {}
+  if (!o || typeof o !== 'object') return badge + esc(rest);
+  const ks = Object.keys(o);
+  if (!ks.length) return badge || '<span class="muted">—</span>';
+  return badge + esc(ks.map(k => `${AUDIT_FIELD[k] || k}: ${auditVal(o[k])}`).join(' · '));
+}
 function fmtDT(v) {
   if (!v) return '—';
   const d = new Date(v);
@@ -1656,7 +1682,7 @@ async function viewAudit() {
       <td style="white-space:nowrap">${fmtDT(r.at)}</td>
       <td><strong>${esc(r.username || '—')}</strong> <span class="badge ${r.role === 'admin' ? 'gray' : 'blue'}" style="font-size:10px">${r.role === 'admin' ? 'QTV' : 'NV'}</span></td>
       <td><span class="badge ${AUDIT_MCLR[r.method] || 'gray'}" style="font-size:10px">${r.method}</span> ${esc(label)}</td>
-      <td class="muted" style="font-size:12px;max-width:360px;overflow:hidden;text-overflow:ellipsis">${esc(r.detail || '')}</td>
+      <td class="muted" style="font-size:12px;max-width:420px">${auditDetail(r.detail)}</td>
     </tr>`;
   }).join('');
 
@@ -1697,10 +1723,14 @@ async function viewRequests() {
   Object.assign(ST, { applications: apps, damage, couts, vstats }); updateNavBadges();
   const threshold = (vstats && vstats.threshold) || 3;
 
-  let body = '';
+  // 5 trang nhóm "Tiếp nhận & hỗ trợ" dùng CHUNG một kiểu đầu panel: tiêu đề danh sách + số lượng + nút.
+  // Không lặp lại tiêu đề/mô tả đã có ở thanh trên.
+  let body = '', hd = '', actions = '', note = '', banner = '';
   if (view === 'reg') {
-    const addBtn = `<div class="rowbtns" style="justify-content:space-between;align-items:center;margin-bottom:10px"><span class="muted" style="font-size:12.5px">${IC.info} Mọi học viên đều vào qua đơn đăng ký rồi duyệt. Học viên tự đăng ký tại trang công khai, hoặc admin tạo đơn hộ tại đây.</span><button class="btn pri" onclick="appForm()">${IC.plus} Tạo đơn đăng ký</button></div>`;
-    body = addBtn + (apps.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày gửi</th><th>Họ tên</th><th>SĐT</th><th>GT</th><th>Hình thức</th><th>Nguyện vọng</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+    hd = `${IC.filePen} Đơn đăng ký (${apps.length})`;
+    actions = `<button class="btn sm pri" onclick="appForm()">${IC.plus} Tạo đơn đăng ký</button>`;
+    note = `${IC.info} Mọi học viên đều vào qua đơn đăng ký rồi duyệt. Học viên tự đăng ký tại trang công khai, hoặc admin tạo đơn hộ tại đây.`;
+    body = (apps.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày gửi</th><th>Họ tên</th><th>SĐT</th><th>GT</th><th>Hình thức</th><th>Nguyện vọng</th><th>Trạng thái</th><th></th></tr></thead><tbody>
       ${apps.map(a => `<tr>
         <td>${fmtDate(String(a.created_at).slice(0, 10))}</td>
         <td><strong>${esc(a.name)}</strong>${a.class_name ? `<div class="muted" style="font-size:11px">${esc(a.class_name)}</div>` : ''}${a.facility_name ? `<div class="sub2">${IC.building} ${esc(a.facility_name)}</div>` : ''}</td>
@@ -1715,6 +1745,7 @@ async function viewRequests() {
         </div></td></tr>`).join('')}
     </tbody></table></div>` : '<div class="empty">Chưa có đơn đăng ký nào.</div>');
   } else if (view === 'checkout') {
+    hd = `${IC.logOut} Đơn trả phòng (${couts.length})`;
     body = couts.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày gửi</th><th>Học viên</th><th>Phòng</th><th>Ngày muốn trả</th><th>Lý do</th><th>Trạng thái</th><th></th></tr></thead><tbody>
       ${couts.map(c => `<tr>
         <td>${fmtDate(String(c.created_at).slice(0, 10))}</td>
@@ -1744,7 +1775,9 @@ async function viewRequests() {
           <button class="btn sm ghost" title="Ghi chú" onclick="noteForm('damage', ${d.id})">${IC.filePen}</button>
         </div></td></tr>`).join('')}
     </tbody></table></div>` : '<div class="empty">Chưa có báo hư hỏng cơ sở vật chất nào.</div>';
-    body = `<div class="panel"><div class="hd"><h2>${IC.wrench} Báo hư hỏng cơ sở vật chất</h2><span class="muted" style="font-size:12px">Duyệt & chuyển bộ phận bảo trì xử lý</span></div>${tbl}</div>`;
+    hd = `${IC.wrench} Báo hư hỏng (${ds.length})`;
+    note = `${IC.info} Duyệt & chuyển bộ phận bảo trì xử lý.`;
+    body = tbl;
   } else if (view === 'violations') {
     const vioRows = vios.map(v => `<tr>
       <td>${fmtDate(v.date)}</td>
@@ -1757,15 +1790,11 @@ async function viewRequests() {
         ${v.level >= threshold && !v.notified_school ? `<button class="btn sm" onclick="notifySchool(${v.student_id})">${IC.inbox} Gửi mail</button>` : ''}
         <button class="btn sm ghost" onclick="delViolation(${v.id})">${IC.trash}</button>
       </div></td></tr>`).join('');
-    body = `
-      ${(vstats && vstats.needMail) ? `<div class="hint" style="background:var(--red-bg);border-color:#e3b8ad;color:var(--red-ink)">${IC.alert} <strong>${vstats.needMail} học viên</strong> vi phạm ≥ ${threshold} lần cần báo nhà trường. Cấu hình SMTP trong <a href="#" onclick="adminGo('settings');return false">Cài đặt</a> để gửi email tự động, hoặc bấm <strong>Gửi mail</strong> ở từng dòng.</div>` : ''}
-      <div class="panel"><div class="hd"><h2>${IC.alert} Quản lý vi phạm</h2>
-        <div class="toolbar">
-          <button class="btn sm" onclick="violationStatsModal()">${IC.trendingUp} Thống kê</button>
-          <button class="btn sm pri" onclick="violationForm()">${IC.plus} Ghi nhận vi phạm</button>
-        </div></div>
-        ${vios.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày</th><th>Học viên</th><th>Loại vi phạm</th><th>Mức độ</th><th class="num">Lần</th><th>Nhà trường</th><th></th></tr></thead><tbody>${vioRows}</tbody></table></div>` : '<div class="empty">Chưa ghi nhận vi phạm nào. Bấm <strong>Ghi nhận vi phạm</strong> hoặc mở chi tiết học viên.</div>'}
-      </div>`;
+    hd = `${IC.alert} Danh sách vi phạm (${vios.length})`;
+    actions = `<button class="btn sm" onclick="violationStatsModal()">${IC.trendingUp} Thống kê</button>
+      <button class="btn sm pri" onclick="violationForm()">${IC.plus} Ghi nhận vi phạm</button>`;
+    banner = (vstats && vstats.needMail) ? `<div class="hint" style="background:var(--red-bg);border-color:#e3b8ad;color:var(--red-ink)">${IC.alert} <strong>${vstats.needMail} học viên</strong> vi phạm ≥ ${threshold} lần cần báo nhà trường. Cấu hình SMTP trong <a href="#" onclick="adminGo('settings');return false">Cài đặt</a> để gửi email tự động, hoặc bấm <strong>Gửi mail</strong> ở từng dòng.</div>` : '';
+    body = vios.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày</th><th>Học viên</th><th>Loại vi phạm</th><th>Mức độ</th><th class="num">Lần</th><th>Nhà trường</th><th></th></tr></thead><tbody>${vioRows}</tbody></table></div>` : '<div class="empty">Chưa ghi nhận vi phạm nào. Bấm <strong>Ghi nhận vi phạm</strong> hoặc mở chi tiết học viên.</div>';
   } else {
     // Hộp thư góp ý: học viên báo vi phạm / cần hỗ trợ khác (category violation, other)
     const fb = damage.filter(d => ['violation', 'other'].includes(d.category));
@@ -1782,10 +1811,10 @@ async function viewRequests() {
           <button class="btn sm ghost" title="Ghi chú" onclick="noteForm('damage', ${d.id})">${IC.filePen}</button>
         </div></td></tr>`).join('')}
     </tbody></table></div>` : '<div class="empty">Chưa có góp ý / yêu cầu hỗ trợ nào.</div>';
-    body = `<div class="panel"><div class="hd"><h2>${IC.inbox} Hộp thư hỗ trợ / góp ý</h2><span class="muted" style="font-size:12px">Học viên báo vi phạm · cần hỗ trợ khác</span></div>${tbl}</div>`;
+    hd = `${IC.inbox} Góp ý / yêu cầu hỗ trợ (${fb.length})`;
+    body = tbl;
   }
-  const bare = view === 'repair' || view === 'violations' || view === 'feedback';
-  el('content').innerHTML = bare ? body : `<div class="panel">${body}</div>`;
+  el('content').innerHTML = `${banner}<div class="panel"><div class="hd"><h2>${hd}</h2>${actions ? `<div class="toolbar">${actions}</div>` : ''}</div>${note ? `<div class="pad muted" style="font-size:12.5px">${note}</div>` : ''}${body}</div>`;
 }
 /* ---- Ghi chú xử lý cho đơn hỗ trợ ---- */
 function noteForm(type, id) {
