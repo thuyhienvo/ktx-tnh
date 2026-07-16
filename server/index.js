@@ -64,8 +64,10 @@ app.use('/api', (req, res, next) => {
       const denied = res.statusCode === 401 || res.statusCode === 403;
       if (!req.user) return;                                   // chưa đăng nhập -> không có ai để ghi
       if (req.body && req.body.preview === true) return;       // xem trước hóa đơn (ROLLBACK) -> không ghi
-      // Ghi: (a) thao tác THÀNH CÔNG của admin/staff/maintenance; (b) MỌI lần BỊ TỪ CHỐI (phát hiện lạm quyền)
-      if (!denied && (res.statusCode >= 400 || req.user.role === 'student')) return;
+      // Ghi: (a) thao tác THÀNH CÔNG của MỌI vai (kể cả học viên — trước đây bỏ qua, nên tranh chấp
+      // "em không hề đăng ký máy giặt" không có gì đối chiếu, V2-46); (b) MỌI lần BỊ TỪ CHỐI.
+      // Chỉ bỏ qua lỗi KHÔNG phải từ chối (400 validate...) cho đỡ nhiễu.
+      if (!denied && res.statusCode >= 400) return;
       let detail = '';
       try {
         const b = req.body || {}, c = {};

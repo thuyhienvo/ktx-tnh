@@ -8,6 +8,24 @@ const chores = require('../chores');
 const router = express.Router();
 router.use(requireAuth, requireRole('student'));
 
+// Chặn tài khoản role='student' nhưng KHÔNG gắn hồ sơ học viên nào (student_id NULL).
+// Nếu lọt, mọi truy vấn "WHERE student_id=$1" với $1=NULL không khớp gì (NULL=NULL là UNKNOWN),
+// nên chốt "1 đơn chờ duyệt" vô hiệu -> gửi vô hạn đơn (V2-49); và các trang khác trả rỗng vô nghĩa.
+router.use((req, res, next) => {
+  if (req.user.student_id == null)
+    return res.status(403).json({ error: 'Tài khoản chưa được gắn với hồ sơ học viên. Vui lòng liên hệ ban quản lý.' });
+  next();
+});
+
+// Cột GHI CHÚ NỘI BỘ của staff — KHÔNG bao giờ trả cho học viên. Trước đây /profile dùng SELECT s.*
+// nên lộ "note" (ghi chú của staff về HV), "deposit_deduction_note", các ghi chú bàn giao.
+const CHU_NOI_BO = ['note', 'deposit_deduction_note', 'checkin_confirm_note', 'checkout_confirm_note'];
+function boChuNoiBo(row) {
+  if (!row) return row;
+  for (const k of CHU_NOI_BO) delete row[k];
+  return row;
+}
+
 // Hồ sơ của chính học viên đang đăng nhập
 router.get('/profile', async (req, res, next) => {
   try {
@@ -23,7 +41,7 @@ router.get('/profile', async (req, res, next) => {
     // Có nội quy chưa — trả kèm ở đây thay vì để client đi thử gọi file rồi ăn 404.
     // Chưa tải nội quy thì MỌI học viên mở trang đều dính một lỗi 404 đỏ lòm trong console.
     const rules = (await query(`SELECT 1 FROM media WHERE key='noi-quy' AND path IS NOT NULL`)).rows[0];
-    res.json({ ...cccdUrls(rows[0]), washing_fee: s.washing_fee, parking_fee: s.parking_fee, has_rules: !!rules });
+    res.json({ ...boChuNoiBo(cccdUrls(rows[0])), washing_fee: s.washing_fee, parking_fee: s.parking_fee, has_rules: !!rules });
   } catch (e) { next(e); }
 });
 
@@ -113,7 +131,11 @@ router.get('/violations', async (req, res, next) => {
 /* ---- Báo cáo hư hỏng ---- */
 router.get('/damage', async (req, res, next) => {
   try {
-    const { rows } = await query('SELECT * FROM damage_reports WHERE student_id=$1 ORDER BY created_at DESC', [req.user.student_id]);
+    // Liệt kê cột tường minh, BỎ admin_note (ghi chú xử lý nội bộ, vd "khong cho gia han").
+    // SELECT * từng lộ thẳng cho học viên — giống cách /violations đã cố ý tránh.
+    const { rows } = await query(
+      `SELECT id, category, title, description, status, assigned_at, resolved_at, created_at
+       FROM damage_reports WHERE student_id=$1 ORDER BY created_at DESC`, [req.user.student_id]);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -122,10 +144,17 @@ router.post('/damage', async (req, res, next) => {
     const { title, description } = req.body;
     const category = ['damage', 'violation', 'other'].includes(req.body.category) ? req.body.category : 'damage';
     if (!title || !title.trim()) return res.status(400).json({ error: 'Nhập nội dung yêu cầu hỗ trợ' });
-    const st = await query('SELECT room_id FROM students WHERE id=$1', [req.user.student_id]);
+    if (title.length > 200) return res.status(400).json({ error: 'Tiêu đề quá dài (tối đa 200 ký tự)' });
+    if (description && description.length > 5000) return res.status(400).json({ error: 'Nội dung quá dài (tối đa 5000 ký tự)' });
+    // Đã trả phòng thì không gửi báo hỏng nữa (giống /washing đã chặn). Trước đây đường này bỏ ngỏ,
+    // HV đã đi vẫn spam được báo hỏng với mô tả 200KB.
+    const st = (await query('SELECT room_id, status, check_out_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.user.student_id])).rows[0];
+    const today = new Date().toISOString().slice(0, 10);
+    const occupying = st && st.status === 'in' && (!st.check_out_date || String(st.check_out_date).slice(0, 10) > today);
+    if (!occupying) return res.status(400).json({ error: 'Bạn không còn ở ký túc xá nên không thể gửi yêu cầu hỗ trợ.' });
     const { rows } = await query(
       `INSERT INTO damage_reports (student_id, room_id, category, title, description) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [req.user.student_id, st.rows[0]?.room_id || null, category, title.trim(), description || '']
+      [req.user.student_id, st.room_id || null, category, title.trim(), description || '']
     );
     res.status(201).json(rows[0]);
   } catch (e) { next(e); }
@@ -134,15 +163,26 @@ router.post('/damage', async (req, res, next) => {
 /* ---- Đơn đăng ký trả phòng ---- */
 router.get('/checkout-request', async (req, res, next) => {
   try {
-    const { rows } = await query('SELECT * FROM checkout_requests WHERE student_id=$1 ORDER BY created_at DESC', [req.user.student_id]);
+    // Bỏ admin_note (vd "nghi ngo bo tron") — ghi chú nội bộ, không cho học viên đọc.
+    const { rows } = await query(
+      `SELECT id, desired_date, reason, note, status, created_at, handled_at
+       FROM checkout_requests WHERE student_id=$1 ORDER BY created_at DESC`, [req.user.student_id]);
     res.json(rows);
   } catch (e) { next(e); }
 });
 router.post('/checkout-request', async (req, res, next) => {
   try {
     const { desired_date, reason, note } = req.body;
+    if (note && note.length > 2000) return res.status(400).json({ error: 'Ghi chú quá dài (tối đa 2000 ký tự)' });
     if (desired_date && !isValidYmd(desired_date)) return res.status(400).json({ error: 'Ngày trả phòng không hợp lệ' });
     if (desired_date && desired_date < new Date().toISOString().slice(0, 10)) return res.status(400).json({ error: 'Ngày trả phòng phải từ hôm nay trở đi' });
+    // Chặn trên: ngày trả xa quá 1 năm là gõ nhầm (vd 2199). Nếu nhận, HV tự khoá mình —
+    // đơn "đang chờ" đó chặn mọi đơn thật sau này, mà HV không tự gỡ được.
+    if (desired_date) {
+      const max = new Date(); max.setFullYear(max.getFullYear() + 1);
+      if (desired_date > max.toISOString().slice(0, 10))
+        return res.status(400).json({ error: 'Ngày trả phòng quá xa (chỉ nhận trong vòng 1 năm tới). Vui lòng kiểm tra lại.' });
+    }
     // Chặn HV chưa nhận phòng (ngày vào ở tương lai) — chưa ở thì không thể "trả phòng"
     const st = (await query('SELECT check_in_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.user.student_id])).rows[0];
     const today = new Date().toISOString().slice(0, 10);
