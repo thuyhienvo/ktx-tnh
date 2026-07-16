@@ -25,12 +25,29 @@ const s3 = new S3Client({
 // CHỈ chấp nhận ảnh raster an toàn. KHÔNG nhận SVG (có thể chứa <script> -> XSS khi proxy).
 const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
 
+// Chữ ký file (magic bytes) của từng loại ảnh — để KHÔNG tin cái nhãn "data:image/..." do client
+// tự khai. Trước đây chỉ đọc nhãn: dán nhãn image/png cho một chuỗi chữ thường là lưu được byte
+// tuỳ ý dưới tên miền KTX, phục vụ công khai (V2-59). PDF ngay dưới đã kiểm magic bytes — ảnh thì chưa.
+function khopMagic(ext, buf) {
+  if (buf.length < 4) return false;
+  const b = buf;
+  switch (ext) {
+    case 'jpg':  return b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF;
+    case 'png':  return b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47;
+    case 'gif':  return b.slice(0, 3).toString('latin1') === 'GIF';
+    case 'webp': return b.length >= 12 && b.slice(0, 4).toString('latin1') === 'RIFF' && b.slice(8, 12).toString('latin1') === 'WEBP';
+    default:     return false;
+  }
+}
+
 function parseDataUrl(dataUrl) {
   const m = /^data:(image\/[\w.+-]+);base64,(.+)$/s.exec(dataUrl || '');
   if (!m) return null;
   const ext = EXT[m[1]];
   if (!ext) return null; // loại type ngoài whitelist (vd svg) -> caller sẽ báo "Ảnh không hợp lệ"
-  return { contentType: m[1], ext, buffer: Buffer.from(m[2], 'base64') };
+  const buffer = Buffer.from(m[2], 'base64');
+  if (!khopMagic(ext, buffer)) return null; // nhãn nói là ảnh nhưng nội dung không phải -> loại
+  return { contentType: m[1], ext, buffer };
 }
 
 async function putBuffer(bucket, key, buffer, contentType) {

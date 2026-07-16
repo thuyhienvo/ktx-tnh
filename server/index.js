@@ -123,6 +123,10 @@ app.get(/^(?!\/api).*/, (req, res) => {
 app.use((err, req, res, next) => {
   const status = (err && Number(err.status) >= 400 && Number(err.status) < 500) ? Number(err.status) : 500;
   if (status >= 500) console.error('❌', err);
+  // Body vượt trần parser -> body-parser ném 413 với message TIẾNG ANH "request entity too large".
+  // Dịch sang tiếng Việt: toàn app tiếng Việt, đừng để riêng lúc lỗi lại nói tiếng Anh khó hiểu.
+  if (status === 413 || (err && err.type === 'entity.too.large'))
+    return res.status(413).json({ error: 'Tệp tải lên quá lớn. Vui lòng chọn tệp nhỏ hơn (ảnh ~6MB, PDF ~10MB).' });
   res.status(status).json({ error: status >= 500 ? 'Lỗi máy chủ' : (err.message || 'Yêu cầu không hợp lệ') });
 });
 
