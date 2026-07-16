@@ -480,7 +480,7 @@ function renderAdmin() {
           <button class="hamburger" onclick="toggleSide()" aria-label="Menu">${IC.menu}</button>
           <div style="flex:1;min-width:0"><h1 id="pgTitle">Tổng quan</h1><div class="sub" id="pgSub"></div></div>
           <div class="flex" style="gap:10px">
-            <button class="notif-bell" id="notifBell" title="Thông báo" onclick="toggleNotif(event)">${IC.bell}<span class="notif-dot" id="notifDot" style="display:none"></span></button>
+            <button class="notif-bell" id="notifBell" title="Thông báo" aria-haspopup="dialog" aria-expanded="false" onclick="toggleNotif(event)">${IC.bell}<span class="notif-dot" id="notifDot" style="display:none"></span></button>
             <div class="toolbar" id="topActions"></div>
           </div>
         </div>
@@ -493,6 +493,7 @@ function renderAdmin() {
   const startView = qp.get('view');
   const views = ['exec', 'dashboard', 'students', 'rooms', 'vehicles', 'services', 'checkin', 'invoices', 'revenue', 'reg', 'checkout', 'repair', 'violations', 'feedback', 'requests', 'audit', 'settings'];
   refreshCache().then(() => adminGo(views.includes(startView) ? startView : 'dashboard')).catch(e => toast(e.message, 'err'));
+  startNotifPolling();
 }
 
 async function refreshCache() {
@@ -533,22 +534,63 @@ function updateNotif() {
   const total = notifItems().reduce((a, i) => a + i.n, 0);
   const d = el('notifDot'); if (d) { d.textContent = total > 99 ? '99+' : total; d.style.display = total ? '' : 'none'; }
 }
+// TỰ hỏi server định kỳ. Trước đây chuông chỉ đếm lại từ ST (nạp 1 lần lúc mở trang) và chỉ đổi
+// khi CHÍNH MÌNH bấm một nút có sửa dữ liệu -> việc mới từ máy khác nằm im, phải tự F5 mới thấy (V2-77).
+let _notifTimer = null;
+async function refreshNotifCounts() {
+  if (!Auth.user || document.hidden) return;   // không poll khi ẩn tab / đã đăng xuất
+  try {
+    const [applications, damage, couts, vstats] = await Promise.all([
+      API.applications(), API.damageAll(), API.checkoutReqs(), API.violationStats().catch(() => ST.vstats),
+    ]);
+    Object.assign(ST, { applications, damage, couts, vstats });
+    updateNavBadges();                          // cập nhật cả badge nav lẫn chuông
+    if (el('notifPanel')) {                      // panel đang mở -> vẽ lại nội dung cho khớp
+      const items = notifItems();
+      const inner = el('notifPanel');
+      inner.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" onclick="closeNotif();${i.act}">${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
+    }
+  } catch (e) { /* lỗi mạng tạm -> lần poll sau thử lại, không quấy người dùng */ }
+}
+function startNotifPolling() {
+  if (_notifTimer) clearInterval(_notifTimer);
+  _notifTimer = setInterval(refreshNotifCounts, 60000);   // 60s: đủ kịp thời, không nặng server
+  // Quay lại tab sau khi rời đi -> cập nhật ngay, khỏi chờ hết chu kỳ
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshNotifCounts(); });
+}
+function closeNotif() {
+  const p = el('notifPanel'); if (!p) return;
+  p.remove();
+  document.removeEventListener('mousedown', _notifOutside, true);
+  document.removeEventListener('touchstart', _notifOutside, true);
+  document.removeEventListener('keydown', _notifKey, true);
+  const b = el('notifBell'); if (b) b.setAttribute('aria-expanded', 'false');
+}
 function toggleNotif(e) {
   if (e) e.stopPropagation();
-  const old = el('notifPanel'); if (old) { old.remove(); document.removeEventListener('mousedown', _notifOutside, true); return; }
+  if (el('notifPanel')) { closeNotif(); return; }
   const items = notifItems();
   const p = document.createElement('div'); p.className = 'notif-panel'; p.id = 'notifPanel';
-  p.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" onclick="el('notifPanel').remove();${i.act}">${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
+  p.setAttribute('role', 'dialog');
+  p.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" onclick="closeNotif();${i.act}">${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
   document.body.appendChild(p);
   const r = el('notifBell').getBoundingClientRect();
   p.style.top = (r.bottom + 8) + 'px';
   p.style.right = Math.max(10, window.innerWidth - r.right) + 'px';
-  setTimeout(() => document.addEventListener('mousedown', _notifOutside, true), 0);
+  const b = el('notifBell'); if (b) b.setAttribute('aria-expanded', 'true');
+  // Đóng khi: bấm/chạm ra ngoài (cả touchstart — iOS không phát mousedown khi chạm vùng trống),
+  // và khi bấm Esc (trước đây không có handler bàn phím nào -> mở panel bằng phím là kẹt luôn).
+  setTimeout(() => {
+    document.addEventListener('mousedown', _notifOutside, true);
+    document.addEventListener('touchstart', _notifOutside, true);
+    document.addEventListener('keydown', _notifKey, true);
+  }, 0);
 }
 function _notifOutside(e) {
   const p = el('notifPanel');
-  if (p && !p.contains(e.target) && !e.target.closest('#notifBell')) { p.remove(); document.removeEventListener('mousedown', _notifOutside, true); }
+  if (p && !p.contains(e.target) && !e.target.closest('#notifBell')) closeNotif();
 }
+function _notifKey(e) { if (e.key === 'Escape') closeNotif(); }
 /* ---- Menu trượt trên mobile ---- */
 function toggleSide() {
   const s = document.querySelector('.side'), b = el('sideBackdrop');
