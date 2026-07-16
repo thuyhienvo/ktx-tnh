@@ -2,6 +2,7 @@ const express = require('express');
 const { query } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { recalcInvoice } = require('../invoice-calc');
+const { isValidYmd } = require('../valid');
 const roomStays = require('../room-stays');
 const meter = require('../meter');
 
@@ -62,10 +63,22 @@ router.post('/checkout/:id/confirm', async (req, res, next) => {
   try {
     const cr = (await query('SELECT * FROM checkout_requests WHERE id=$1', [req.params.id])).rows[0];
     if (!cr) return res.status(404).json({ error: 'Không tìm thấy đơn' });
+    // CHỈ duyệt đơn ĐANG CHỜ. Đơn đã xử lý mà bấm lại -> check-out chạy lần nữa, ghi thêm
+    // một dòng nhật ký ra/vào, dời ngày trả phòng, tính lại tiền — chạy được vô hạn lần.
+    if (cr.status !== 'pending')
+      return res.status(409).json({ error: `Đơn này đã được xử lý (${cr.status === 'done' ? 'đã duyệt' : 'đã từ chối'}) — không thể duyệt lại.` });
+    // Ngày trả: sai định dạng -> chặn, đừng để "abc" rơi xuống dưới làm sập 500.
     const date = req.body.date || cr.desired_date || new Date().toISOString().slice(0, 10);
+    if (!isValidYmd(date)) return res.status(400).json({ error: `Ngày trả phòng không hợp lệ: "${date}"` });
     const noticeDate = cr.created_at ? new Date(cr.created_at).toISOString().slice(0, 10) : null;
-    const st = await query('SELECT room_id FROM students WHERE id=$1', [cr.student_id]);
-    const roomId = st.rows[0]?.room_id || null;
+    const st = await query('SELECT room_id, check_in_date FROM students WHERE id=$1 AND deleted_at IS NULL', [cr.student_id]);
+    if (!st.rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên của đơn này' });
+    const roomId = st.rows[0].room_id || null;
+    // Ngày trả KHÔNG được trước ngày nhận phòng. Nếu lọt, roomStays.checkOut cắt chặng ở một mốc
+    // trước cả lúc vào -> XOÁ SẠCH lịch sử ở phòng -> tiền điện cả phòng chia lại sai cho mọi người.
+    const checkIn = st.rows[0].check_in_date ? String(st.rows[0].check_in_date).slice(0, 10) : null;
+    if (checkIn && date < checkIn)
+      return res.status(400).json({ error: `Ngày trả phòng (${date}) không thể trước ngày nhận phòng (${checkIn}).` });
 
     // Chốt chỉ số điện ngày trả phòng (nếu người duyệt có nhập) — kiểm tra trước khi ghi
     const mr = req.body.meter_reading;
@@ -85,8 +98,10 @@ router.post('/checkout/:id/confirm', async (req, res, next) => {
         note: 'Chốt chỉ số lúc trả phòng (duyệt đơn HV)', by: req.user && req.user.username,
       });
     }
-    await query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'out',$2,$3,$4,'self')`,
-      [cr.student_id, date, roomId, 'Trả phòng (duyệt đơn HV)']);
+    // source='admin': người THỰC HIỆN check-out là cán bộ duyệt đơn, không phải học viên.
+    // Ghi 'self' (học viên tự làm) là nói dối nhật ký — tra ra sai người chịu trách nhiệm.
+    await query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'out',$2,$3,$4,'admin')`,
+      [cr.student_id, date, roomId, `Trả phòng (duyệt đơn HV, bởi ${req.user && req.user.username || 'cán bộ'})`]);
     await query(`UPDATE checkout_requests SET status='done', handled_at=now() WHERE id=$1`, [req.params.id]);
 
     // Chốt giữa kỳ đổi phần chia của cả phòng -> tính lại cho mọi người liên quan
@@ -111,6 +126,12 @@ router.put('/checkout/:id/note', async (req, res, next) => {
 
 router.post('/checkout/:id/reject', async (req, res, next) => {
   try {
+    const cr = (await query('SELECT status FROM checkout_requests WHERE id=$1', [req.params.id])).rows[0];
+    if (!cr) return res.status(404).json({ error: 'Không tìm thấy đơn' });     // đừng trả {ok:true} cho đơn không có thật
+    // Chỉ từ chối được đơn ĐANG CHỜ. Từ chối một đơn ĐÃ DUYỆT thì đơn ghi "đã từ chối" nhưng
+    // học viên đã bị check-out thật (hoá đơn đã tính lại) -> mâu thuẫn vĩnh viễn, không gỡ được.
+    if (cr.status !== 'pending')
+      return res.status(409).json({ error: `Đơn này đã được xử lý (${cr.status === 'done' ? 'đã duyệt — học viên đã trả phòng' : 'đã từ chối'}) — không thể từ chối.` });
     await query(`UPDATE checkout_requests SET status='rejected', handled_at=now() WHERE id=$1`, [req.params.id]);
     res.json({ ok: true });
   } catch (e) { next(e); }
