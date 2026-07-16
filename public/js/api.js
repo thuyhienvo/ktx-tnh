@@ -65,7 +65,7 @@ async function withOverloadConfirm(run) {
 }
 
 const API = {
-  login: (username, password) => api('/auth/login', { method: 'POST', body: { username, password } }),
+  login: (username, password, portal) => api('/auth/login', { method: 'POST', body: { username, password, portal } }),
   logout: () => api('/auth/logout', { method: 'POST' }),
   me: () => api('/auth/me'),
   changePassword: (oldPassword, newPassword) => api('/auth/change-password', { method: 'POST', body: { oldPassword, newPassword } }),

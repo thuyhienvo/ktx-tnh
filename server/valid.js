@@ -15,6 +15,13 @@ const digits = s => String(s == null ? '' : s).replace(/\D/g, '');
 // SĐT hợp lệ: 8–15 chữ số (cho phép có dấu cách, +, -, ...)
 function isValidPhone(s) { const d = digits(s); return d.length >= 8 && d.length <= 15; }
 
+// Giới tính: CHỈ 'male' | 'female'. Không đoán, không mặc định.
+// Trước đây `b.gender === 'male' ? 'male' : 'female'` biến MỌI thứ khác thành 'female' —
+// gửi "Male" (M hoa) hay bỏ trống trường này thì nam bị ghi thành nữ, rồi luật chặn giới tính
+// lúc duyệt đơn so nữ-với-nữ và kết luận "hợp lệ" -> NAM VÀO PHÒNG NỮ. Luật không sai;
+// dữ liệu đã sai từ trước khi luật nhìn thấy nó.
+function isValidGender(s) { return s === 'male' || s === 'female'; }
+
 // Kỳ hoá đơn: bắt buộc YYYY-MM và tháng 01..12 (chặn "2026-13", "xyz")
 function isValidMonth(s) {
   s = String(s == null ? '' : s);
@@ -58,4 +65,15 @@ function rejectUnknown(body, allowed) {
   return extra.length ? `Trường không hợp lệ: ${extra.join(', ')}. Chỉ chấp nhận: ${allowed.join(', ')}` : null;
 }
 
-module.exports = { isValidYmd, ymdOrNull, isValidPhone, digits, isValidMonth, checkSetting, rejectUnknown, SETTING_NUM };
+// Trường TEXT tự do: chặn độ dài. Postgres TEXT không giới hạn -> người lạ ẩn danh
+// nhét 2 triệu ký tự vào ô "ghi chú" của đơn đăng ký là chuyện đã đo được.
+function tooLong(body, limits) {
+  for (const [k, max] of Object.entries(limits)) {
+    const v = body[k];
+    if (v != null && String(v).length > max)
+      return `Trường "${k}" quá dài (tối đa ${max} ký tự, đang nhận ${String(v).length})`;
+  }
+  return null;
+}
+
+module.exports = { isValidYmd, ymdOrNull, isValidPhone, digits, isValidMonth, isValidGender, tooLong, checkSetting, rejectUnknown, SETTING_NUM };

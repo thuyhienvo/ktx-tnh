@@ -11,6 +11,16 @@ const publicUser = u => ({
   student_id: u.student_id, must_change_password: !!u.must_change_password,
 });
 
+// Cổng đăng nhập nào nhận vai nào.
+// LƯU Ý: đây là RÀO CHẮN CHỈ ĐƯỜNG, KHÔNG PHẢI LỚP BẢO MẬT — cổng do client tự khai,
+// ai cầm mật khẩu học viên chỉ cần khai cổng 'student' là qua. Giá trị của nó là:
+// người gõ nhầm cổng được báo đúng chỗ cần đi, thay vì hệ thống lặng lẽ lờ đi lựa chọn của họ.
+// Quyền thật vẫn do requireRole ở từng route quyết định, đọc lại vai từ CSDL mỗi lần gọi.
+const CONG = {
+  admin: { vai: ['admin', 'staff', 'maintenance'], ten: 'Ban quản lý' },
+  student: { vai: ['student'], ten: 'Học viên' },
+};
+
 // Đăng nhập — đặt token vào cookie httpOnly, KHÔNG trả token cho client
 router.post('/login', async (req, res, next) => {
   try {
@@ -26,6 +36,17 @@ router.post('/login', async (req, res, next) => {
     if (user.role === 'student' && user.student_id) {
       const s = (await query('SELECT 1 FROM students WHERE id=$1 AND deleted_at IS NULL', [user.student_id])).rows[0];
       if (!s) return res.status(401).json({ error: 'Tài khoản không còn hiệu lực' });
+    }
+    // Đúng cổng chưa? Kiểm SAU khi đã xác thực mật khẩu — nếu kiểm trước thì câu báo lỗi
+    // vô tình nói cho người lạ biết "tên đăng nhập này là tài khoản học viên", tức là
+    // biến ô đăng nhập thành máy dò xem tài khoản nào tồn tại và thuộc loại gì.
+    const cong = CONG[req.body.portal];
+    if (cong && !cong.vai.includes(user.role)) {
+      const dung = user.role === 'student' ? 'student' : 'admin';
+      return res.status(403).json({
+        error: `Đây là tài khoản ${CONG[dung].ten.toLowerCase()}. Vui lòng đăng nhập ở cổng "${CONG[dung].ten}".`,
+        portal: dung,
+      });
     }
     setAuthCookie(res, signToken(user));
     res.json({ user: publicUser(user) });

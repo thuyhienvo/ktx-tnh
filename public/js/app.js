@@ -241,22 +241,40 @@ async function renderLogin() {
         </div>
       </div>
     </div>`;
+  loginTab(_congDangChon);
   el('loginForm').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter; btn.disabled = true; btn.textContent = 'Đang vào...';
     try {
-      const r = await API.login(el('lg_user').value.trim(), el('lg_pass').value);
+      const r = await API.login(el('lg_user').value.trim(), el('lg_pass').value, _congDangChon);
       Auth.user = r.user; // cookie phiên do server đặt; đây chỉ là thông tin hiển thị
       if (r.user.must_change_password) return renderForceChangePw();
       boot();
-    } catch (err) { toast(err.message, 'err'); btn.disabled = false; btn.textContent = 'Đăng nhập →'; }
+    } catch (err) {
+      btn.disabled = false; btn.textContent = 'Đăng nhập →';
+      // Sai cổng: server nói rõ cổng đúng là cổng nào -> chuyển giùm luôn, giữ nguyên chữ đã gõ.
+      // Bắt người ta tự bấm sang tab kia rồi gõ lại từ đầu là phạt họ vì lỗi mình chỉ đường kém.
+      if (err.status === 403 && err.data && err.data.portal) {
+        loginTab(err.data.portal);
+        el('lgSub').innerHTML = `<span class="err-inline">${err.message} Đã chuyển sang cổng này giúp bạn — bấm Đăng nhập lại.</span>`;
+        el('lg_pass').focus();
+        return;
+      }
+      toast(err.message, 'err');
+    }
   });
 }
+// Cổng đang chọn — gửi lên server để nó chặn khi gõ nhầm cổng. Trước đây hai tab này chỉ đổi
+// màu nút và dòng chữ, không ai gửi lựa chọn đó đi đâu cả, nên tài khoản nào cũng vào được
+// từ cổng nào: hai cổng là trang trí thuần tuý.
+let _congDangChon = 'admin';
 function loginTab(t) {
-  document.querySelectorAll('.auth-tab').forEach(b => b.classList.toggle('active', b.dataset.t === t));
-  el('lgSub').textContent = t === 'student' ? 'Đăng nhập tài khoản học viên (do quản lý cấp).' : 'Đăng nhập hệ thống quản lý ký túc xá.';
-  el('lgStudentExtra').style.display = t === 'student' ? '' : 'none';
+  _congDangChon = CONG_HOP_LE.includes(t) ? t : 'admin';
+  document.querySelectorAll('.auth-tab').forEach(b => b.classList.toggle('active', b.dataset.t === _congDangChon));
+  el('lgSub').textContent = _congDangChon === 'student' ? 'Đăng nhập tài khoản học viên (do quản lý cấp).' : 'Đăng nhập hệ thống quản lý ký túc xá.';
+  el('lgStudentExtra').style.display = _congDangChon === 'student' ? '' : 'none';
 }
+const CONG_HOP_LE = ['admin', 'student'];
 
 // Bắt buộc đổi mật khẩu (tài khoản admin khởi tạo lần đầu)
 function renderForceChangePw() {

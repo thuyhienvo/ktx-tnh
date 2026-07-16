@@ -34,7 +34,20 @@ const authLimiter = rateLimit({
   standardHeaders: true, legacyHeaders: false,
   message: { error: 'Đăng nhập sai quá nhiều lần. Vui lòng đợi vài phút rồi thử lại.' },
 });
+// Nộp đơn đăng ký: đường DUY NHẤT cho người HOÀN TOÀN ẨN DANH ghi vào CSDL và đẩy ảnh lên S3,
+// lại đi qua parser 16MB. Trần chung 600/phút quá rộng: đo thật thấy 40 đơn giống hệt nhau
+// lọt hết trong 142ms.
+// Chặn theo PHÚT chứ không theo giờ, và để rộng tay: học viên thường nộp đơn từ wifi chung
+// của trường — cả phòng máy đi ra Internet bằng MỘT IP. Siết theo giờ thì mùa tuyển sinh
+// người thứ 7 trở đi bị chặn oan mà không hiểu vì sao. Chặn theo phút cắt được trận dồn dập
+// (thứ mà máy làm) nhưng không cản nổi người thật gõ tay (thứ mà người làm).
+// Việc chống "một người gửi lại nhiều lần" là của chốt chống trùng tên+SĐT trong public.routes.js.
+const applyLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Có quá nhiều đơn gửi lên cùng lúc từ mạng của bạn. Vui lòng đợi một phút rồi thử lại, hoặc gọi hotline để được hỗ trợ.' },
+});
 app.use('/api', apiLimiter);
+app.use('/api/public/apply', applyLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/change-password', authLimiter);
 
