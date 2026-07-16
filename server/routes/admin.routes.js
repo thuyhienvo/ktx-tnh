@@ -83,7 +83,10 @@ router.get('/audit', async (req, res, next) => {
 });
 
 /* ---------- Quản lý tài khoản nhân viên ---------- */
-const ROLE = r => (['admin', 'staff', 'maintenance'].includes(r) ? r : 'staff');
+// Chỉ 3 vai này được tạo/sửa qua trang quản trị (tài khoản học viên do luồng khác cấp).
+// KHÔNG ép thầm lặng vai lạ thành 'staff' như trước: gõ nhầm "admn" hay xin "student" mà ra
+// "staff" thì người tạo không hề biết mình vừa tạo sai loại tài khoản.
+const VALID_ROLES = ['admin', 'staff', 'maintenance'];
 
 router.get('/users', async (req, res, next) => {
   try {
@@ -99,15 +102,19 @@ router.post('/users', async (req, res, next) => {
     const username = (req.body.username || '').trim();
     const password = (req.body.password || '').trim();
     if (!username) return res.status(400).json({ error: 'Nhập tên đăng nhập' });
+    const role = req.body.role == null || req.body.role === '' ? 'staff' : req.body.role;
+    if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: `Vai trò không hợp lệ: "${req.body.role}". Chỉ nhận: nhân viên, bảo trì, quản trị.` });
     const loiMk = checkPassword(password, [username, req.body.full_name]);
     if (loiMk) return res.status(400).json({ error: loiMk });
-    const dup = await query('SELECT 1 FROM users WHERE lower(username)=lower($1)', [username]);
+    // Trùng tên: chỉ tính tài khoản CÒN HIỆU LỰC (chưa xoá). Tài khoản đã xoá được đổi tên để nhả
+    // tên gốc ra (xem route DELETE) nên đường này chủ yếu chặn trùng với tài khoản đang dùng.
+    const dup = await query('SELECT 1 FROM users WHERE lower(username)=lower($1) AND deleted_at IS NULL', [username]);
     if (dup.rows.length) return res.status(400).json({ error: `Tên đăng nhập "${username}" đã tồn tại` });
     // Tài khoản do quản trị tạo -> buộc nhân viên đổi mật khẩu ở lần đăng nhập đầu
     const { rows } = await query(
       `INSERT INTO users (username, password_hash, role, full_name, must_change_password)
        VALUES ($1,$2,$3,$4,true) RETURNING id, username, role, full_name`,
-      [username, bcrypt.hashSync(password, 10), ROLE(req.body.role), (req.body.full_name || '').trim()]);
+      [username, bcrypt.hashSync(password, 10), role, (req.body.full_name || '').trim()]);
     res.status(201).json(rows[0]);
   } catch (e) { next(e); }
 });
@@ -115,14 +122,30 @@ router.post('/users', async (req, res, next) => {
 router.put('/users/:id', async (req, res, next) => {
   try {
     const id = +req.params.id;
-    if (id === req.user.id && req.body.role && req.body.role !== 'admin')
-      return res.status(400).json({ error: 'Không thể tự hạ quyền chính mình' });
-    const { rows } = await query(
-      `UPDATE users SET full_name=$1, role=$2 WHERE id=$3 AND role IN ('admin','staff','maintenance') RETURNING id`,
-      [(req.body.full_name || '').trim(), ROLE(req.body.role), id]);
-    if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy tài khoản' });
-    // Đổi vai trò -> THU HỒI vé cũ ngay. Nếu không, người vừa bị giáng chức vẫn giữ quyền admin 30 ngày.
-    await revokeTokens(id);
+    const hasRole = req.body.role != null && req.body.role !== '';
+    if (hasRole && !VALID_ROLES.includes(req.body.role))
+      return res.status(400).json({ error: `Vai trò không hợp lệ: "${req.body.role}".` });
+    const cur = (await query(`SELECT role FROM users WHERE id=$1 AND role IN ('admin','staff','maintenance') AND deleted_at IS NULL`, [id])).rows[0];
+    if (!cur) return res.status(404).json({ error: 'Không tìm thấy tài khoản' });
+    // Vai MỚI = vai gửi lên (nếu có) hoặc GIỮ NGUYÊN vai cũ. Trước đây thiếu trường role thì
+    // ROLE(undefined) trả 'staff' -> admin sửa mỗi họ tên mà TỰ TỤT XUỐNG nhân viên, mất quyền
+    // vĩnh viễn, không một lời cảnh báo (V2-71). Và chốt chặn cũ chỉ chạy khi role CÓ giá trị.
+    const newRole = hasRole ? req.body.role : cur.role;
+    if (id === req.user.id && newRole !== 'admin')
+      return res.status(400).json({ error: 'Không thể tự hạ quyền chính mình.' });
+    // Giữ ít nhất 1 quản trị: hạ quyền admin cuối cùng thì cả hệ thống mất người cấp quyền.
+    if (cur.role === 'admin' && newRole !== 'admin') {
+      const admins = (await query("SELECT COUNT(*)::int c FROM users WHERE role='admin' AND deleted_at IS NULL")).rows[0].c;
+      if (admins <= 1) return res.status(400).json({ error: 'Phải còn ít nhất 1 quản trị viên — không thể hạ quyền người cuối cùng.' });
+    }
+    // full_name: chỉ đổi khi CÓ gửi (COALESCE), đừng xoá trắng khi caller chỉ đổi vai.
+    const hasName = req.body.full_name != null;
+    await query(
+      `UPDATE users SET full_name = CASE WHEN $1 THEN $2 ELSE full_name END, role=$3
+       WHERE id=$4 AND role IN ('admin','staff','maintenance') AND deleted_at IS NULL`,
+      [hasName, (req.body.full_name || '').trim(), newRole, id]);
+    // Đổi vai trò -> THU HỒI vé cũ ngay (người vừa bị giáng chức không giữ quyền admin 30 ngày).
+    if (newRole !== cur.role) await revokeTokens(id);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
@@ -147,8 +170,14 @@ router.delete('/users/:id', async (req, res, next) => {
     const admins = (await query("SELECT COUNT(*)::int c FROM users WHERE role='admin' AND deleted_at IS NULL")).rows[0].c;
     const target = (await query('SELECT role FROM users WHERE id=$1', [id])).rows[0];
     if (target && target.role === 'admin' && admins <= 1) return res.status(400).json({ error: 'Phải còn ít nhất 1 quản trị viên' });
-    // Vô hiệu hóa (xóa mềm) — giữ lại lịch sử thao tác của tài khoản
-    await query("UPDATE users SET deleted_at=now() WHERE id=$1 AND role IN ('admin','staff','maintenance')", [id]);
+    // Vô hiệu hóa (xóa mềm) — giữ lại lịch sử thao tác của tài khoản.
+    // ĐỔI TÊN tài khoản đã xoá để NHẢ tên gốc ra: có ràng buộc UNIQUE trên username nên nếu giữ
+    // nguyên tên thì tên đó không bao giờ dùng lại được, kể cả khi tài khoản đã xoá (V2-76).
+    // Nhân viên nghỉ rồi vào lại, hay gõ nhầm tên lúc tạo, không phải bịa tên khác mãi.
+    // Lịch sử thao tác trong audit_log lưu snapshot username riêng nên không mất dấu.
+    await query(
+      `UPDATE users SET deleted_at=now(), username = username || '#da-xoa-' || id
+       WHERE id=$1 AND role IN ('admin','staff','maintenance')`, [id]);
     await revokeTokens(id); // đá ngay mọi phiên đang mở của tài khoản vừa bị vô hiệu hoá
     res.json({ ok: true });
   } catch (e) { next(e); }
