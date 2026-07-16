@@ -260,6 +260,8 @@ CREATE TABLE IF NOT EXISTS violations (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_violations_student ON violations(student_id);
+-- Ai ghi vi phạm này (V2-11): hành động đụng danh dự HV + gửi mail ra ngoài trường, phải truy được.
+ALTER TABLE violations ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
 
 -- Ảnh trang giới thiệu (upload trong Cài đặt, lưu base64 — bền vững qua deploy)
 CREATE TABLE IF NOT EXISTS media (

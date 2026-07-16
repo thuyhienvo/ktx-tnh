@@ -1,12 +1,35 @@
 const express = require('express');
-const { query, getSettings } = require('../db');
+const db = require('../db');
+const { query, getSettings, withTransaction } = db;
 const { requireAuth, requireRole } = require('../auth');
 const { sendViolationMail, mailStatus } = require('../mailer');
+const { isValidYmd, rejectUnknown } = require('../valid');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
 
 const SEV = v => (['minor', 'major', 'severe'].includes(v) ? v : 'minor');
+
+// Gửi mail báo trường cho HV nếu ĐỦ ngưỡng và CHƯA từng báo. Trả kết quả mail (hoặc null).
+// Gộp một chỗ để đường ghi vi phạm và đường "gửi lại" dùng chung, không lệch luật.
+async function maybeNotifySchool(studentId, { force = false } = {}) {
+  const student = (await query('SELECT id, name, code, class_name, phone FROM students WHERE id=$1 AND deleted_at IS NULL', [studentId])).rows[0];
+  if (!student) return { skipped: 'student-missing' };
+  const all = (await query('SELECT * FROM violations WHERE student_id=$1 AND deleted_at IS NULL ORDER BY date, id', [studentId])).rows;
+  const s = await getSettings();
+  const threshold = +s.violation_mail_threshold || 3;
+  if (all.length < threshold) return { skipped: 'under-threshold', count: all.length, threshold };
+  // Đã báo trường rồi thì KHÔNG tự gửi lại (V2-01). force=true (nút "Gửi lại" thủ công) mới bỏ qua.
+  const daBao = all.some(v => v.notified_school);
+  if (daBao && !force) return { skipped: 'already-notified' };
+  const mail = await sendViolationMail(student, all);
+  if (mail.sent) {
+    // Chỉ đánh dấu các dòng CHƯA XOÁ; giữ notified_at cũ (COALESCE) -> không mất mốc lần đầu báo (V2-01).
+    await query(`UPDATE violations SET notified_school=true, notified_at=COALESCE(notified_at, now())
+                 WHERE student_id=$1 AND deleted_at IS NULL`, [studentId]);
+  }
+  return { mail };
+}
 
 /* ---------- Danh mục loại vi phạm ---------- */
 router.get('/types', async (req, res, next) => {
@@ -29,8 +52,12 @@ router.post('/types', requireRole('admin'), async (req, res, next) => {
 });
 router.put('/types/:id', requireRole('admin'), async (req, res, next) => {
   try {
+    // V2-10: POST kiểm tên rỗng, PUT thì trước đây không -> tên loại thành chuỗi rỗng, danh mục hiện
+    // dòng trắng, mail in "Vi phạm".
+    const name = (req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Nhập tên loại vi phạm' });
     const { rows } = await query('UPDATE violation_types SET name=$1, severity=$2, active=$3 WHERE id=$4 RETURNING *',
-      [(req.body.name || '').trim(), SEV(req.body.severity), req.body.active !== false, req.params.id]);
+      [name, SEV(req.body.severity), req.body.active !== false, req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy' });
     res.json(rows[0]);
   } catch (e) { next(e); }
@@ -100,48 +127,75 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const b = req.body;
-    const student = (await query('SELECT id, name, code, class_name, phone FROM students WHERE id=$1', [b.student_id])).rows[0];
+    // V2-09: gõ nhầm tên trường (violation_date thay vì date) trước đây bị nuốt im lặng + tự lấy hôm nay.
+    const bad = rejectUnknown(b, ['student_id', 'type_id', 'date', 'note']);
+    if (bad) return res.status(400).json({ error: bad });
+    // V2-04: HV phải TỒN TẠI + chưa xoá (trước thiếu deleted_at -> ghi vi phạm cho HV đã xoá, mail vẫn bay).
+    const student = (await query('SELECT id, name FROM students WHERE id=$1 AND deleted_at IS NULL', [b.student_id])).rows[0];
     if (!student) return res.status(404).json({ error: 'Không tìm thấy học viên' });
-
-    // Loại vi phạm: lấy tên + mức độ (từ danh mục nếu có type_id)
-    let typeName = (b.type_name || '').trim(), severity = SEV(b.severity), typeId = b.type_id || null;
-    if (typeId) {
-      const t = (await query('SELECT * FROM violation_types WHERE id=$1', [typeId])).rows[0];
-      if (t) { typeName = t.name; severity = t.severity; }
-    }
-    if (!typeName) return res.status(400).json({ error: 'Chọn loại vi phạm' });
-
+    // V2-06: loại vi phạm BẮT BUỘC chọn từ danh mục (type_id), phải tồn tại + đang active. Không cho
+    // gõ tay type_name/severity (V2-07: severity lấy từ loại, không nhận chuỗi tự do rồi âm thầm hạ 'minor').
+    if (!b.type_id) return res.status(400).json({ error: 'Chọn loại vi phạm từ danh mục' });
+    const ty = (await query('SELECT id, name, severity, active FROM violation_types WHERE id=$1', [b.type_id])).rows[0];
+    if (!ty) return res.status(400).json({ error: 'Loại vi phạm không tồn tại' });
+    if (ty.active === false) return res.status(400).json({ error: `Loại vi phạm "${ty.name}" đã ngừng sử dụng` });
+    // V2-10: ngày phải HỢP LỆ trên lịch (chặn 2026-02-30 -> 500) và KHÔNG ở tương lai.
     const date = b.date || new Date().toISOString().slice(0, 10);
-    const level = (await query('SELECT COUNT(*)::int c FROM violations WHERE student_id=$1 AND deleted_at IS NULL', [b.student_id])).rows[0].c + 1;
+    if (!isValidYmd(date)) return res.status(400).json({ error: `Ngày vi phạm không hợp lệ: "${b.date}"` });
+    if (date > new Date().toISOString().slice(0, 10)) return res.status(400).json({ error: 'Ngày vi phạm không thể ở tương lai' });
+    if (b.note && String(b.note).length > 1000) return res.status(400).json({ error: 'Ghi chú quá dài (tối đa 1000 ký tự)' });
 
-    const { rows } = await query(
-      `INSERT INTO violations (student_id, type_id, type_name, severity, level, date, note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [b.student_id, typeId, typeName, severity, level, date, b.note || '']
-    );
-    const violation = rows[0];
-
-    // Đến ngưỡng (mặc định lần 3) → gửi mail nhà trường
-    const s = await getSettings();
-    const threshold = +s.violation_mail_threshold || 3;
+    // GHI trong transaction, KHOÁ HV -> hai staff ghi cùng lúc không cùng thấy "đủ ngưỡng" rồi gửi 2 mail (V2-02).
+    const out = await withTransaction(async (client) => {
+      await client.query('SELECT id FROM students WHERE id=$1 FOR UPDATE', [b.student_id]);
+      const ins = await client.query(
+        `INSERT INTO violations (student_id, type_id, type_name, severity, date, note, created_by, level)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,1) RETURNING *`,
+        [b.student_id, ty.id, ty.name, ty.severity, date, b.note || '', req.user.id]);
+      // V2-05: đánh lại "lần thứ N" theo THỨ TỰ NGÀY cho toàn bộ (kể cả vừa chèn) -> backdate không
+      // bị gán nhầm level cao. Một công thức level duy nhất (ROW_NUMBER by date) cho cả insert lẫn delete.
+      await client.query(`UPDATE violations v SET level = sub.rn
+        FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY date, id) AS rn FROM violations WHERE student_id=$1 AND deleted_at IS NULL) sub
+        WHERE v.id = sub.id`, [b.student_id]);
+      const cnt = (await client.query('SELECT COUNT(*)::int c FROM violations WHERE student_id=$1 AND deleted_at IS NULL', [b.student_id])).rows[0].c;
+      const daBao = (await client.query('SELECT 1 FROM violations WHERE student_id=$1 AND deleted_at IS NULL AND notified_school=true LIMIT 1', [b.student_id])).rows.length > 0;
+      const s = await getSettings();
+      const threshold = +s.violation_mail_threshold || 3;
+      // Quyết định gửi + đánh dấu NGAY trong transaction (chống 2 mail). Mail thật gửi SAU commit.
+      const willSend = cnt >= threshold && !daBao;
+      if (willSend) await client.query(`UPDATE violations SET notified_school=true, notified_at=COALESCE(notified_at, now()) WHERE student_id=$1 AND deleted_at IS NULL`, [b.student_id]);
+      const v = (await client.query('SELECT * FROM violations WHERE id=$1', [ins.rows[0].id])).rows[0];
+      return { violation: v, cnt, threshold, willSend };
+    });
+    // Gửi mail SAU commit (không giữ lock trong lúc chờ SMTP). Nếu gửi fail, cờ đã set -> không tự
+    // gửi lại (tránh spam); staff dùng nút "Gửi lại" thủ công nếu cần.
     let mail = null;
-    if (level >= threshold) {
+    if (out.willSend) {
+      const st = (await query('SELECT id, name, code, class_name, phone FROM students WHERE id=$1', [b.student_id])).rows[0];
       const all = (await query('SELECT * FROM violations WHERE student_id=$1 AND deleted_at IS NULL ORDER BY date, id', [b.student_id])).rows;
-      mail = await sendViolationMail(student, all);
-      if (mail.sent) {
-        await query(`UPDATE violations SET notified_school=true, notified_at=now() WHERE student_id=$1`, [b.student_id]);
-      }
+      mail = await sendViolationMail(st, all);
+      if (!mail.sent) await query(`UPDATE violations SET notified_school=false, notified_at=NULL WHERE student_id=$1 AND deleted_at IS NULL`, [b.student_id]);
     }
-    res.status(201).json({ violation, level, threshold, mail });
+    res.status(201).json({ violation: out.violation, level: out.violation.level, threshold: out.threshold, mail });
   } catch (e) { next(e); }
 });
 
 router.put('/:id', async (req, res, next) => {
   try {
     const b = req.body;
+    const bad = rejectUnknown(b, ['note', 'admin_note', 'status']);
+    if (bad) return res.status(400).json({ error: bad });
+    // V2-07: status chỉ 'open'|'resolved'; gõ sai -> 400, đừng âm thầm ép 'open'.
+    if (b.status != null && !['open', 'resolved'].includes(b.status))
+      return res.status(400).json({ error: `Trạng thái không hợp lệ: "${b.status}" (chỉ 'open' hoặc 'resolved')` });
+    // V2-08: chỉ đổi field CÓ gửi (COALESCE) — trước đây đổi mỗi status cũng xoá trắng note + admin_note.
     const { rows } = await query(
-      `UPDATE violations SET note=$1, admin_note=$2, status=$3 WHERE id=$4 RETURNING *`,
-      [b.note || '', b.admin_note || '', b.status === 'resolved' ? 'resolved' : 'open', req.params.id]);
+      `UPDATE violations SET
+         note = CASE WHEN $1::text IS NULL THEN note ELSE $1 END,
+         admin_note = CASE WHEN $2::text IS NULL THEN admin_note ELSE $2 END,
+         status = COALESCE($3, status)
+       WHERE id=$4 AND deleted_at IS NULL RETURNING *`,
+      [b.note != null ? String(b.note) : null, b.admin_note != null ? String(b.admin_note) : null, b.status || null, req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy' });
     res.json(rows[0]);
   } catch (e) { next(e); }
@@ -150,14 +204,13 @@ router.put('/:id', async (req, res, next) => {
 // Xóa mềm
 router.delete('/:id', async (req, res, next) => {
   try {
-    const row = (await query('SELECT student_id FROM violations WHERE id=$1', [req.params.id])).rows[0];
+    const row = (await query('SELECT student_id FROM violations WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    if (!row) return res.status(404).json({ error: 'Không tìm thấy vi phạm' });
     await query('UPDATE violations SET deleted_at=now() WHERE id=$1', [req.params.id]);
-    // Đánh lại "lần thứ N" cho các vi phạm còn lại của HV theo thứ tự ngày (tránh level lệch sau khi xóa)
-    if (row && row.student_id) {
-      await query(`UPDATE violations v SET level = sub.rn
-        FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY date, id) AS rn FROM violations WHERE student_id=$1 AND deleted_at IS NULL) sub
-        WHERE v.id = sub.id`, [row.student_id]);
-    }
+    // Đánh lại "lần thứ N" cho các vi phạm còn lại theo thứ tự ngày (cùng công thức với lúc ghi)
+    await query(`UPDATE violations v SET level = sub.rn
+      FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY date, id) AS rn FROM violations WHERE student_id=$1 AND deleted_at IS NULL) sub
+      WHERE v.id = sub.id`, [row.student_id]);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
@@ -165,13 +218,14 @@ router.delete('/:id', async (req, res, next) => {
 // Gửi (lại) mail nhà trường thủ công cho 1 học viên
 router.post('/student/:id/notify', async (req, res, next) => {
   try {
-    const student = (await query('SELECT id, name, code, class_name, phone FROM students WHERE id=$1', [req.params.id])).rows[0];
-    if (!student) return res.status(404).json({ error: 'Không tìm thấy học viên' });
-    const all = (await query('SELECT * FROM violations WHERE student_id=$1 AND deleted_at IS NULL ORDER BY date, id', [req.params.id])).rows;
-    if (!all.length) return res.status(400).json({ error: 'Học viên chưa có vi phạm nào' });
-    const mail = await sendViolationMail(student, all);
-    if (mail.sent) await query(`UPDATE violations SET notified_school=true, notified_at=now() WHERE student_id=$1`, [req.params.id]);
-    res.json({ mail });
+    // V2-03: kiểm NGƯỠNG trước — bấm "Gửi mail" khi HV mới vi phạm 1 lần thì KHÔNG gửi.
+    // force=true: đây là hành động thủ công của staff -> cho gửi lại kể cả đã báo (vd lần auto bị lỗi),
+    // nhưng vẫn phải đủ ngưỡng.
+    const r = await maybeNotifySchool(+req.params.id, { force: true });
+    if (r.skipped === 'student-missing') return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    if (r.skipped === 'under-threshold')
+      return res.status(400).json({ error: `Chưa đủ ngưỡng gửi mail (mới ${r.count}/${r.threshold} vi phạm)` });
+    res.json({ mail: r.mail });
   } catch (e) { next(e); }
 });
 
