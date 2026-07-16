@@ -167,16 +167,26 @@ router.post('/', async (req, res, next) => {
       const v = (await client.query('SELECT * FROM violations WHERE id=$1', [ins.rows[0].id])).rows[0];
       return { violation: v, cnt, threshold, willSend };
     });
-    // Gửi mail SAU commit (không giữ lock trong lúc chờ SMTP). Nếu gửi fail, cờ đã set -> không tự
-    // gửi lại (tránh spam); staff dùng nút "Gửi lại" thủ công nếu cần.
-    let mail = null;
+    // Trả response NGAY, gửi mail Ở NỀN (P-03): SMTP chậm/treo tới 12s trước đây giữ chân cả
+    // request — staff bấm ghi vi phạm phải chờ 12s. Cờ notified_school đã set trong transaction nên
+    // không lo gửi 2 mail; nếu gửi FAIL thì gỡ cờ ở nền để nút "Gửi lại" thủ công dùng được.
+    res.status(201).json({
+      violation: out.violation, level: out.violation.level, threshold: out.threshold,
+      mail: out.willSend ? { queued: true } : null,
+    });
     if (out.willSend) {
-      const st = (await query('SELECT id, name, code, class_name, phone FROM students WHERE id=$1', [b.student_id])).rows[0];
-      const all = (await query('SELECT * FROM violations WHERE student_id=$1 AND deleted_at IS NULL ORDER BY date, id', [b.student_id])).rows;
-      mail = await sendViolationMail(st, all);
-      if (!mail.sent) await query(`UPDATE violations SET notified_school=false, notified_at=NULL WHERE student_id=$1 AND deleted_at IS NULL`, [b.student_id]);
+      (async () => {
+        try {
+          const st = (await query('SELECT id, name, code, class_name, phone FROM students WHERE id=$1', [b.student_id])).rows[0];
+          const all = (await query('SELECT * FROM violations WHERE student_id=$1 AND deleted_at IS NULL ORDER BY date, id', [b.student_id])).rows;
+          const mail = await sendViolationMail(st, all);
+          if (!mail.sent) {
+            await query(`UPDATE violations SET notified_school=false, notified_at=NULL WHERE student_id=$1 AND deleted_at IS NULL`, [b.student_id]);
+            console.error('[violations] gửi mail báo trường THẤT BẠI (đã gỡ cờ để gửi lại được):', mail.reason);
+          }
+        } catch (e) { console.error('[violations] lỗi gửi mail nền:', e.message); }
+      })();
     }
-    res.status(201).json({ violation: out.violation, level: out.violation.level, threshold: out.threshold, mail });
   } catch (e) { next(e); }
 });
 

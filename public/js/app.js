@@ -2066,10 +2066,8 @@ async function saveViolation(studentId) {
   if (!type_id) return toast('Chọn loại vi phạm (thêm trong Cài đặt nếu chưa có)', 'err');
   const r = await guard(() => API.createViolation({ student_id: sid, type_id, date: el('vf_date').value, note: el('vf_note').value.trim() }));
   await refreshCache(); closeModal();
-  if (r.mail && r.level >= r.threshold) {
-    if (r.mail.sent) toast(`Đã ghi vi phạm lần ${r.level} · đã gửi mail nhà trường`);
-    else toast(`Vi phạm lần ${r.level} (≥${r.threshold}) — chưa gửi được mail: ${r.mail.reason}`, 'err');
-  } else toast(`Đã ghi nhận vi phạm lần ${r.level}`);
+  if (r.mail && r.mail.queued) toast(`Đã ghi vi phạm lần ${r.level} · đang gửi mail nhà trường…`);
+  else toast(`Đã ghi nhận vi phạm lần ${r.level}`);
   studentDetailRefresh(sid);
 }
 async function delViolation(id, studentId) {
