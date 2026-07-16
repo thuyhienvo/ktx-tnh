@@ -3303,6 +3303,20 @@ async function renderMaintenance() {
     </div></div>`;
   startTableResize();
   loadMaintenance();
+  startMaintPolling();
+}
+// Bảo trì cần biết có việc mới được giao mà không phải tự bấm Tải lại (tinh thần V2-81).
+// Trang bảo trì CHÍNH là hàng đợi việc của họ nên tự làm mới cả trang, nhưng KHÔNG đè khi đang
+// mở form (modal) hay ẩn tab — tránh cắt ngang thao tác đang dở.
+let _maintTimer = null;
+function startMaintPolling() {
+  if (_maintTimer) clearInterval(_maintTimer);
+  _maintTimer = setInterval(() => {
+    if (!Auth.user || Auth.user.role !== 'maintenance') { clearInterval(_maintTimer); _maintTimer = null; return; }
+    if (document.hidden) return;
+    if (el('overlay') && el('overlay').classList.contains('show')) return;  // đang mở form -> đừng đụng
+    loadMaintenance();
+  }, 60000);
 }
 async function loadMaintenance() {
   let tasks = [];
