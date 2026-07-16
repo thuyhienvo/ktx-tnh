@@ -19,6 +19,10 @@ router.post('/', requireRole('admin'), async (req, res, next) => {
   try {
     const { name, address } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Nhập tên cơ sở' });
+    if (address && String(address).length > 300) return res.status(400).json({ error: 'Địa chỉ quá dài (tối đa 300 ký tự)' });
+    // Trùng tên cơ sở -> dropdown chọn cơ sở hiện nhiều dòng giống hệt, xếp người vào nhầm (V2-35).
+    const dup = await query(`SELECT 1 FROM facilities WHERE deleted_at IS NULL AND lower(btrim(name))=lower(btrim($1))`, [name]);
+    if (dup.rows.length) return res.status(400).json({ error: `Cơ sở "${name.trim()}" đã tồn tại` });
     const { rows } = await query('INSERT INTO facilities (name, address) VALUES ($1,$2) RETURNING *',
       [name.trim(), address || '']);
     res.status(201).json(rows[0]);
@@ -29,9 +33,13 @@ router.put('/:id', requireRole('admin'), async (req, res, next) => {
   try {
     const { name, address } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Nhập tên cơ sở' });
-    const { rows } = await query('UPDATE facilities SET name=$1, address=$2 WHERE id=$3 RETURNING *',
+    if (address && String(address).length > 300) return res.status(400).json({ error: 'Địa chỉ quá dài (tối đa 300 ký tự)' });
+    const dup = await query(`SELECT 1 FROM facilities WHERE deleted_at IS NULL AND id<>$2 AND lower(btrim(name))=lower(btrim($1))`, [name, req.params.id]);
+    if (dup.rows.length) return res.status(400).json({ error: `Cơ sở "${name.trim()}" đã tồn tại` });
+    // deleted_at IS NULL: không sửa cơ sở đã xoá (V2-35).
+    const { rows } = await query('UPDATE facilities SET name=$1, address=$2 WHERE id=$3 AND deleted_at IS NULL RETURNING *',
       [name.trim(), address || '', req.params.id]);
-    if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy cơ sở' });
+    if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy cơ sở (hoặc đã bị xoá)' });
     res.json(rows[0]);
   } catch (e) { next(e); }
 });

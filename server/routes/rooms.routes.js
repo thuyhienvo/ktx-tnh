@@ -52,10 +52,19 @@ const RTYPE = t => (['shared', 'whole', 'security', 'staff'].includes(t) ? t : '
 // Tầng suy ra từ chữ số đầu tiên của tên phòng (VD 104 -> 1, A203 -> 2)
 const floorOf = name => { const m = String(name || '').match(/\d/); return m ? +m[0] : 1; };
 
+// Cơ sở phải TỒN TẠI + chưa xoá thì mới gán phòng vào (V2-34: trước đây nhận facility_id tuỳ ý,
+// gán phòng mới / khôi phục phòng vào một "cơ sở ma" đã bị xoá).
+async function facilityOk(facilityId) {
+  if (facilityId == null) return true;   // phòng không thuộc cơ sở nào -> chấp nhận
+  const f = (await query('SELECT 1 FROM facilities WHERE id=$1 AND deleted_at IS NULL', [facilityId])).rows[0];
+  return !!f;
+}
+
 router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { facility_id, name, gender, hang, capacity, monthly_fee, note, room_type } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Nhập tên phòng' });
+    if (!(await facilityOk(facility_id || null))) return res.status(400).json({ error: 'Cơ sở không tồn tại hoặc đã bị xoá' });
     const badR = badRoom(req.body);
     if (badR) return res.status(400).json({ error: badR });
     // Trùng tên phòng trong cùng cơ sở -> nhân viên xếp nhầm người
@@ -82,6 +91,8 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
     const g = (k, def) => (raw[k] !== undefined ? raw[k] : def);
     const name = g('name', cur.name);
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Nhập tên phòng' });
+    if (raw.facility_id !== undefined && !(await facilityOk(raw.facility_id || null)))
+      return res.status(400).json({ error: 'Cơ sở không tồn tại hoặc đã bị xoá' });
     const badR = badRoom(raw, cur);
     if (badR) return res.status(400).json({ error: badR });
     const dupR = await query(
@@ -122,6 +133,10 @@ router.delete('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
 // Khôi phục phòng đã xóa
 router.post('/:id/restore', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
+    const r = (await query('SELECT facility_id FROM rooms WHERE id=$1 AND deleted_at IS NOT NULL', [req.params.id])).rows[0];
+    if (!r) return res.status(404).json({ error: 'Không tìm thấy phòng đã xoá' });
+    // Không khôi phục phòng vào cơ sở ĐÃ XOÁ -> phòng "ma" trỏ về cơ sở không còn tồn tại (V2-34).
+    if (!(await facilityOk(r.facility_id))) return res.status(400).json({ error: 'Cơ sở của phòng này đã bị xoá — khôi phục cơ sở trước, hoặc chuyển phòng sang cơ sở khác.' });
     await query('UPDATE rooms SET deleted_at=NULL WHERE id=$1', [req.params.id]);
     res.json({ ok: true });
   } catch (e) { next(e); }
