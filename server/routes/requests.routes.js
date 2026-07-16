@@ -22,12 +22,22 @@ router.get('/damage', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+const TASK_STATUS = ['new', 'processing', 'blocked', 'done'];
 router.put('/damage/:id', async (req, res, next) => {
   try {
-    const status = ['new', 'processing', 'done'].includes(req.body.status) ? req.body.status : 'new';
+    // Trạng thái: chỉ đổi khi CÓ gửi và HỢP LỆ. Không gửi -> GIỮ nguyên (trước đây thiếu status là
+    // reset về 'new', nên admin chỉ sửa ghi chú cho việc đang 'blocked' cũng làm mất trạng thái + lý do).
+    const hasStatus = req.body.status != null && req.body.status !== '';
+    if (hasStatus && !TASK_STATUS.includes(req.body.status))
+      return res.status(400).json({ error: `Trạng thái không hợp lệ: "${req.body.status}". Chỉ nhận: ${TASK_STATUS.join(', ')}.` });
+    const hasNote = req.body.admin_note != null;
     const { rows } = await query(
-      `UPDATE damage_reports SET status=$1, admin_note=$2, resolved_at=$3 WHERE id=$4 RETURNING *`,
-      [status, req.body.admin_note || '', status === 'done' ? new Date().toISOString() : null, req.params.id]
+      `UPDATE damage_reports
+         SET status = COALESCE($1, status),
+             admin_note = CASE WHEN $2 THEN $3 ELSE admin_note END,
+             resolved_at = CASE WHEN COALESCE($1,status)='done' THEN COALESCE(resolved_at, now()) ELSE NULL END
+       WHERE id=$4 RETURNING *`,
+      [hasStatus ? req.body.status : null, hasNote, req.body.admin_note || '', req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy báo cáo' });
     res.json(rows[0]);

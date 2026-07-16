@@ -9,6 +9,10 @@ router.use(requireAuth, requireRole('maintenance', 'admin'));
 
 const curMonth = () => new Date().toISOString().slice(0, 7);
 const isMonth = m => /^\d{4}-\d{2}$/.test(m || '');
+// Vòng đời việc bảo trì — MỘT bộ trạng thái dùng chung. 'blocked' = chưa xử lý được (kèm lý do).
+// Admin sửa ghi chú (requests.routes PUT /damage/:id) phải chấp nhận CÙNG bộ này, nếu không
+// việc đang 'blocked' bị admin đụng vào là rơi về 'new', mất luôn lý do (V2-40c).
+const TASK_STATUS = ['new', 'processing', 'blocked', 'done'];
 
 // Danh sách bàn giao phòng theo tháng — bảo trì CHỈ thấy: tên, phòng, ngày, xác nhận, ghi chú
 router.get('/handovers', async (req, res, next) => {
@@ -44,10 +48,14 @@ router.get('/handovers/summary', async (req, res, next) => {
 router.post('/handovers/:id/checkin', async (req, res, next) => {
   try {
     const note = (req.body.note || '').trim();
-    const { rows } = await query(
+    const cur = (await query('SELECT checkin_confirmed_at FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    if (!cur) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    // Xác nhận MỘT LẦN. Xác nhận lại sẽ ghi đè mốc bàn giao thật và (nếu note rỗng) xoá trắng ghi chú.
+    if (cur.checkin_confirmed_at)
+      return res.status(409).json({ error: 'Đã xác nhận nhận phòng trước đó — không xác nhận lại (tránh mất dấu lần bàn giao thật).' });
+    await query(
       `UPDATE students SET checkin_confirmed_at=now(), checkin_confirm_note=$1
-       WHERE id=$2 AND deleted_at IS NULL RETURNING id`, [note, req.params.id]);
-    if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+       WHERE id=$2 AND deleted_at IS NULL`, [note, req.params.id]);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
@@ -59,20 +67,25 @@ router.post('/handovers/:id/checkout', async (req, res, next) => {
     const actual = isValidYmd(req.body.actual_date) ? req.body.actual_date : null;
     if (!actual) return res.status(400).json({ error: 'Chọn ngày trả phòng thực tế hợp lệ' });
     const today = new Date().toISOString().slice(0, 10);
+    // Đây là xác nhận ĐÃ TRẢ phòng THỰC TẾ — theo định nghĩa việc đó đã xảy ra rồi, KHÔNG thể ở
+    // tương lai. Trước đây nhận ngày 2199 -> ghi vào CSDL, tính lại phiếu tháng "2199-12" (không có)
+    // nên tiền không tính lại, dữ liệu một đằng tiền một nẻo.
+    if (actual > today)
+      return res.status(400).json({ error: 'Ngày trả phòng thực tế không thể ở tương lai.' });
     // Ngày trả không thể TRƯỚC ngày nhận phòng (tránh phiếu tính sai / âm ngày)
     const cur = (await query('SELECT check_in_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!cur) return res.status(404).json({ error: 'Không tìm thấy học viên' });
     if (cur.check_in_date && actual < String(cur.check_in_date).slice(0, 10))
       return res.status(400).json({ error: 'Ngày trả không thể trước ngày nhận phòng' });
-    const status = actual <= today ? 'out' : 'in';
     const { rows } = await query(
       `UPDATE students SET checkout_confirmed_at=now(), checkout_actual_date=$1, checkout_confirm_note=$2,
-         check_out_date=$1, status=$3
-       WHERE id=$4 AND deleted_at IS NULL RETURNING id, room_id`, [actual, note, status, req.params.id]);
+         check_out_date=$1, status='out'
+       WHERE id=$3 AND deleted_at IS NULL RETURNING id, room_id`, [actual, note, req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
-    // Ghi log ra + tính lại phiếu báo tháng trả phòng theo số ngày ở thực tế
-    try { await query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'out',$2,$3,$4,'admin')`,
-      [req.params.id, actual, rows[0].room_id || null, 'Bảo trì xác nhận trả phòng thực tế']); } catch (e) {}
+    // source theo VAI người thực hiện — bảo trì thì ghi 'maintenance', không ghi cứng 'admin' (V2-43)
+    const src = req.user && req.user.role === 'maintenance' ? 'maintenance' : 'admin';
+    try { await query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'out',$2,$3,$4,$5)`,
+      [req.params.id, actual, rows[0].room_id || null, 'Bảo trì xác nhận trả phòng thực tế', src]); } catch (e) {}
     try { await recalcInvoice(req.params.id, actual.slice(0, 7)); } catch (e) {}
     res.json({ ok: true, actual_date: actual });
   } catch (e) { next(e); }
@@ -104,13 +117,23 @@ router.get('/summary', async (req, res, next) => {
 // Bảo trì cập nhật tiến độ: đang xử lý / chưa xử lý được (kèm lý do) / đã xong (kèm ghi chú)
 router.post('/tasks/:id/status', async (req, res, next) => {
   try {
-    const status = ['processing', 'blocked', 'done'].includes(req.body.status) ? req.body.status : 'processing';
+    // Trạng thái LẠ (gõ sai "donee") -> BÁO LỖI, đừng lặng lẽ ép về 'processing': làm vậy thì
+    // việc ĐÃ XONG bị lùi về đang xử lý và ngày hoàn thành bị xoá mà không ai biết.
+    if (!TASK_STATUS.includes(req.body.status))
+      return res.status(400).json({ error: `Trạng thái không hợp lệ: "${req.body.status}". Chỉ nhận: ${TASK_STATUS.join(', ')}.` });
+    const status = req.body.status;
     const note = (req.body.note || '').trim();
     if (status === 'blocked' && !note) return res.status(400).json({ error: 'Nhập lý do chưa xử lý được' });
+    // Ghi chú: chỉ ĐÈ khi có nhập; note rỗng -> GIỮ ghi chú cũ (trước đây luôn ghi đè -> xoá trắng).
+    // resolved_at: chỉ đặt khi 'done'; rời khỏi 'done' thì xoá (đúng), nhưng vì đã chặn trạng thái lạ
+    // ở trên nên việc done không bị vô cớ lùi nữa.
     const { rows } = await query(
-      `UPDATE damage_reports SET status=$1, admin_note=$2, resolved_at=$3
-       WHERE id=$4 AND category='damage' AND assigned_at IS NOT NULL RETURNING *`,
-      [status, note, status === 'done' ? new Date().toISOString() : null, req.params.id]);
+      `UPDATE damage_reports
+         SET status=$1,
+             admin_note = CASE WHEN $2='' THEN admin_note ELSE $2 END,
+             resolved_at = CASE WHEN $1='done' THEN now() ELSE NULL END
+       WHERE id=$3 AND category='damage' AND assigned_at IS NOT NULL RETURNING *`,
+      [status, note, req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy công việc' });
     res.json(rows[0]);
   } catch (e) { next(e); }
