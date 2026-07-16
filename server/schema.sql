@@ -288,6 +288,13 @@ CREATE INDEX IF NOT EXISTS idx_logs_student    ON logs(student_id);
 -- ===== Xóa mềm (soft-delete) toàn hệ thống: chỉ đánh dấu deleted_at, KHÔNG xóa thật =====
 ALTER TABLE students     ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE vehicles     ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+-- Xe có KỲ hiệu lực (from_date .. to_date) như phòng trưởng: tính lại hoá đơn tháng CŨ phải lấy
+-- số xe CỦA THÁNG ĐÓ, không lấy số xe hôm nay (V2-23, đúng lỗi TC-10 đã học ở chỗ khác).
+ALTER TABLE vehicles     ADD COLUMN IF NOT EXISTS from_date DATE;
+ALTER TABLE vehicles     ADD COLUMN IF NOT EXISTS to_date   DATE;
+-- Backfill: xe cũ tính từ ngày tạo; xe đã xoá thì tới ngày xoá.
+UPDATE vehicles SET from_date = created_at::date WHERE from_date IS NULL;
+UPDATE vehicles SET to_date = deleted_at::date WHERE to_date IS NULL AND deleted_at IS NOT NULL;
 ALTER TABLE assets       ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE facilities   ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE invoices     ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;

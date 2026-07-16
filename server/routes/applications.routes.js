@@ -88,8 +88,11 @@ router.post('/:id/approve', async (req, res, next) => {
       if (b.room_id) await roomStays.openStay(client, st.id, b.room_id, checkIn);
       await client.query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'in',$2,$3,'Duyệt đơn & vào ở','admin')`,
         [st.id, checkIn, b.room_id || null]);
-      if (app.wants_parking || (app.plate && app.plate.trim())) {
-        await client.query(`INSERT INTO vehicles (student_id, plate) VALUES ($1,$2)`, [st.id, app.plate || '']);
+      // CHỈ tạo xe khi có BIỂN SỐ thật. Trước đây tick "muốn gửi xe" mà không biển vẫn tạo một xe
+      // biển rỗng -> bị tính phí gửi xe cho một chiếc xe không có biển (V2-24 nối V2-21). Phí gửi xe
+      // tính theo xe THẬT có biển; ý định gửi xe mà chưa có biển thì để staff thêm sau.
+      if (app.plate && app.plate.trim()) {
+        await client.query(`INSERT INTO vehicles (student_id, plate, from_date) VALUES ($1,$2,$3)`, [st.id, app.plate.trim(), checkIn]);
       }
       if (b.create_login) {
         await client.query(`INSERT INTO users (username, password_hash, role, full_name, student_id) VALUES ($1,$2,'student',$3,$4)`,

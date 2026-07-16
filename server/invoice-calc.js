@@ -1,6 +1,7 @@
 const { query, getSettings } = require('./db');
 const billing = require('./billing');
 const roomLeaders = require('./room-leaders');
+const vehicleCount = require('./vehicle-count');
 
 // Danh sách người ở 1 phòng trong kỳ + SỐ NGÀY Ở của từng người.
 // Dùng để chia tiền điện theo ngày ở thực tế (thay cho cách chia đều đầu người).
@@ -75,7 +76,9 @@ async function recalcInvoice(studentId, month) {
   if (!s) return null;
   const room = s.room_id ? (await query('SELECT * FROM rooms WHERE id=$1', [s.room_id])).rows[0] : null;
   const fees = await getSettings();
-  const veh = (await query('SELECT COUNT(*)::int c FROM vehicles WHERE student_id=$1', [studentId])).rows[0].c;
+  // Số xe CỦA THÁNG này (không phải số xe hôm nay): xe đã bán không sống lại, xe mua sau không
+  // hồi tố vào tháng cũ. Trước đây thiếu cả deleted_at lẫn kỳ hiệu lực -> tính lại là tiền sai (V2-20/23).
+  const veh = await vehicleCount.countForMonth(studentId, month);
 
   // Chỉ số điện + danh sách người ở phòng (kèm số ngày ở) để chia điện theo ngày
   let kwh = 0, roster = [];

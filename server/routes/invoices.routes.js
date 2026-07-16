@@ -5,6 +5,7 @@ const billing = require('../billing');
 const { recalcInvoice, roomRoster, studentElectric } = require('../invoice-calc');
 const roomLeaders = require('../room-leaders');
 const { isValidMonth } = require('../valid');
+const vehCount = require('../vehicle-count');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
@@ -140,10 +141,8 @@ router.post('/generate', async (req, res, next) => {
     const rooms = {};
     (await client.query('SELECT id, hang, monthly_fee, capacity FROM rooms')).rows.forEach(r => { rooms[r.id] = r; });
 
-    // Số xe theo học viên (để tính phí gửi xe)
-    const vehByStudent = {};
-    (await client.query('SELECT student_id, COUNT(*)::int c FROM vehicles WHERE deleted_at IS NULL GROUP BY student_id')).rows
-      .forEach(v => { vehByStudent[v.student_id] = v.c; });
+    // Số xe theo học viên CỦA THÁNG LẬP HOÁ ĐƠN (không phải số xe hôm nay) — xem vehicle-count.js
+    const vehByStudent = await vehCount.countByStudentForMonth(month, (sql, p) => client.query(sql, p));
 
     // Số ngày làm PHÒNG TRƯỞNG trong kỳ, nạp 1 lần cho cả kỳ (đừng hỏi CSDL từng học viên một).
     // Cộng qua mọi nhiệm kỳ vì một người có thể làm trưởng 2 đoạn rời nhau trong cùng tháng.
@@ -232,12 +231,12 @@ router.post('/generate-one', async (req, res, next) => {
     // Danh sách người ở phòng kèm số ngày ở -> chia điện theo ngày ở thực tế
     const roster = await roomRoster(s.room_id, month);
     const kwhRow = s.room_id ? (await query('SELECT kwh FROM electric_readings WHERE room_id=$1 AND month=$2', [s.room_id, month])).rows[0] : null;
-    const vehicleCount = (await query('SELECT COUNT(*)::int c FROM vehicles WHERE student_id=$1 AND deleted_at IS NULL', [student_id])).rows[0].c;
+    const vehicleCnt = await vehCount.countForMonth(student_id, month);
     // Cộng phần điện ở MỌI phòng HV ở trong tháng (chuyển phòng giữa tháng vẫn tính đủ)
     const electricCharge = await studentElectric(student_id, month, Number(fees.electric_unit));
     const leaderDays = await roomLeaders.leaderDaysInMonth(null, student_id, month);
 
-    const inv = billing.computeInvoice({ student: s, room, month, fees, roster, electricCharge, leaderDays, kwh: kwhRow ? Number(kwhRow.kwh) : 0, vehicleCount });
+    const inv = billing.computeInvoice({ student: s, room, month, fees, roster, electricCharge, leaderDays, kwh: kwhRow ? Number(kwhRow.kwh) : 0, vehicleCount: vehicleCnt });
     let row;
     if (dup) {
       const other = Number(dup.other_charge) || 0;

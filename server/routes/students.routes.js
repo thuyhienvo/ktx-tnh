@@ -185,7 +185,9 @@ router.get('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
       LEFT JOIN users u ON u.student_id = s.id
       WHERE s.id=$1`, [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
-    const veh = await query('SELECT * FROM vehicles WHERE student_id=$1 ORDER BY id', [req.params.id]);
+    // Lọc deleted_at: chi tiết HV từng hiện "Xe (2)" trong khi danh sách hiện "Xe (1)" vì đường
+    // này không loại xe đã xoá, còn danh sách thì có (V2-26).
+    const veh = await query('SELECT * FROM vehicles WHERE student_id=$1 AND deleted_at IS NULL ORDER BY id', [req.params.id]);
     rows[0].vehicles = veh.rows;
     const vio = await query('SELECT * FROM violations WHERE student_id=$1 AND deleted_at IS NULL ORDER BY date DESC, id DESC', [req.params.id]);
     rows[0].violations = vio.rows;
