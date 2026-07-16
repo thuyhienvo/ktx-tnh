@@ -116,8 +116,28 @@ async function findDuplicate({ code, id_card }, exceptId) {
 
 router.get('/', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
-    const where = req.query.deleted === '1' ? 'WHERE s.deleted_at IS NOT NULL' : 'WHERE s.deleted_at IS NULL';
-    const { rows } = await query(`${LIST_SELECT} ${where} ORDER BY s.name`);
+    // Phân trang / tìm / lọc cơ sở — TUỲ CHỌN. Không gửi page/limit -> trả CẢ danh sách như cũ
+    // (frontend hiện tại dựa vào mảng đầy đủ để tính dashboard/chuông nên phải giữ tương thích).
+    // Có page/limit -> trả { rows, total, page, limit } — nền cho frontend đa cơ sở sau này.
+    const cond = [req.query.deleted === '1' ? 's.deleted_at IS NOT NULL' : 's.deleted_at IS NULL'];
+    const params = [];
+    if (req.query.facility) { params.push(+req.query.facility); cond.push(`r.facility_id = $${params.length}`); }
+    if (req.query.q && req.query.q.trim()) {
+      params.push('%' + req.query.q.trim() + '%');
+      cond.push(`(s.name ILIKE $${params.length} OR s.code ILIKE $${params.length} OR s.phone ILIKE $${params.length} OR r.name ILIKE $${params.length})`);
+    }
+    const where = 'WHERE ' + cond.join(' AND ');
+    const paged = req.query.page != null || req.query.limit != null;
+    if (paged) {
+      const limit = Math.min(200, Math.max(1, +req.query.limit || 50));
+      const page = Math.max(1, +req.query.page || 1);
+      const total = (await query(`SELECT COUNT(*)::int c FROM students s LEFT JOIN rooms r ON r.id = s.room_id ${where}`, params)).rows[0].c;
+      params.push(limit); const pL = params.length;
+      params.push((page - 1) * limit); const pO = params.length;
+      const { rows } = await query(`${LIST_SELECT} ${where} ORDER BY s.name LIMIT $${pL} OFFSET $${pO}`, params);
+      return res.json({ rows, total, page, limit });
+    }
+    const { rows } = await query(`${LIST_SELECT} ${where} ORDER BY s.name`, params);
     res.json(rows);
   } catch (e) { next(e); }
 });

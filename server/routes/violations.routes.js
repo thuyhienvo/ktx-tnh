@@ -113,6 +113,20 @@ router.get('/student/:id', async (req, res, next) => {
 /* ---------- Danh sách tất cả vi phạm ---------- */
 router.get('/', async (req, res, next) => {
   try {
+    // Phân trang tuỳ chọn (như /students): có page/limit -> { rows, total, page, limit }, không thì cả list.
+    const paged = req.query.page != null || req.query.limit != null;
+    const baseFrom = `FROM violations v JOIN students s ON s.id=v.student_id
+      LEFT JOIN rooms r ON r.id=s.room_id
+      WHERE v.deleted_at IS NULL AND s.deleted_at IS NULL`;
+    if (paged) {
+      const limit = Math.min(200, Math.max(1, +req.query.limit || 50));
+      const page = Math.max(1, +req.query.page || 1);
+      const total = (await query(`SELECT COUNT(*)::int c ${baseFrom}`)).rows[0].c;
+      const { rows } = await query(
+        `SELECT v.*, s.name AS student_name, s.code AS student_code, r.name AS room_name ${baseFrom}
+         ORDER BY v.date DESC, v.id DESC LIMIT $1 OFFSET $2`, [limit, (page - 1) * limit]);
+      return res.json({ rows, total, page, limit });
+    }
     const { rows } = await query(`
       SELECT v.*, s.name AS student_name, s.code AS student_code, r.name AS room_name
       FROM violations v JOIN students s ON s.id=v.student_id
