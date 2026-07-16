@@ -65,6 +65,31 @@ function rejectUnknown(body, allowed) {
   return extra.length ? `Trường không hợp lệ: ${extra.join(', ')}. Chỉ chấp nhận: ${allowed.join(', ')}` : null;
 }
 
+// Chính sách mật khẩu — MỘT chỗ cho MỌI nơi đặt mật khẩu (admin tạo tài khoản, admin đặt lại,
+// người dùng tự đổi). Trước đây admin tạo với tối thiểu 4 ký tự ("1234" hợp lệ) trong khi tự đổi
+// đòi 6 — mắt xích yếu nhất của cả hệ thống nằm ở đường lỏng nhất. Mọi lớp xác thực phía sau
+// vô nghĩa nếu mật khẩu là "1234".
+// Trả về chuỗi lỗi nếu yếu, null nếu đạt. `context` để loại mật khẩu trùng tên đăng nhập / tên người.
+const MAT_KHAU_PHO_BIEN = new Set([
+  '12345678', '123456789', '1234567890', 'password', 'password1', 'qwerty', 'qwertyuiop',
+  'abc12345', '11111111', '00000000', 'iloveyou', 'admin123', 'esuhai123', '88888888',
+  '12341234', 'aa123456', 'a1234567', 'matkhau', 'ktx12345',
+]);
+function checkPassword(pw, context = []) {
+  const s = String(pw == null ? '' : pw);
+  if (s.length < 8) return 'Mật khẩu tối thiểu 8 ký tự';
+  if (s.length > 72) return 'Mật khẩu tối đa 72 ký tự';   // trần của bcrypt
+  if (!/[a-zA-Z]/.test(s) || !/\d/.test(s)) return 'Mật khẩu cần có cả chữ và số';
+  const low = s.toLowerCase();
+  if (MAT_KHAU_PHO_BIEN.has(low)) return 'Mật khẩu quá dễ đoán, vui lòng chọn mật khẩu khác';
+  if (/^(.)\1+$/.test(s)) return 'Mật khẩu không được chỉ gồm một ký tự lặp lại';
+  for (const c of context) {
+    const cc = String(c || '').toLowerCase().trim();
+    if (cc.length >= 3 && low.includes(cc)) return 'Mật khẩu không được chứa tên đăng nhập hoặc tên của bạn';
+  }
+  return null;
+}
+
 // Trường TEXT tự do: chặn độ dài. Postgres TEXT không giới hạn -> người lạ ẩn danh
 // nhét 2 triệu ký tự vào ô "ghi chú" của đơn đăng ký là chuyện đã đo được.
 function tooLong(body, limits) {
@@ -76,4 +101,4 @@ function tooLong(body, limits) {
   return null;
 }
 
-module.exports = { isValidYmd, ymdOrNull, isValidPhone, digits, isValidMonth, isValidGender, tooLong, checkSetting, rejectUnknown, SETTING_NUM };
+module.exports = { isValidYmd, ymdOrNull, isValidPhone, digits, isValidMonth, isValidGender, checkPassword, tooLong, checkSetting, rejectUnknown, SETTING_NUM };

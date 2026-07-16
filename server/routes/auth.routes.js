@@ -1,7 +1,10 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { query } = require('../db');
+const db = require('../db');
+const { query } = db;
 const { signToken, requireAuth, setAuthCookie, clearAuthCookie, revokeTokens, readToken } = require('../auth');
+const { checkPassword } = require('../valid');
+const guard = require('../login-guard');
 const jwt = require('jsonwebtoken');
 
 const router = express.Router();
@@ -26,28 +29,48 @@ router.post('/login', async (req, res, next) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'Nhập tên đăng nhập và mật khẩu' });
+    const now = Date.now();
+
+    // Tài khoản này có đang bị khoá vì sai quá nhiều lần không? Kiểm TRƯỚC khi so mật khẩu.
+    const khoa = guard.truocKhiThu(username, now);
+    if (khoa.khoa) {
+      const phut = Math.ceil(khoa.conLai / 60);
+      await guard.ghiNhatKyDangNhap(db.pool, { username: username.trim(), req, ketQua: 'bị khoá (đang trong thời gian khoá)' });
+      return res.status(429).json({ error: `Tài khoản tạm khoá do đăng nhập sai quá nhiều lần. Vui lòng thử lại sau ${phut} phút.` });
+    }
 
     const { rows } = await query('SELECT * FROM users WHERE lower(username) = lower($1) AND deleted_at IS NULL', [username.trim()]);
     const user = rows[0];
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+      const { khoaMoi } = guard.ghiNhanKetQua(username, false, now);
+      await guard.ghiNhatKyDangNhap(db.pool, { user: user || null, username: username.trim(), req, ketQua: khoaMoi ? 'SAI mật khẩu — vượt ngưỡng, KHOÁ tài khoản' : 'SAI mật khẩu' });
+      if (khoaMoi) return res.status(429).json({ error: `Đăng nhập sai quá nhiều lần. Tài khoản tạm khoá ${Math.round(guard.KHOA_MS / 60000)} phút để bảo vệ.` });
       return res.status(401).json({ error: 'Sai tên đăng nhập hoặc mật khẩu' });
     }
     // Học viên đã bị xoá hồ sơ (deleted_at) thì không cho đăng nhập nữa
     if (user.role === 'student' && user.student_id) {
       const s = (await query('SELECT 1 FROM students WHERE id=$1 AND deleted_at IS NULL', [user.student_id])).rows[0];
-      if (!s) return res.status(401).json({ error: 'Tài khoản không còn hiệu lực' });
+      if (!s) {
+        await guard.ghiNhatKyDangNhap(db.pool, { user, req, ketQua: 'tài khoản học viên đã bị xoá hồ sơ' });
+        return res.status(401).json({ error: 'Tài khoản không còn hiệu lực' });
+      }
     }
     // Đúng cổng chưa? Kiểm SAU khi đã xác thực mật khẩu — nếu kiểm trước thì câu báo lỗi
     // vô tình nói cho người lạ biết "tên đăng nhập này là tài khoản học viên", tức là
     // biến ô đăng nhập thành máy dò xem tài khoản nào tồn tại và thuộc loại gì.
     const cong = CONG[req.body.portal];
     if (cong && !cong.vai.includes(user.role)) {
+      // Mật khẩu ĐÚNG, chỉ nhầm cổng -> KHÔNG tính là lần sai, xoá bộ đếm.
+      guard.ghiNhanKetQua(username, true, now);
       const dung = user.role === 'student' ? 'student' : 'admin';
       return res.status(403).json({
         error: `Đây là tài khoản ${CONG[dung].ten.toLowerCase()}. Vui lòng đăng nhập ở cổng "${CONG[dung].ten}".`,
         portal: dung,
       });
     }
+    // Thành công: xoá bộ đếm sai, ghi nhật ký, cấp vé.
+    guard.ghiNhanKetQua(username, true, now);
+    await guard.ghiNhatKyDangNhap(db.pool, { user, req, ketQua: 'đăng nhập thành công' });
     setAuthCookie(res, signToken(user));
     res.json({ user: publicUser(user) });
   } catch (e) { next(e); }
@@ -77,9 +100,10 @@ router.get('/me', requireAuth, async (req, res, next) => {
 router.post('/change-password', requireAuth, async (req, res, next) => {
   try {
     const { oldPassword, newPassword } = req.body;
-    if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'Mật khẩu mới tối thiểu 6 ký tự' });
     const { rows } = await query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     const user = rows[0];
+    const loiMk = checkPassword(newPassword, [user.username, user.full_name]);
+    if (loiMk) return res.status(400).json({ error: 'Mật khẩu mới: ' + loiMk.charAt(0).toLowerCase() + loiMk.slice(1) });
     if (!bcrypt.compareSync(oldPassword || '', user.password_hash)) {
       return res.status(400).json({ error: 'Mật khẩu hiện tại không đúng' });
     }

@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { query } = require('../db');
 const { requireAuth, requireRole, revokeTokens } = require('../auth');
+const { checkPassword } = require('../valid');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin'));
@@ -83,7 +84,8 @@ router.post('/users', async (req, res, next) => {
     const username = (req.body.username || '').trim();
     const password = (req.body.password || '').trim();
     if (!username) return res.status(400).json({ error: 'Nhập tên đăng nhập' });
-    if (password.length < 4) return res.status(400).json({ error: 'Mật khẩu tối thiểu 4 ký tự' });
+    const loiMk = checkPassword(password, [username, req.body.full_name]);
+    if (loiMk) return res.status(400).json({ error: loiMk });
     const dup = await query('SELECT 1 FROM users WHERE lower(username)=lower($1)', [username]);
     if (dup.rows.length) return res.status(400).json({ error: `Tên đăng nhập "${username}" đã tồn tại` });
     // Tài khoản do quản trị tạo -> buộc nhân viên đổi mật khẩu ở lần đăng nhập đầu
@@ -113,7 +115,9 @@ router.put('/users/:id', async (req, res, next) => {
 router.post('/users/:id/password', async (req, res, next) => {
   try {
     const password = (req.body.password || '').trim();
-    if (password.length < 4) return res.status(400).json({ error: 'Mật khẩu tối thiểu 4 ký tự' });
+    const uNow = (await query('SELECT username, full_name FROM users WHERE id=$1', [req.params.id])).rows[0] || {};
+    const loiMk = checkPassword(password, [uNow.username, uNow.full_name]);
+    if (loiMk) return res.status(400).json({ error: loiMk });
     // Đặt lại mật khẩu -> buộc người dùng đổi lại ở lần đăng nhập kế tiếp
     await query('UPDATE users SET password_hash=$1, must_change_password=true WHERE id=$2', [bcrypt.hashSync(password, 10), req.params.id]);
     await revokeTokens(+req.params.id); // đá mọi phiên đang mở của tài khoản đó
