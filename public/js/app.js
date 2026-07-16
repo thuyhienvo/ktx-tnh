@@ -1804,10 +1804,15 @@ function fmtDT(v) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} · ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 let auditLimit = 200;
+let auditFilter = { user: '', from: '', to: '', offset: 0 };
 async function viewAudit() {
   el('topActions').innerHTML = `<button class="btn" onclick="viewAudit()">${IC.refresh} Tải lại</button>`;
   el('content').innerHTML = '<div class="spinner"></div>';
-  const rows = await guard(() => API.auditLog(auditLimit));
+  const res = await guard(() => API.auditLog({ limit: auditLimit, ...auditFilter }));
+  // Endpoint giờ trả { total, limit, offset, rows } (trước là mảng) để lọc + lật trang được (V2-66).
+  const rows = Array.isArray(res) ? res : (res.rows || []);
+  const total = Array.isArray(res) ? rows.length : (res.total || 0);
+  const offset = auditFilter.offset || 0;
   const todayStr = today();
   const todayCnt = rows.filter(r => String(r.at || '').slice(0, 10) === todayStr).length;
   const users = new Set(rows.map(r => r.username)).size;
@@ -1823,28 +1828,45 @@ async function viewAudit() {
     </tr>`;
   }).join('');
 
+  const dangLoc = auditFilter.user || auditFilter.from || auditFilter.to;
+  const tuTrang = offset + 1, denTrang = offset + rows.length;
   el('content').innerHTML = `
     <div class="cards">
-      <div class="stat"><div class="l">${IC.history} Tổng bản ghi (mới nhất)</div><div class="v sm">${rows.length}</div></div>
+      <div class="stat"><div class="l">${IC.history} Tổng bản ghi ${dangLoc ? '(theo bộ lọc)' : ''}</div><div class="v sm">${total.toLocaleString('vi-VN')}</div></div>
       <div class="stat"><div class="l">${IC.calendar} Thao tác hôm nay</div><div class="v sm">${todayCnt}</div></div>
-      <div class="stat"><div class="l">${IC.users} Người thao tác</div><div class="v sm">${users}</div></div>
+      <div class="stat"><div class="l">${IC.users} Người thao tác (trang này)</div><div class="v sm">${users}</div></div>
     </div>
     <div class="panel"><div class="hd"><h2>${IC.history} Nhật ký thao tác</h2>
-      <div class="flex" style="gap:8px">
+      <div class="flex" style="gap:8px;flex-wrap:wrap">
+        <div class="search"><span class="i">${IC.search}</span><input id="auUser" placeholder="Lọc theo người dùng..." value="${esc(auditFilter.user)}"></div>
+        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">Từ <input type="date" id="auFrom" value="${esc(auditFilter.from)}" style="padding:5px"></label>
+        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">Đến <input type="date" id="auTo" value="${esc(auditFilter.to)}" style="padding:5px"></label>
+        <button class="btn sm" id="auApply">${IC.search} Lọc</button>
+        ${dangLoc ? `<button class="btn sm ghost" id="auClear">Bỏ lọc</button>` : ''}
         <select id="auLimit" style="padding:6px 8px;font-size:13px">
-          ${[100, 200, 500].map(n => `<option value="${n}" ${n === auditLimit ? 'selected' : ''}>${n} dòng gần nhất</option>`).join('')}
+          ${[100, 200, 500].map(n => `<option value="${n}" ${n === auditLimit ? 'selected' : ''}>${n} dòng/trang</option>`).join('')}
         </select>
-        <div class="search"><span class="i">${IC.search}</span><input id="auSearch" placeholder="Tìm người dùng / thao tác..."></div>
       </div></div>
-      <div class="pad" style="padding-top:0"><span class="muted" style="font-size:12px" id="auCount"></span></div>
       <div class="table-wrap">
         ${rows.length ? `<table><thead><tr><th>Thời gian</th><th>Người dùng</th><th>Thao tác</th><th>Chi tiết</th></tr></thead>
-          <tbody>${body}</tbody></table>` : '<div class="empty">Chưa có nhật ký thao tác nào.</div>'}
+          <tbody>${body}</tbody></table>` : `<div class="empty">${dangLoc ? 'Không có bản ghi nào khớp bộ lọc.' : 'Chưa có nhật ký thao tác nào.'}</div>`}
       </div>
-      <div class="pad muted" style="font-size:12px">${IC.info} Nhật ký ghi lại mọi thao tác thêm/sửa/xóa của quản lý & nhân viên. Mật khẩu, CCCD, ảnh được ẩn tự động.</div>
+      <div class="pad flex" style="justify-content:space-between;align-items:center">
+        <span class="muted" style="font-size:12px">${rows.length ? `Đang xem ${tuTrang.toLocaleString('vi-VN')}–${denTrang.toLocaleString('vi-VN')} / ${total.toLocaleString('vi-VN')} bản ghi` : ''}</span>
+        <div class="flex" style="gap:6px">
+          <button class="btn sm ghost" id="auPrev" ${offset <= 0 ? 'disabled' : ''}>← Mới hơn</button>
+          <button class="btn sm ghost" id="auNext" ${denTrang >= total ? 'disabled' : ''}>Cũ hơn →</button>
+        </div>
+      </div>
+      <div class="pad muted" style="font-size:12px">${IC.info} Nhật ký ghi lại đăng nhập, mọi thao tác thêm/sửa/xóa, và các lần bị từ chối. Mật khẩu, CCCD, ảnh được ẩn tự động.</div>
     </div>`;
-  const sel = el('auLimit'); if (sel) sel.onchange = e => { auditLimit = +e.target.value; viewAudit(); };
-  const inp = el('auSearch'); if (inp) attachRowSearch(inp, 'auCount');
+  const apply = () => { auditFilter = { user: el('auUser').value.trim(), from: el('auFrom').value, to: el('auTo').value, offset: 0 }; viewAudit(); };
+  el('auApply').onclick = apply;
+  el('auUser').addEventListener('keydown', e => { if (e.key === 'Enter') apply(); });
+  if (el('auClear')) el('auClear').onclick = () => { auditFilter = { user: '', from: '', to: '', offset: 0 }; viewAudit(); };
+  el('auLimit').onchange = e => { auditLimit = +e.target.value; auditFilter.offset = 0; viewAudit(); };
+  el('auPrev').onclick = () => { auditFilter.offset = Math.max(0, offset - auditLimit); viewAudit(); };
+  el('auNext').onclick = () => { auditFilter.offset = offset + auditLimit; viewAudit(); };
 }
 
 /* ---------- TRUNG TÂM HỖ TRỢ ---------- */

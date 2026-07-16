@@ -150,7 +150,13 @@ const API = {
   deleteVType: id => api('/violations/types/' + id, { method: 'DELETE' }),
 
   // Admin: nhật ký + tài khoản nhân viên
-  auditLog: limit => api('/admin/audit' + (limit ? '?limit=' + limit : '')),
+  auditLog: (q = {}) => {
+    const p = new URLSearchParams();
+    for (const k of ['limit', 'offset', 'user', 'from', 'to', 'method', 'path'])
+      if (q[k] != null && q[k] !== '') p.set(k, q[k]);
+    const s = p.toString();
+    return api('/admin/audit' + (s ? '?' + s : ''));
+  },
   dataHealth: () => api('/admin/data-health'),
   adminUsers: () => api('/admin/users'),
   createUser: b => api('/admin/users', { method: 'POST', body: b }),

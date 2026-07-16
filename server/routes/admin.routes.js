@@ -59,11 +59,26 @@ router.get('/data-health', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Nhật ký có LỌC ĐƯỢC thì mới điều tra được. Trước đây chỉ nhận limit (trần 500) -> sau vài tuần
+// 500 dòng mới nhất chỉ còn vài ngày, sự cố 3 tháng trước nằm trong CSDL mà lấy không ra (V2-66).
 router.get('/audit', async (req, res, next) => {
   try {
-    const limit = Math.min(500, +req.query.limit || 200);
-    const { rows } = await query('SELECT * FROM audit_log ORDER BY at DESC LIMIT $1', [limit]);
-    res.json(rows);
+    const limit = Math.min(500, Math.max(1, +req.query.limit || 200));
+    const offset = Math.max(0, +req.query.offset || 0);   // lật trang -> với tới dòng cũ
+    const where = [], params = [];
+    if (req.query.user) { params.push('%' + req.query.user + '%'); where.push(`username ILIKE $${params.length}`); }
+    if (req.query.method) { params.push(req.query.method.toUpperCase()); where.push(`method = $${params.length}`); }
+    // Lọc theo khoảng ngày (from/to là YYYY-MM-DD). to là trọn ngày -> so < to + 1 ngày.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(req.query.from || '')) { params.push(req.query.from); where.push(`at >= $${params.length}::date`); }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(req.query.to || '')) { params.push(req.query.to); where.push(`at < ($${params.length}::date + 1)`); }
+    if (req.query.path) { params.push('%' + req.query.path + '%'); where.push(`path ILIKE $${params.length}`); }
+    const sqlWhere = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const total = (await query(`SELECT COUNT(*)::int c FROM audit_log ${sqlWhere}`, params)).rows[0].c;
+    params.push(limit); const pLimit = params.length;
+    params.push(offset); const pOffset = params.length;
+    const { rows } = await query(
+      `SELECT * FROM audit_log ${sqlWhere} ORDER BY at DESC LIMIT $${pLimit} OFFSET $${pOffset}`, params);
+    res.json({ total, limit, offset, rows });
   } catch (e) { next(e); }
 });
 

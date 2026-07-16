@@ -57,17 +57,31 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Nhật ký thao tác (audit): ghi mọi thay đổi (POST/PUT/DELETE) của người dùng đã đăng nhập
+// Đường GET NHẠY CẢM cần ghi vết việc ĐỌC (không chỉ việc ghi): xem ảnh CCCD, đọc trang sức khoẻ
+// dữ liệu (lộ danh sách CCCD/tên), đọc chính nhật ký. Với dữ liệu cá nhân (Nghị định 13),
+// việc ĐỌC mới là thứ cần lưu vết.
+const GET_NHAY_CAM = [/\/cccd\//i, /\/data-health/i, /\/admin\/audit/i];
+const ipCua = req => (req.ip || req.socket?.remoteAddress || '').replace(/^::ffff:/, '') || '?';
+
+// Nhật ký thao tác (audit)
 app.use('/api', (req, res, next) => {
-  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && !/^\/auth\//.test(req.path)) {
-    res.on('finish', () => {
+  const method = req.method;
+  const isWrite = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method);
+  const isSensitiveGet = method === 'GET' && GET_NHAY_CAM.some(re => re.test(req.path));
+  // /auth/* tự ghi nhật ký đăng nhập riêng (login-guard) -> bỏ ở đây để không ghi trùng.
+  if ((!isWrite && !isSensitiveGet) || /^\/auth\//.test(req.path)) return next();
+  res.on('finish', () => {
+    try {
       const denied = res.statusCode === 401 || res.statusCode === 403;
-      if (!req.user) return;                                   // chưa đăng nhập -> không có ai để ghi
       if (req.body && req.body.preview === true) return;       // xem trước hóa đơn (ROLLBACK) -> không ghi
-      // Ghi: (a) thao tác THÀNH CÔNG của MỌI vai (kể cả học viên — trước đây bỏ qua, nên tranh chấp
-      // "em không hề đăng ký máy giặt" không có gì đối chiếu, V2-46); (b) MỌI lần BỊ TỪ CHỐI.
-      // Chỉ bỏ qua lỗi KHÔNG phải từ chối (400 validate...) cho đỡ nhiễu.
-      if (!denied && res.statusCode >= 400) return;
+      if (!req.user) {
+        // Chưa gắn được danh tính. Vẫn ghi khi BỊ TỪ CHỐI mà có mang token/cookie — đó là dấu hiệu
+        // DÒ token / dùng vé đã thu hồi (V2-64). Yêu cầu ẩn danh bình thường (không token) thì bỏ qua.
+        const coToken = !!(req.headers.authorization || /(?:^|;\s*)ktx_token=/.test(req.headers.cookie || ''));
+        if (!(denied && coToken)) return;
+      } else if (!denied && res.statusCode >= 400) {
+        return;                                                // lỗi không-phải-từ-chối (400 validate) -> bỏ cho đỡ nhiễu
+      }
       let detail = '';
       try {
         const b = req.body || {}, c = {};
@@ -76,14 +90,15 @@ app.use('/api', (req, res, next) => {
           else if (typeof b[k] === 'string' && b[k].length > 100) c[k] = b[k].slice(0, 100) + '…';
           else c[k] = b[k];
         }
-        detail = (denied ? `[TỪ CHỐI ${res.statusCode}] ` : '') + JSON.stringify(c).slice(0, 460);
+        const tag = denied ? `[TỪ CHỐI ${res.statusCode}] ` : (isSensitiveGet ? '[ĐỌC] ' : '');
+        detail = tag + JSON.stringify({ ...c, ip: ipCua(req) }).slice(0, 460);
       } catch (e) {}
       db.pool.query(
         'INSERT INTO audit_log (user_id, username, role, method, path, detail) VALUES ($1,$2,$3,$4,$5,$6)',
-        [req.user.id || null, req.user.username || '', req.user.role || '', req.method, req.originalUrl.split('?')[0], detail]
+        [req.user?.id || null, req.user?.username || '(chưa đăng nhập)', req.user?.role || '', method, req.originalUrl.split('?')[0], detail]
       ).catch(() => {});
-    });
-  }
+    } catch (e) {}
+  });
   next();
 });
 
