@@ -1446,7 +1446,7 @@ function refundForm(id) {
   const assetRow = a => `<tr>
     <td>${esc(a.name)} <span class="muted" style="font-size:11px">(${esc(a.unit)})</span></td>
     <td class="num"><input type="number" min="0" step="1" data-dqty="${a.id}" value="0" style="width:64px;text-align:right" oninput="dedCalc()"></td>
-    <td class="num"><input type="number" min="0" data-dfee="${a.id}" data-dname="${esc(a.name)}" value="${+a.fee || 0}" style="width:110px;text-align:right" oninput="dedCalc()"></td>
+    <td class="num"><input type="number" data-dfee="${a.id}" data-dname="${esc(a.name)}" value="${+a.fee || 0}" style="width:110px;text-align:right;background:var(--bg2,#f5f5f5)" readonly title="Phí bồi hoàn lấy từ danh mục tài sản — sửa trong mục Cài đặt"></td>
     <td class="num" id="dl_${a.id}">0</td>
   </tr>`;
   const person = ST.assets.filter(a => a.category === 'person');
@@ -1488,16 +1488,18 @@ function dedCalc() {
   el('dedTotal').dataset.total = total;
 }
 async function doRefund(id, deposit) {
-  let total = 0; const parts = [];
+  // Gửi DANH SÁCH { asset_id, quantity } — server tự tra phí bồi hoàn thật từ danh mục và tự tính.
+  // Không gửi con số tự nhân ở máy khách nữa (V2-30).
+  let total = 0; const deductions = [];
   document.querySelectorAll('#modal input[data-dqty]').forEach(q => {
     const qty = +q.value || 0; if (!qty) return;
     const feeEl = document.querySelector(`[data-dfee="${q.dataset.dqty}"]`);
-    const fee = +feeEl.value || 0, line = qty * fee;
-    total += line; parts.push(`${feeEl.dataset.dname} x${qty} = ${money(line)}`);
+    total += qty * (+feeEl.value || 0);   // chỉ để hiện toast, không phải con số quyết định
+    deductions.push({ asset_id: +q.dataset.dqty, quantity: qty });
   });
   await guard(() => API.settleDeposit(id, {
     action: 'refund', account: el('r_acc').value.trim(), bank: el('r_bank').value.trim(), date: el('r_date').value,
-    deduction: total, deduction_note: parts.join('; '),
+    deductions,
   }));
   await refreshCache(); closeModal();
   toast(total ? `Đã hoàn cọc (trừ ${money(total)} hư hao)` : 'Đã hoàn cọc');

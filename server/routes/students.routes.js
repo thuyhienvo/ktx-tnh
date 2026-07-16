@@ -551,12 +551,36 @@ router.post('/:id/deposit', requireRole('admin', 'staff'), async (req, res, next
 // Xử lý cọc khi trả phòng: hoàn (kèm STK/ngân hàng + khấu trừ hư hao) hoặc giữ cọc
 router.post('/:id/deposit-settle', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
-    const bad = rejectUnknown(req.body, ['action', 'date', 'deduction', 'bank', 'account', 'deduction_note', 'override_reason']);
+    const bad = rejectUnknown(req.body, ['action', 'date', 'deduction', 'deductions', 'bank', 'account', 'deduction_note', 'override_reason']);
     if (bad) return res.status(400).json({ error: bad });
     const action = req.body.action === 'refund' ? 'refunded' : 'forfeited';
     if (req.body.date != null && !isValidYmd(req.body.date)) return res.status(400).json({ error: 'Ngày hoàn cọc không hợp lệ' });
     const date = req.body.date || new Date().toISOString().slice(0, 10);
-    const deduction = +req.body.deduction || 0;
+
+    // V2-30: khấu trừ hư hao tính Ở SERVER từ bảng assets, không tin con số client gửi lên.
+    // Client gửi danh sách { asset_id, quantity }; server tra assets.fee THẬT, tự nhân, tự tổng,
+    // tự dựng ghi chú từ tên + phí thật. Trước đây toàn bộ phép nhân chạy ở máy khách rồi gửi lên
+    // một con số -> danh mục tài sản chỉ là trang trí, phí bồi hoàn không phải ràng buộc.
+    let deduction, deductionNote;
+    if (Array.isArray(req.body.deductions)) {
+      let sum = 0; const parts = [];
+      for (const line of req.body.deductions) {
+        const qty = Number(line && line.quantity);
+        if (!Number.isInteger(qty) || qty < 0) return res.status(400).json({ error: `Số lượng khấu trừ không hợp lệ: "${line && line.quantity}"` });
+        if (qty === 0) continue;
+        const a = (await query('SELECT name, fee FROM assets WHERE id=$1 AND deleted_at IS NULL', [line.asset_id])).rows[0];
+        if (!a) return res.status(400).json({ error: `Tài sản không tồn tại (id=${line && line.asset_id})` });
+        const lineTotal = qty * (Number(a.fee) || 0);
+        sum += lineTotal;
+        parts.push(`${a.name} x${qty} = ${lineTotal.toLocaleString('vi-VN')}`);
+      }
+      deduction = sum;
+      deductionNote = parts.join('; ');
+    } else {
+      // Đường cũ (khấu trừ nhập tay không theo danh mục) — vẫn bị chặn 0..cọc như trước.
+      deduction = +req.body.deduction || 0;
+      deductionNote = req.body.deduction_note || '';
+    }
 
     const stu = (await query('SELECT deposit_amount, deposit_status, checkout_notice_date, check_out_date, checkout_reason FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!stu) return res.status(404).json({ error: 'Không tìm thấy học viên' });
@@ -580,13 +604,13 @@ router.post('/:id/deposit-settle', requireRole('admin', 'staff'), async (req, re
           });
         }
         // Có lý do ghi đè -> cho phép nhưng GHI VẾT vào ghi chú khấu trừ để tra được về sau
-        req.body.deduction_note = `[HOÀN NGOẠI LỆ — ${elig.reason}] ${ov}${req.body.deduction_note ? ' · ' + req.body.deduction_note : ''}`;
+        deductionNote = `[HOÀN NGOẠI LỆ — ${elig.reason}] ${ov}${deductionNote ? ' · ' + deductionNote : ''}`;
       }
     }
     const { rows } = await query(
       `UPDATE students SET deposit_status=$1, deposit_refund_date=$2, deposit_bank=$3, deposit_account=$4,
          deposit_deduction=$5, deposit_deduction_note=$6 WHERE id=$7 RETURNING *`,
-      [action, date, req.body.bank || '', req.body.account || '', deduction, req.body.deduction_note || '', req.params.id]
+      [action, date, req.body.bank || '', req.body.account || '', deduction, deductionNote, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
     res.json(rows[0]);
