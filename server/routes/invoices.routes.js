@@ -61,7 +61,9 @@ router.post('/generate', async (req, res, next) => {
   try {
     const { month, readings } = req.body;
     const preview = !!req.body.preview; // xem trước: tính rồi ROLLBACK, không ghi gì
-    if (!month) return res.status(400).json({ error: 'Chọn kỳ (tháng)' });
+    // isValidMonth chứ không chỉ "!month": trước đây "xin-chao" làm sập 500 ở month.split('-'),
+    // còn "9999-12" thì LƯU THẬT cả loạt phiếu rồi "9999" nhảy vào ô chọn năm của báo cáo (V2-69).
+    if (!isValidMonth(month)) return res.status(400).json({ error: 'Kỳ (tháng) không hợp lệ — chọn dạng YYYY-MM.' });
     const fees = await getSettings();
 
     await client.query('BEGIN');
@@ -218,7 +220,8 @@ router.post('/generate', async (req, res, next) => {
 router.post('/generate-one', async (req, res, next) => {
   try {
     const { student_id, month } = req.body;
-    if (!student_id || !month) return res.status(400).json({ error: 'Thiếu học viên hoặc kỳ' });
+    if (!student_id) return res.status(400).json({ error: 'Thiếu học viên' });
+    if (!isValidMonth(month)) return res.status(400).json({ error: 'Kỳ (tháng) không hợp lệ — chọn dạng YYYY-MM.' });
     const fees = await getSettings();
     const s = (await query('SELECT * FROM students WHERE id=$1', [student_id])).rows[0];
     if (!s) return res.status(404).json({ error: 'Không tìm thấy học viên' });

@@ -14,7 +14,12 @@ router.get('/revenue', async (req, res, next) => {
     // Trước đây chỉ lọc i.deleted_at -> xoá học viên xong, tiền của họ VẪN nằm trong doanh thu:
     // báo cáo có khoản thu của người không còn tồn tại, không tra ra được là ai, không ai đi thu.
     let where = 'WHERE i.deleted_at IS NULL AND s.deleted_at IS NULL';
-    if (year) { params.push(year + '-%'); where += ' AND i.month LIKE $1'; }
+    // year phải đúng 4 chữ số. Trước đây ghép thẳng "year + '-%'" rồi LIKE -> "?year=%" thành "%-%"
+    // khớp MỌI tháng, vô hiệu hoá bộ lọc năm (V2-70). Dùng so tiền tố chính xác thay vì LIKE.
+    if (year != null && year !== '') {
+      if (!/^\d{4}$/.test(year)) return res.status(400).json({ error: 'Năm không hợp lệ (cần 4 chữ số).' });
+      params.push(year); where += ` AND substr(i.month,1,4) = $${params.length}`;
+    }
     const { rows } = await query(`
       SELECT i.month,
         COALESCE(SUM(i.room_charge),0) AS room,
@@ -32,10 +37,16 @@ router.get('/revenue', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Các năm có dữ liệu hóa đơn
+// Các năm có dữ liệu hóa đơn — PHẢI lọc y hệt /revenue (JOIN students, loại HV đã xoá), nếu không
+// năm mà toàn bộ phiếu thuộc HV đã xoá vẫn hiện trong ô chọn, bấm vào thì /revenue trả rỗng ->
+// báo cáo trắng không lời giải thích (V2-69b). Hai đường phải cho cùng một câu trả lời.
 router.get('/years', async (req, res, next) => {
   try {
-    const { rows } = await query(`SELECT DISTINCT substr(month,1,4) AS y FROM invoices WHERE deleted_at IS NULL ORDER BY y DESC`);
+    const { rows } = await query(
+      `SELECT DISTINCT substr(i.month,1,4) AS y
+         FROM invoices i JOIN students s ON s.id = i.student_id
+        WHERE i.deleted_at IS NULL AND s.deleted_at IS NULL
+        ORDER BY y DESC`);
     res.json(rows.map(r => r.y));
   } catch (e) { next(e); }
 });
