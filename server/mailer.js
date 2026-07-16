@@ -5,12 +5,16 @@ let nodemailer = null;
 try { nodemailer = require('nodemailer'); } catch (_) { /* chưa cài — bỏ qua */ }
 
 const { getSettings } = require('./db');
+const { isPrivateHost, isValidPort, normalizeBool, isValidEmail } = require('./valid');
 
 const SEV = { minor: 'Nhẹ', major: 'Nặng', severe: 'Nghiêm trọng' };
 const fmt = d => { if (!d) return '—'; const p = String(d).slice(0, 10).split('-'); return `${p[2]}/${p[1]}/${p[0]}`; };
 
 function smtpReady(s) {
-  return !!(s.smtp_host && s.smtp_user && s.smtp_pass && s.school_email);
+  // Kiểm school_email ĐÚNG ĐỊNH DẠNG, không chỉ "có tồn tại": trước đây school_email="abc" vẫn
+  // báo "sẵn sàng", cảnh báo biến mất, nhưng mọi lần gửi đều fail -> nhà trường không nhận được
+  // gì mà không ai biết (V2-16).
+  return !!(s.smtp_host && s.smtp_user && s.smtp_pass && isValidEmail(s.school_email));
 }
 
 // Tạo transporter với timeout ngắn (tránh treo request khi SMTP không phản hồi)
@@ -18,7 +22,7 @@ function buildTransport(s) {
   return nodemailer.createTransport({
     host: s.smtp_host,
     port: +s.smtp_port || 587,
-    secure: String(s.smtp_secure) === 'true',
+    secure: normalizeBool(s.smtp_secure),   // "True"/"1"/"yes" cũng hiểu là bật (V2-17)
     auth: { user: s.smtp_user, pass: s.smtp_pass },
     connectionTimeout: 10000,
     greetingTimeout: 8000,
@@ -39,12 +43,33 @@ async function mailStatus() {
 async function testConnection(override = {}) {
   if (!nodemailer) return { ok: false, reason: 'Server chưa cài nodemailer' };
   const saved = await getSettings();
+  const host = override.smtp_host ?? saved.smtp_host;
+  const user = override.smtp_user ?? saved.smtp_user;
+  const overridePass = (override.smtp_pass && override.smtp_pass.trim()) ? override.smtp_pass : null;
+
+  // V2-12 (CHẶN PHÁT HÀNH): CHỈ được mượn mật khẩu đã lưu khi test ĐÚNG host+user đã lưu.
+  // Nếu người gọi đổi host/user đích thì BẮT BUỘC nhập lại mật khẩu — không ghép credential
+  // của KTX với một host do người gọi chỉ định, vì host đó sẽ bắt được mật khẩu ngay trên dây.
+  const sameTarget = host === saved.smtp_host && user === saved.smtp_user;
+  const pass = overridePass || (sameTarget ? saved.smtp_pass : null);
+  if (!pass) {
+    return { ok: false, reason: 'Đổi máy chủ hoặc tài khoản SMTP thì phải nhập lại mật khẩu (không dùng lại mật khẩu đã lưu cho máy chủ khác).' };
+  }
+
+  // V2-13: chặn host nội bộ/loopback/link-local -> không biến server thành máy quét cổng nội bộ.
+  if (isPrivateHost(host)) {
+    return { ok: false, reason: 'Máy chủ SMTP không hợp lệ (không nhận địa chỉ nội bộ/loopback).' };
+  }
+  // V2-14: cổng phải hợp lệ (đường /smtp/test trước đây không kiểm, chỉ đường PUT lưu mới kiểm).
+  const port = override.smtp_port ?? saved.smtp_port;
+  if (port != null && String(port).trim() !== '' && !isValidPort(port)) {
+    return { ok: false, reason: 'Cổng SMTP không hợp lệ (1–65535).' };
+  }
+
   const s = {
-    smtp_host: override.smtp_host ?? saved.smtp_host,
-    smtp_port: override.smtp_port ?? saved.smtp_port,
+    smtp_host: host, smtp_port: port,
     smtp_secure: override.smtp_secure ?? saved.smtp_secure,
-    smtp_user: override.smtp_user ?? saved.smtp_user,
-    smtp_pass: (override.smtp_pass && override.smtp_pass.trim()) ? override.smtp_pass : saved.smtp_pass,
+    smtp_user: user, smtp_pass: pass,
   };
   if (!s.smtp_host || !s.smtp_user || !s.smtp_pass) {
     return { ok: false, reason: 'Thiếu host / tài khoản / mật khẩu SMTP' };
@@ -53,7 +78,9 @@ async function testConnection(override = {}) {
     await buildTransport(s).verify();
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e && e.message ? e.message : String(e) };
+    // KHÔNG trả nguyên văn lỗi gốc (ECONNREFUSED/timeout/greeting) — phân biệt được các lỗi này
+    // là vẽ được sơ đồ mạng nội bộ. Chỉ báo chung là kết nối không thành công.
+    return { ok: false, reason: 'Không kết nối được tới máy chủ SMTP với cấu hình này. Kiểm tra lại host, cổng, tài khoản, mật khẩu.' };
   }
 }
 

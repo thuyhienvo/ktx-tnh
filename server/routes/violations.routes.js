@@ -15,7 +15,9 @@ router.get('/types', async (req, res, next) => {
     res.json(rows);
   } catch (e) { next(e); }
 });
-router.post('/types', async (req, res, next) => {
+// Danh mục loại vi phạm là cấu hình -> CHỈ admin sửa (schema ghi rõ "sửa trong Cài đặt", mà Cài
+// đặt là của admin). Trước đây cả staff cũng hạ severity / ẩn loại vi phạm được (V2-19).
+router.post('/types', requireRole('admin'), async (req, res, next) => {
   try {
     const name = (req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Nhập tên loại vi phạm' });
@@ -25,7 +27,7 @@ router.post('/types', async (req, res, next) => {
     res.status(201).json(rows[0]);
   } catch (e) { next(e); }
 });
-router.put('/types/:id', async (req, res, next) => {
+router.put('/types/:id', requireRole('admin'), async (req, res, next) => {
   try {
     const { rows } = await query('UPDATE violation_types SET name=$1, severity=$2, active=$3 WHERE id=$4 RETURNING *',
       [(req.body.name || '').trim(), SEV(req.body.severity), req.body.active !== false, req.params.id]);
@@ -34,7 +36,7 @@ router.put('/types/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 // "Xóa" loại vi phạm = ẩn (deactivate), giữ lại để không mất dữ liệu tham chiếu
-router.delete('/types/:id', async (req, res, next) => {
+router.delete('/types/:id', requireRole('admin'), async (req, res, next) => {
   try { await query('UPDATE violation_types SET active=false WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
   catch (e) { next(e); }
 });

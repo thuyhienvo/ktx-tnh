@@ -90,6 +90,41 @@ function checkPassword(pw, context = []) {
   return null;
 }
 
+// Email hợp lệ (đơn giản, đủ chặn "abc"). Dùng cho school_email, smtp_from...
+function isValidEmail(s) {
+  s = String(s == null ? '' : s).trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254;
+}
+
+// Host NỘI BỘ / loopback / link-local — chặn để server không bị dùng làm công cụ quét cổng
+// nội bộ hay đọc metadata cloud (169.254.169.254). Chỉ chặn IP literal + tên loopback;
+// không chống được DNS rebinding nhưng bịt được đường tấn công trực tiếp.
+function isPrivateHost(host) {
+  const h = String(host == null ? '' : host).trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (!h) return true;
+  if (h === 'localhost' || h.endsWith('.localhost') || h === '0.0.0.0' || h === '::' || h === '::1') return true;
+  if (/^127\./.test(h)) return true;                       // loopback
+  if (/^169\.254\./.test(h)) return true;                  // link-local + metadata cloud
+  if (/^10\./.test(h)) return true;                        // private A
+  if (/^192\.168\./.test(h)) return true;                  // private C
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;   // private B 172.16–31
+  if (/^(fc|fd)[0-9a-f]{2}:/.test(h)) return true;         // IPv6 unique-local
+  if (/^fe80:/.test(h)) return true;                       // IPv6 link-local
+  return false;
+}
+
+// Cổng TCP hợp lệ: số nguyên 1..65535
+function isValidPort(p) {
+  const n = Number(p);
+  return Number.isInteger(n) && n >= 1 && n <= 65535;
+}
+
+// Chuẩn hoá boolean từ cài đặt: "true"/"1"/"yes"/"on" -> true (không âm thầm nuốt thành false).
+function normalizeBool(v) {
+  const s = String(v == null ? '' : v).trim().toLowerCase();
+  return s === 'true' || s === '1' || s === 'yes' || s === 'on';
+}
+
 // Trường TEXT tự do: chặn độ dài. Postgres TEXT không giới hạn -> người lạ ẩn danh
 // nhét 2 triệu ký tự vào ô "ghi chú" của đơn đăng ký là chuyện đã đo được.
 function tooLong(body, limits) {
@@ -101,4 +136,4 @@ function tooLong(body, limits) {
   return null;
 }
 
-module.exports = { isValidYmd, ymdOrNull, isValidPhone, digits, isValidMonth, isValidGender, checkPassword, tooLong, checkSetting, rejectUnknown, SETTING_NUM };
+module.exports = { isValidYmd, ymdOrNull, isValidPhone, digits, isValidMonth, isValidGender, checkPassword, isValidEmail, isPrivateHost, isValidPort, normalizeBool, tooLong, checkSetting, rejectUnknown, SETTING_NUM };
