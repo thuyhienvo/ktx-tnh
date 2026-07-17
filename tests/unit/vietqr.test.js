@@ -57,9 +57,22 @@ module.exports = {
     t.eq('Không tiền → POI(01)="11" (QR tĩnh)', parseTLV(st)['01'], '11');
     t.ok('Không tiền → không có trường số tiền(54)', parseTLV(st)['54'] === undefined);
 
-    // Guard: BIN sai/thiếu, tài khoản rỗng → null (không sinh QR rác)
-    t.ok('BIN 5 chữ số → null', V.buildString({ bin: '12345', account: '123', amount: 1 }) === null);
+    // Guard: BIN sai/thiếu, tài khoản sai định dạng → null (không sinh QR rác)
+    t.ok('BIN 5 chữ số → null', V.buildString({ bin: '12345', account: '123456', amount: 1 }) === null);
     t.ok('Thiếu tài khoản → null', V.buildString({ bin: '970436', account: '', amount: 1 }) === null);
+    t.ok('Số TK < 6 chữ số → null', V.buildString({ bin: '970436', account: '123', amount: 1 }) === null);
+    t.ok('Số TK có chữ cái → null', V.buildString({ bin: '970436', account: '00ABC11', amount: 1 }) === null);
+
+    // Số tiền ÂM → coi như QR tĩnh (không gắn trường 54), không sinh chuỗi rác
+    const neg = V.buildString({ bin: '970436', account: '0011001234567', amount: -5000, addInfo: '' });
+    t.ok('Số tiền âm → không có trường 54', neg && parseTLV(neg)['54'] === undefined && parseTLV(neg)['01'] === '11', neg);
+
+    // Dữ liệu ngân hàng phải khớp Napas (đã từng gõ tay sai SeABank/ABBANK/OceanBank)
+    t.ok('Có đủ danh sách ngân hàng (≥40)', V.BANKS.length >= 40, `có ${V.BANKS.length} NH`);
+    t.eq('SeABank đúng BIN 970440', (V.bankByBin('970440') || {}).short, 'SeABank');
+    t.eq('ABBANK đúng BIN 970425', (V.bankByBin('970425') || {}).short, 'ABBANK');
+    t.ok('BIN sai cũ 970468 KHÔNG còn trong danh sách', V.bankByBin('970468') === null);
+    t.ok('Mỗi BIN chỉ xuất hiện một lần (không trùng)', new Set(V.BANKS.map(b => b.bin)).size === V.BANKS.length);
 
     // Nội dung bỏ dấu tiếng Việt (app ngân hàng chỉ nhận không dấu)
     t.eq('Bỏ dấu tiếng Việt trong nội dung', V.asciiVN('Trần Thị Hồng — Phòng 104 (đợt 2)'), 'Tran Thi Hong Phong 104 dot 2');

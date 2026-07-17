@@ -1,3 +1,9 @@
+/* ================= CỜ TÍNH NĂNG ================= */
+// Bật/tắt TOÀN BỘ mảng tài chính Phase 2 (mã QR chuyển khoản + cột "đã thu" + bộ lọc + phiếu thu).
+// Hiện TẮT theo yêu cầu — code giữ nguyên, khi nào chạy thì đổi thành true (một dòng duy nhất).
+// Đặt ở đầu file (không để lọt giữa các hàm) để tránh đọc trước khi khai báo (TDZ) nếu sau này có code chạy sớm.
+const FINANCE_PHASE2 = false;
+
 /* ================= ĐIỀU PHỐI CHÍNH ================= */
 function boot() {
   if (location.pathname.replace(/\/$/, '') === '/dang-ky') return renderPublicRegister();
@@ -2316,22 +2322,24 @@ async function viewInvoices() {
     <div class="cards">
       <div class="stat"><div class="l">${IC.calendar} Kỳ</div><div class="v sm"><select id="im" style="font-size:15px;font-weight:600;padding:6px 8px">${(months.length ? months : [invMonth]).map(m => `<option value="${m}" ${m === invMonth ? 'selected' : ''}>${monthLabel(m)}</option>`).join('')}</select></div></div>
       <div class="stat"><div class="l">${IC.receipt} Số phiếu</div><div class="v sm">${all.length}</div></div>
-      <div class="stat"><div class="l">${IC.check} Đã thu</div><div class="v sm">${money(paid)}<div class="muted" style="font-size:11px;font-weight:500">${all.filter(i => i.status === 'paid').length}/${all.length} phiếu</div></div></div>
-      <div class="stat"><div class="l">Còn phải thu</div><div class="v sm">${money(total - paid)}</div></div>
+      ${FINANCE_PHASE2
+        ? `<div class="stat"><div class="l">${IC.check} Đã thu</div><div class="v sm">${money(paid)}<div class="muted" style="font-size:11px;font-weight:500">${all.filter(i => i.status === 'paid').length}/${all.length} phiếu</div></div></div>
+           <div class="stat"><div class="l">Còn phải thu</div><div class="v sm">${money(total - paid)}</div></div>`
+        : `<div class="stat"><div class="l">Tổng tiền phiếu (dự báo)</div><div class="v sm">${money(total)}</div></div>`}
     </div>
     <div class="panel"><div class="hd"><h2>Phiếu báo tiền phòng ${monthLabel(invMonth)} (<span id="invCount">${list.length}</span>)</h2>
       <span class="muted" style="font-size:12px">Đơn vị: đồng</span>
       <div class="toolbar">
         <div class="search"><span class="i">${IC.search}</span><input id="invs" placeholder="Tìm tên HV / số phòng..." value="${esc(invSearch)}"></div>
-        <div class="rowbtns">
+        ${FINANCE_PHASE2 ? `<div class="rowbtns">
           <button class="btn sm ${invFilter === 'all' ? 'pri' : ''}" onclick="setInvFilter('all')">Tất cả</button>
           <button class="btn sm ${invFilter === 'unpaid' ? 'pri' : ''}" onclick="setInvFilter('unpaid')">Chưa thu</button>
           <button class="btn sm ${invFilter === 'paid' ? 'pri' : ''}" onclick="setInvFilter('paid')">Đã thu</button>
-        </div>
+        </div>` : ''}
         ${all.length ? `<button class="btn sm" onclick='exportCSV(${JSON.stringify(list).replace(/'/g, "&#39;")})'>${IC.download} Xuất Excel (CSV)</button>` : ''}</div></div>
       <div class="table-wrap">
       ${all.length === 0 ? `<div class="empty">Chưa có hóa đơn nào cho kỳ này.<br><br><button class="btn pri" onclick="generateForm()">${IC.receipt} Tạo hóa đơn</button></div>` :
-      list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Giảm</th><th class="num">Tổng</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+      list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Giảm</th><th class="num">Tổng</th>${FINANCE_PHASE2 ? '<th>Trạng thái</th>' : ''}<th></th></tr></thead><tbody>
         ${list.map(i => `<tr data-s="${esc(((i.student_name || '') + ' ' + (i.student_code || '') + ' ' + (i.room_name || '')).toLowerCase())}">
           <td><strong>${esc(i.student_name)}</strong>${i.student_code ? `<div class="muted" style="font-size:11px">${esc(i.student_code)}</div>` : ''}</td>
           <td>${esc(i.room_name || '—')}</td>
@@ -2346,17 +2354,17 @@ async function viewInvoices() {
             ? `<span class="badge green" title="${[+i.room_discount ? 'Giảm tiền phòng ' + money(i.room_discount) : '', +i.leader_discount ? 'Giảm phòng trưởng ' + money(i.leader_discount) : ''].filter(Boolean).join(' · ')}">−${moneyN((+i.leader_discount || 0) + (+i.room_discount || 0))}</span>`
             : '—'}</td>
           <td class="num"><strong>${moneyN(i.total)}</strong></td>
-          <td>${invStatusBadge(i.status)}</td>
+          ${FINANCE_PHASE2 ? `<td>${invStatusBadge(i.status)}</td>` : ''}
           <td class="num"><div class="rowbtns" style="justify-content:flex-end">
             <button class="btn sm pri" onclick='phieuBao(${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.fileText} Phiếu báo</button>
-            ${i.status === 'paid'
+            ${FINANCE_PHASE2 && i.status === 'paid'
               ? `<button class="btn sm ghost" title="Gỡ trạng thái đã thu (được ghi nhật ký)" onclick="setInvStatus(${i.id},'pending')">${IC.undo} Bỏ thu</button>`
-              : `<button class="btn sm green" title="Đánh dấu đã thu" onclick="setInvStatus(${i.id},'paid')">${IC.check} Đã thu</button>
+              : `${FINANCE_PHASE2 ? `<button class="btn sm green" title="Đánh dấu đã thu" onclick="setInvStatus(${i.id},'paid')">${IC.check} Đã thu</button>` : ''}
                  <button class="btn sm ghost" title="Tính lại theo số ngày ở hiện tại" onclick="recalcInv(${i.id})">${IC.refresh}</button>
                  <button class="btn sm ghost" onclick='invoiceForm(${i.id}, ${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.pencil}</button>
                  <button class="btn sm ghost" onclick="delInvoice(${i.id})">${IC.trash}</button>`}
           </div></td></tr>`).join('')}
-        <tr class="no-result" style="display:none"><td colspan="13"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
+        <tr class="no-result" style="display:none"><td colspan="${FINANCE_PHASE2 ? 13 : 12}"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có hóa đơn ${invFilter === 'paid' ? 'đã đóng' : 'chưa đóng'} trong kỳ này.</div>`}
     </div></div>
     ${elecPanel}`;
@@ -2557,7 +2565,7 @@ async function phieuBao(inv) {
         ${rows.join('')}
         <tr class="rc-total"><td colspan="3">TỔNG CỘNG PHẢI NỘP</td><td class="n">${money(inv.total)}</td></tr>
       </tbody></table>
-      ${paymentQrBlock(set, inv.total, (s.code || s.name || '') + ' T' + (inv.month || '').replace('-', ''))}
+      ${+inv.total > 0 ? paymentQrBlock(set, inv.total, (s.code || ('KTX' + s.id)) + ' T' + (inv.month || '').replace('-', '')) : ''}
       <div class="rc-note">
         ${IC.creditCard} Thanh toán qua <strong>mã QR</strong> do quản lý gửi trên Zalo. Hạn đóng: <strong>ngày ${set.due_day_from || 1}–${set.due_day_to || 5}</strong> hàng tháng.<br>
         ${IC.pin} Nếu có sai sót, vui lòng báo lại trước ngày 05. Xin cảm ơn!
@@ -2769,9 +2777,9 @@ function viewSettings() {
     <div class="panel"><div class="hd"><h2>${IC.key} Tài khoản của bạn</h2></div><div class="pad">
       <button class="btn" onclick="changePwd()">${IC.key} Đổi mật khẩu</button>
     </div></div>
-
-    <div class="panel"><div class="hd"><h2>${IC.creditCard} Tài khoản nhận tiền (mã QR chuyển khoản)</h2><span class="badge amber" style="font-size:10px">Bật sau</span></div><div class="pad">
-      <div class="hint">${IC.info} <strong>Chưa dùng ngay</strong> — mục này để dành cho giai đoạn app tự xuất phiếu thu. Khi bật: nhập <strong>một lần</strong>, hệ thống tự sinh <strong>mã QR VietQR</strong> trên mỗi phiếu báo (đúng số tiền + nội dung), học viên quét là chuyển khoản ngay. Để trống thì phiếu báo vẫn ghi "QR gửi qua Zalo" như hiện tại.</div>
+    ${FINANCE_PHASE2 ? `
+    <div class="panel"><div class="hd"><h2>${IC.creditCard} Tài khoản nhận tiền (mã QR chuyển khoản)</h2></div><div class="pad">
+      <div class="hint">${IC.info} Nhập <strong>một lần</strong> — hệ thống tự sinh <strong>mã QR VietQR</strong> trên mỗi phiếu báo (đúng số tiền + nội dung), học viên quét là chuyển khoản ngay. Để trống thì phiếu báo vẫn ghi "QR gửi qua Zalo" như hiện tại.</div>
       <div class="grid2">
         <div class="field"><label>Ngân hàng</label><select id="set_bank_bin">
           <option value="">— Chọn ngân hàng —</option>
@@ -2785,7 +2793,7 @@ function viewSettings() {
         <button class="btn pri" onclick="saveBankSettings()">Lưu tài khoản</button>
         <button class="btn" onclick="previewBankQr()">${IC.creditCard} Xem thử mã QR</button>
       </div>
-    </div></div>`;
+    </div></div>` : ''}`;
   loadAdminUsers();
   refreshRulesDocStatus();
   loadDataHealth();
@@ -3074,6 +3082,7 @@ function previewBankQr() {
 // Khối mã QR chuyển khoản VietQR — dùng chung cho phiếu báo (admin) và trang học viên.
 // set: object chứa bank_bin / bank_account_no / bank_account_name. Trả '' nếu chưa cấu hình / thiếu thư viện.
 function paymentQrBlock(set, amount, addInfo) {
+  if (!FINANCE_PHASE2) return '';
   if (!window.VietQR || !set || !set.bank_bin || !set.bank_account_no) return '';
   const url = VietQR.dataURL({ bin: set.bank_bin, account: set.bank_account_no, amount: +amount || 0, addInfo });
   if (!url) return '';
@@ -3205,7 +3214,7 @@ async function loadStudentPortal() {
     </div></div>` : ''}
 
     <div class="panel"><div class="hd"><h2>${IC.receipt} Phiếu báo tiền phòng</h2></div><div class="table-wrap">
-      ${invs.length ? `<table><thead><tr><th>Kỳ</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Khác</th><th class="num">Giảm</th><th class="num">Tổng</th><th>Trạng thái</th></tr></thead><tbody>
+      ${invs.length ? `<table><thead><tr><th>Kỳ</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Khác</th><th class="num">Giảm</th><th class="num">Tổng</th>${FINANCE_PHASE2 ? '<th>Trạng thái</th>' : ''}</tr></thead><tbody>
         ${invs.map(i => {
           // Cột "Giảm" phải hiện, nếu không thì 4 cột đầu cộng lại KHÔNG ra Tổng — học viên tưởng app tính sai
           const giam = (+i.leader_discount || 0) + (+i.room_discount || 0);
@@ -3213,17 +3222,19 @@ async function loadStudentPortal() {
           <td class="num">${money((+i.water_charge) + (+i.service_charge) + (+i.washing_charge) + (+i.parking_charge) + (+i.other_charge || 0))}</td>
           <td class="num">${giam ? `<span class="badge green">−${money(giam)}</span>` : '—'}</td>
           <td class="num"><strong>${money(i.total)}</strong></td>
-          <td>${invStatusBadge(i.status)}</td></tr>`;
+          ${FINANCE_PHASE2 ? `<td>${invStatusBadge(i.status)}</td>` : ''}</tr>`;
         }).join('')}
       </tbody></table>` : '<div class="empty">Chưa có phiếu báo.</div>'}
       ${(() => {
-        // QR cho kỳ MỚI NHẤT chưa thu — học viên quét là chuyển đúng số tiền + nội dung, không chờ Zalo
-        const latest = invs.slice().sort((a, b) => (a.month < b.month ? 1 : -1))[0];
-        return latest && latest.status !== 'paid'
-          ? paymentQrBlock(profile, latest.total, (profile.code || profile.name || '') + ' T' + (latest.month || '').replace('-', ''))
+        // QR cho kỳ CHƯA THU CŨ NHẤT (ưu tiên trả nợ cũ trước), bỏ qua phiếu 0đ — quét là chuyển đúng
+        // số tiền + nội dung, không chờ Zalo. Nội dung CK dùng mã HV; chưa có mã thì KTX{id} (định danh
+        // chắc chắn, không dùng tên vì hai HV trùng tên sẽ không đối soát được).
+        const due = invs.filter(i => i.status !== 'paid' && +i.total > 0).sort((a, b) => (a.month < b.month ? -1 : 1))[0];
+        return due
+          ? paymentQrBlock(profile, due.total, (profile.code || ('KTX' + profile.id)) + ' T' + (due.month || '').replace('-', ''))
           : '';
       })()}
-      <div class="pad muted" style="font-size:12.5px">${IC.creditCard} ${profile.bank_bin && profile.bank_account_no ? 'Quét mã QR ở trên để chuyển khoản đúng số tiền &amp; nội dung.' : 'Đóng tiền qua mã QR quản lý gửi trên Zalo theo hạn hằng tháng.'}${profile.due_day_from ? ` Hạn đóng: ngày <strong>${esc(String(profile.due_day_from))}–${esc(String(profile.due_day_to || ''))}</strong> hằng tháng.` : ''}</div>
+      <div class="pad muted" style="font-size:12.5px">${IC.creditCard} ${FINANCE_PHASE2 && profile.bank_bin && profile.bank_account_no ? 'Quét mã QR ở trên để chuyển khoản đúng số tiền &amp; nội dung.' : 'Đóng tiền qua mã QR quản lý gửi trên Zalo theo hạn hằng tháng.'}${profile.due_day_from ? ` Hạn đóng: ngày <strong>${esc(String(profile.due_day_from))}–${esc(String(profile.due_day_to || ''))}</strong> hằng tháng.` : ''}</div>
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.handCoins} Hỗ trợ học viên</h2><button class="btn sm pri" onclick="damageForm()">${IC.plus} Gửi yêu cầu hỗ trợ</button></div><div class="table-wrap">
