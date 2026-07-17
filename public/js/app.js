@@ -126,9 +126,10 @@ async function renderPublicRegister() {
         <div class="field"><label>Giới tính *</label><select id="a_gender"><option value="female">Nữ</option><option value="male">Nam</option></select></div>
         <div class="field"><label>Ngày sinh</label><input id="a_birth"></div>
       </div>
+      <div class="muted" style="font-size:12.5px;margin:2px 0 7px">${IC.info} <strong>Chưa khai giảng?</strong> Nhiều bạn thuê phòng trước khi vào học — nếu chưa có mã học viên / lớp, bạn cứ <strong>bỏ trống 2 ô dưới</strong>. Khi nào có, báo Ban quản lý cập nhật sau.</div>
       <div class="grid2">
-        <div class="field"><label>Mã học viên</label><input id="a_code"></div>
-        <div class="field"><label>Lớp</label><input id="a_class"></div>
+        <div class="field"><label>Mã học viên <span class="opt">(nếu đã có)</span></label><input id="a_code"></div>
+        <div class="field"><label>Lớp <span class="opt">(nếu đã có)</span></label><input id="a_class"></div>
       </div>
       <div class="field"><label>Dịch vụ đăng ký thêm</label>
         <label class="check"><input type="checkbox" id="a_wash"> ${IC.washer} Máy giặt (${money(info.washing_fee)}/tháng)</label>
