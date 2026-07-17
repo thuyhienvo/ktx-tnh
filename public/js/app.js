@@ -3278,10 +3278,10 @@ function myAssetsPanel(assets, profile) {
   return `<div class="panel"><div class="hd"><h2>${IC.box} Cơ sở vật chất trong phòng${profile.room_name ? ` — ${esc(profile.room_name)}` : ''}</h2></div><div class="pad">
     ${room.length ? `<h4 class="asset-h">Trang bị chung của phòng <span class="muted" style="text-transform:none;font-weight:500">(dùng chung, hỏng do hao mòn không phải đền)</span></h4>${list(room, false)}` : ''}
     ${mine.length ? `<h4 class="asset-h" style="margin-top:18px">Bàn giao riêng cho bạn <span class="muted" style="text-transform:none;font-weight:500">— nếu làm mất / hư / không vệ sinh thì trừ tiền cọc theo mức bên phải</span></h4>${list(mine, true)}` : ''}
-    <div class="hint" style="margin:18px 0 0;flex-wrap:wrap;gap:10px">${IC.info}<span>Con số <strong>"Đền nếu mất/hư"</strong> bên phải sẽ bị
+    <div class="hint" style="margin:18px 0 0">${IC.info}<span>Con số <strong>"Đền nếu mất/hư"</strong> bên phải sẽ bị
       <strong>trừ vào tiền cọc</strong> khi bạn trả phòng — chỉ khi món đó <strong>mất, hư hoặc chưa vệ sinh</strong>.
-      Đồ hỏng do <strong>hao mòn bình thường</strong> thì <strong>không phải đền</strong>: báo cho Ban quản lý cử người sửa bằng nút dưới đây.</span>
-      <button class="btn sm pri" style="flex:0 0 auto" onclick="damageForm('damage')">${IC.wrench} Báo hư hỏng</button></div>
+      Đồ hỏng do <strong>hao mòn bình thường</strong> thì <strong>không phải đền</strong>. Nếu có bất kỳ vấn đề gì
+      trong quá trình ở, hãy <strong>Gửi yêu cầu hỗ trợ</strong> ở mục <strong>Hỗ trợ học viên</strong> bên dưới.</span></div>
   </div></div>`;
 }
 
