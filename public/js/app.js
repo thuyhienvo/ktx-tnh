@@ -2316,16 +2316,22 @@ async function viewInvoices() {
     <div class="cards">
       <div class="stat"><div class="l">${IC.calendar} Kỳ</div><div class="v sm"><select id="im" style="font-size:15px;font-weight:600;padding:6px 8px">${(months.length ? months : [invMonth]).map(m => `<option value="${m}" ${m === invMonth ? 'selected' : ''}>${monthLabel(m)}</option>`).join('')}</select></div></div>
       <div class="stat"><div class="l">${IC.receipt} Số phiếu</div><div class="v sm">${all.length}</div></div>
-      <div class="stat"><div class="l">Tổng tiền phiếu (dự báo)</div><div class="v sm">${money(total)}</div></div>
+      <div class="stat"><div class="l">${IC.check} Đã thu</div><div class="v sm">${money(paid)}<div class="muted" style="font-size:11px;font-weight:500">${all.filter(i => i.status === 'paid').length}/${all.length} phiếu</div></div></div>
+      <div class="stat"><div class="l">Còn phải thu</div><div class="v sm">${money(total - paid)}</div></div>
     </div>
     <div class="panel"><div class="hd"><h2>Phiếu báo tiền phòng ${monthLabel(invMonth)} (<span id="invCount">${list.length}</span>)</h2>
       <span class="muted" style="font-size:12px">Đơn vị: đồng</span>
       <div class="toolbar">
         <div class="search"><span class="i">${IC.search}</span><input id="invs" placeholder="Tìm tên HV / số phòng..." value="${esc(invSearch)}"></div>
+        <div class="rowbtns">
+          <button class="btn sm ${invFilter === 'all' ? 'pri' : ''}" onclick="setInvFilter('all')">Tất cả</button>
+          <button class="btn sm ${invFilter === 'unpaid' ? 'pri' : ''}" onclick="setInvFilter('unpaid')">Chưa thu</button>
+          <button class="btn sm ${invFilter === 'paid' ? 'pri' : ''}" onclick="setInvFilter('paid')">Đã thu</button>
+        </div>
         ${all.length ? `<button class="btn sm" onclick='exportCSV(${JSON.stringify(list).replace(/'/g, "&#39;")})'>${IC.download} Xuất Excel (CSV)</button>` : ''}</div></div>
       <div class="table-wrap">
       ${all.length === 0 ? `<div class="empty">Chưa có hóa đơn nào cho kỳ này.<br><br><button class="btn pri" onclick="generateForm()">${IC.receipt} Tạo hóa đơn</button></div>` :
-      list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Giảm</th><th class="num">Tổng</th><th></th></tr></thead><tbody>
+      list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Giảm</th><th class="num">Tổng</th><th>Trạng thái</th><th></th></tr></thead><tbody>
         ${list.map(i => `<tr data-s="${esc(((i.student_name || '') + ' ' + (i.student_code || '') + ' ' + (i.room_name || '')).toLowerCase())}">
           <td><strong>${esc(i.student_name)}</strong>${i.student_code ? `<div class="muted" style="font-size:11px">${esc(i.student_code)}</div>` : ''}</td>
           <td>${esc(i.room_name || '—')}</td>
@@ -2340,19 +2346,29 @@ async function viewInvoices() {
             ? `<span class="badge green" title="${[+i.room_discount ? 'Giảm tiền phòng ' + money(i.room_discount) : '', +i.leader_discount ? 'Giảm phòng trưởng ' + money(i.leader_discount) : ''].filter(Boolean).join(' · ')}">−${moneyN((+i.leader_discount || 0) + (+i.room_discount || 0))}</span>`
             : '—'}</td>
           <td class="num"><strong>${moneyN(i.total)}</strong></td>
+          <td>${invStatusBadge(i.status)}</td>
           <td class="num"><div class="rowbtns" style="justify-content:flex-end">
             <button class="btn sm pri" onclick='phieuBao(${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.fileText} Phiếu báo</button>
-            <button class="btn sm ghost" title="Tính lại theo số ngày ở hiện tại" onclick="recalcInv(${i.id})">${IC.refresh}</button>
-            <button class="btn sm ghost" onclick='invoiceForm(${i.id}, ${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.pencil}</button>
-            <button class="btn sm ghost" onclick="delInvoice(${i.id})">${IC.trash}</button>
+            ${i.status === 'paid'
+              ? `<button class="btn sm ghost" title="Gỡ trạng thái đã thu (được ghi nhật ký)" onclick="setInvStatus(${i.id},'pending')">${IC.undo} Bỏ thu</button>`
+              : `<button class="btn sm green" title="Đánh dấu đã thu" onclick="setInvStatus(${i.id},'paid')">${IC.check} Đã thu</button>
+                 <button class="btn sm ghost" title="Tính lại theo số ngày ở hiện tại" onclick="recalcInv(${i.id})">${IC.refresh}</button>
+                 <button class="btn sm ghost" onclick='invoiceForm(${i.id}, ${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.pencil}</button>
+                 <button class="btn sm ghost" onclick="delInvoice(${i.id})">${IC.trash}</button>`}
           </div></td></tr>`).join('')}
-        <tr class="no-result" style="display:none"><td colspan="12"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
+        <tr class="no-result" style="display:none"><td colspan="13"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có hóa đơn ${invFilter === 'paid' ? 'đã đóng' : 'chưa đóng'} trong kỳ này.</div>`}
     </div></div>
     ${elecPanel}`;
   const im = el('im'); if (im) im.onchange = e => { invMonth = e.target.value; viewInvoices(); };
   const iv = el('invs'); if (iv) { iv.addEventListener('input', () => invSearch = iv.value); attachRowSearch(iv, 'invCount'); }
 }
+function invStatusBadge(st) {
+  if (st === 'paid') return '<span class="badge green">Đã thu</span>';
+  if (st === 'sent') return '<span class="badge blue">Đã gửi QR</span>';
+  return '<span class="badge amber">Chưa thu</span>';
+}
+function setInvFilter(f) { invFilter = f; viewInvoices(); }
 function invActions(i) {
   if (i.status === 'pending') return `<button class="btn sm" onclick="setInvStatus(${i.id},'sent')">Đã gửi QR</button><button class="btn sm green" onclick="setInvStatus(${i.id},'paid')">${IC.check} Đóng</button>`;
   if (i.status === 'sent') return `<button class="btn sm green" onclick="setInvStatus(${i.id},'paid')">${IC.check} Đã đóng</button><button class="btn sm" onclick="setInvStatus(${i.id},'pending')">${IC.undo}</button>`;
@@ -2541,6 +2557,7 @@ async function phieuBao(inv) {
         ${rows.join('')}
         <tr class="rc-total"><td colspan="3">TỔNG CỘNG PHẢI NỘP</td><td class="n">${money(inv.total)}</td></tr>
       </tbody></table>
+      ${paymentQrBlock(set, inv.total, (s.code || s.name || '') + ' T' + (inv.month || '').replace('-', ''))}
       <div class="rc-note">
         ${IC.creditCard} Thanh toán qua <strong>mã QR</strong> do quản lý gửi trên Zalo. Hạn đóng: <strong>ngày ${set.due_day_from || 1}–${set.due_day_to || 5}</strong> hàng tháng.<br>
         ${IC.pin} Nếu có sai sót, vui lòng báo lại trước ngày 05. Xin cảm ơn!
@@ -2642,6 +2659,23 @@ function viewSettings() {
         <div class="field"><label>Pháp nhân phòng Nam</label><input id="set_legal_male" value="${esc(s.legal_male || 'S2')}"></div>
       </div>
       <button class="btn pri" onclick="saveSettings()">Lưu cài đặt</button>
+    </div></div>
+
+    <div class="panel"><div class="hd"><h2>${IC.creditCard} Tài khoản nhận tiền (mã QR chuyển khoản)</h2></div><div class="pad">
+      <div class="hint">${IC.info} Nhập <strong>một lần</strong> — hệ thống tự sinh <strong>mã QR VietQR</strong> trên mỗi phiếu báo (đúng số tiền + nội dung). Học viên quét là chuyển khoản ngay, quản lý không phải chụp QR gửi Zalo thủ công nữa.</div>
+      <div class="grid2">
+        <div class="field"><label>Ngân hàng</label><select id="set_bank_bin">
+          <option value="">— Chọn ngân hàng —</option>
+          ${(window.VietQR ? VietQR.BANKS : []).map(b => `<option value="${b.bin}" ${s.bank_bin === b.bin ? 'selected' : ''}>${esc(b.short)} (${b.bin})</option>`).join('')}
+        </select></div>
+        <div class="field"><label>Số tài khoản</label><input id="set_bank_account_no" value="${esc(s.bank_account_no || '')}" placeholder="VD: 0011001234567" inputmode="numeric"></div>
+      </div>
+      <div class="field"><label>Tên chủ tài khoản <span class="opt">(không dấu, IN HOA — hiện trong app ngân hàng)</span></label><input id="set_bank_account_name" value="${esc(s.bank_account_name || '')}" placeholder="VD: KY TUC XA ESUHAI" oninput="this.value=this.value.toUpperCase()"></div>
+      <div id="bankQrPreview" style="margin:8px 0"></div>
+      <div class="rowbtns">
+        <button class="btn pri" onclick="saveBankSettings()">Lưu tài khoản</button>
+        <button class="btn" onclick="previewBankQr()">${IC.creditCard} Xem thử mã QR</button>
+      </div>
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.receipt} Mã sản phẩm Bravo (đối chiếu doanh thu)</h2></div><div class="pad">
@@ -3021,6 +3055,40 @@ async function saveBravo() {
   await guard(() => API.updateSettings(body));
   await refreshCache(); toast('Đã lưu mã Bravo'); viewSettings();
 }
+async function saveBankSettings() {
+  const bank_bin = el('set_bank_bin').value;
+  const bank_account_no = el('set_bank_account_no').value.replace(/\s/g, '');
+  const bank_account_name = el('set_bank_account_name').value.trim();
+  if (bank_bin && !bank_account_no) return toast('Nhập số tài khoản', 'err');
+  if (bank_account_no && !bank_bin) return toast('Chọn ngân hàng', 'err');
+  await guard(() => API.updateSettings({ bank_bin, bank_account_no, bank_account_name }));
+  await refreshCache(); toast('Đã lưu tài khoản nhận tiền'); viewSettings();
+}
+function previewBankQr() {
+  const bin = el('set_bank_bin').value, account = el('set_bank_account_no').value.replace(/\s/g, ''), name = el('set_bank_account_name').value.trim();
+  const box = el('bankQrPreview');
+  if (!bin || !account) { toast('Chọn ngân hàng + nhập số tài khoản trước', 'err'); return; }
+  box.innerHTML = paymentQrBlock({ bank_bin: bin, bank_account_no: account, bank_account_name: name }, 0, 'KTX')
+    || '<div class="muted" style="font-size:12.5px">Không tạo được QR — kiểm lại mã ngân hàng / số tài khoản.</div>';
+}
+// Khối mã QR chuyển khoản VietQR — dùng chung cho phiếu báo (admin) và trang học viên.
+// set: object chứa bank_bin / bank_account_no / bank_account_name. Trả '' nếu chưa cấu hình / thiếu thư viện.
+function paymentQrBlock(set, amount, addInfo) {
+  if (!window.VietQR || !set || !set.bank_bin || !set.bank_account_no) return '';
+  const url = VietQR.dataURL({ bin: set.bank_bin, account: set.bank_account_no, amount: +amount || 0, addInfo });
+  if (!url) return '';
+  const bank = VietQR.bankByBin(set.bank_bin);
+  const noiDung = VietQR.asciiVN(addInfo || '').slice(0, 25);
+  return `<div class="rc-pay" style="display:flex;gap:16px;align-items:center;margin-top:14px;padding:14px;border:1px dashed #d8cdbd;border-radius:10px;background:#fbf8f2;flex-wrap:wrap;color:#4a443c">
+    <img src="${url}" alt="QR chuyen khoan" width="150" height="150" style="flex:0 0 auto;border-radius:8px;background:#fff">
+    <div style="font-size:13px;line-height:1.85;min-width:180px">
+      <div style="font-weight:700;color:#8a6528;margin-bottom:2px">${IC.creditCard} Quét mã QR để chuyển khoản</div>
+      <div><b>${esc(bank ? bank.short : '')}</b>${bank ? ' — ' : ''}${esc(set.bank_account_no)}</div>
+      <div>${esc(set.bank_account_name || '')}</div>
+      ${+amount ? `<div style="margin-top:2px">Số tiền: <b style="color:#8a6528">${money(amount)}</b></div>` : ''}
+      ${noiDung ? `<div style="font-size:11.5px;color:#6a6055">Nội dung CK: <b>${esc(noiDung)}</b></div>` : ''}
+    </div></div>`;
+}
 function feeHint(key) { const h = el('hint_' + key), i = el('set_' + key); if (h && i) h.textContent = money(i.value || 0); }
 async function saveSettings() {
   const keys = ['room_fee', 'deposit_fee', 'water_fee', 'electric_unit', 'service_fee', 'washing_fee', 'parking_fee', 'partial_half_min', 'partial_full_min', 'room_price_A', 'room_price_B', 'room_price_C', 'room_price_D'];
@@ -3137,17 +3205,25 @@ async function loadStudentPortal() {
     </div></div>` : ''}
 
     <div class="panel"><div class="hd"><h2>${IC.receipt} Phiếu báo tiền phòng</h2></div><div class="table-wrap">
-      ${invs.length ? `<table><thead><tr><th>Kỳ</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Khác</th><th class="num">Giảm</th><th class="num">Tổng</th></tr></thead><tbody>
+      ${invs.length ? `<table><thead><tr><th>Kỳ</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Khác</th><th class="num">Giảm</th><th class="num">Tổng</th><th>Trạng thái</th></tr></thead><tbody>
         ${invs.map(i => {
           // Cột "Giảm" phải hiện, nếu không thì 4 cột đầu cộng lại KHÔNG ra Tổng — học viên tưởng app tính sai
           const giam = (+i.leader_discount || 0) + (+i.room_discount || 0);
           return `<tr><td>${monthLabel(i.month)}</td><td class="num">${money(i.room_charge)}</td><td class="num">${money(i.electric_charge)}</td>
           <td class="num">${money((+i.water_charge) + (+i.service_charge) + (+i.washing_charge) + (+i.parking_charge) + (+i.other_charge || 0))}</td>
           <td class="num">${giam ? `<span class="badge green">−${money(giam)}</span>` : '—'}</td>
-          <td class="num"><strong>${money(i.total)}</strong></td></tr>`;
+          <td class="num"><strong>${money(i.total)}</strong></td>
+          <td>${invStatusBadge(i.status)}</td></tr>`;
         }).join('')}
       </tbody></table>` : '<div class="empty">Chưa có phiếu báo.</div>'}
-      <div class="pad muted" style="font-size:12.5px">${IC.creditCard} Đóng tiền qua mã QR quản lý gửi trên Zalo theo hạn hằng tháng.</div>
+      ${(() => {
+        // QR cho kỳ MỚI NHẤT chưa thu — học viên quét là chuyển đúng số tiền + nội dung, không chờ Zalo
+        const latest = invs.slice().sort((a, b) => (a.month < b.month ? 1 : -1))[0];
+        return latest && latest.status !== 'paid'
+          ? paymentQrBlock(profile, latest.total, (profile.code || profile.name || '') + ' T' + (latest.month || '').replace('-', ''))
+          : '';
+      })()}
+      <div class="pad muted" style="font-size:12.5px">${IC.creditCard} ${profile.bank_bin && profile.bank_account_no ? 'Quét mã QR ở trên để chuyển khoản đúng số tiền &amp; nội dung.' : 'Đóng tiền qua mã QR quản lý gửi trên Zalo theo hạn hằng tháng.'}${profile.due_day_from ? ` Hạn đóng: ngày <strong>${esc(String(profile.due_day_from))}–${esc(String(profile.due_day_to || ''))}</strong> hằng tháng.` : ''}</div>
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.handCoins} Hỗ trợ học viên</h2><button class="btn sm pri" onclick="damageForm()">${IC.plus} Gửi yêu cầu hỗ trợ</button></div><div class="table-wrap">

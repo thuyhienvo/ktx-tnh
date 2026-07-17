@@ -53,6 +53,7 @@ router.put('/', requireAuth, requireRole('admin'), async (req, res, next) => {
     const allowed = ['dorm_name', 'hotline', 'room_fee', 'water_fee', 'electric_unit', 'service_fee',
       'washing_fee', 'parking_fee', 'deposit_fee', 'partial_half_min', 'partial_full_min',
       'legal_female', 'legal_male', 'due_day_from', 'due_day_to',
+      'bank_bin', 'bank_account_no', 'bank_account_name',
       'room_price_A', 'room_price_B', 'room_price_C', 'room_price_D',
       'bravo_fee_type', 'bravo_room', 'bravo_water', 'bravo_service', 'bravo_electric', 'bravo_parking', 'bravo_washing', 'bravo_other',
       'school_name', 'school_email', 'violation_mail_threshold',
@@ -81,6 +82,12 @@ router.put('/', requireAuth, requireRole('admin'), async (req, res, next) => {
       const v = req.body[key];
       if (v !== undefined && String(v).trim() !== '' && !isValidEmail(v)) errs.push(`"${key}" phải là email hợp lệ (đang nhận: "${v}")`);
     }
+    // Tài khoản nhận tiền (QR VietQR): BIN phải đúng 6 số, số TK 6–19 số. Sai một chữ số là QR chuyển
+    // NHẦM tài khoản — kiểm chặt, không lưu bừa. Cho phép để trống (chưa cấu hình).
+    if (req.body.bank_bin !== undefined && String(req.body.bank_bin).trim() !== '' && !/^\d{6}$/.test(String(req.body.bank_bin).trim()))
+      errs.push(`"bank_bin" (mã ngân hàng Napas) phải đúng 6 chữ số (đang nhận: "${req.body.bank_bin}")`);
+    if (req.body.bank_account_no !== undefined && String(req.body.bank_account_no).trim() !== '' && !/^\d{6,19}$/.test(String(req.body.bank_account_no).replace(/\s/g, '')))
+      errs.push(`"bank_account_no" (số tài khoản) phải gồm 6–19 chữ số (đang nhận: "${req.body.bank_account_no}")`);
     if (errs.length) return res.status(400).json({ error: errs.join(' · ') });
 
     for (const key of allowed) {
