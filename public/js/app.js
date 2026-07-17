@@ -3158,21 +3158,23 @@ async function loadStudentPortal() {
     </div></div>`;
 
 }
-function damageForm() {
+function damageForm(cat) {
+  const sel = v => cat === v ? ' selected' : '';
+  const tieuDe = cat === 'damage' ? `${IC.wrench} Báo hư hỏng trong phòng` : `${IC.handCoins} Gửi yêu cầu hỗ trợ`;
   openModal(`
-    <div class="mh"><h3>${IC.handCoins} Gửi yêu cầu hỗ trợ</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${tieuDe}</h3><button class="x" onclick="closeModal()">×</button></div>
     <div class="mb">
       <div class="field"><label>Loại yêu cầu *</label><select id="dm_cat" onchange="dmCatHint()">
-        <option value="damage">Báo hư hỏng trong phòng</option>
-        <option value="violation">Báo cáo vi phạm</option>
-        <option value="other">Khác (cần hỗ trợ trong quá trình ở)</option>
+        <option value="damage"${sel('damage')}>Báo hư hỏng trong phòng</option>
+        <option value="violation"${sel('violation')}>Báo cáo vi phạm</option>
+        <option value="other"${sel('other')}>Khác (cần hỗ trợ trong quá trình ở)</option>
       </select></div>
       <div class="field"><label>Nội dung *</label><input id="dm_title" placeholder="Nêu ngắn gọn nội dung..."></div>
       <div class="field"><label>Mô tả chi tiết</label><textarea id="dm_desc" rows="3" placeholder="Mô tả thêm nếu cần..."></textarea></div>
       <div class="hint" id="dmHint" style="font-size:12px">${IC.info} Báo hư hỏng thiết bị/cơ sở vật chất trong phòng để quản lý sửa chữa.</div>
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="submitDamage()">Gửi yêu cầu</button></div>`);
-  setTimeout(() => el('dm_title').focus(), 50);
+  setTimeout(() => { dmCatHint(); el('dm_title').focus(); }, 50);
 }
 function dmCatHint() {
   const c = el('dm_cat').value, h = el('dmHint');
@@ -3270,16 +3272,16 @@ function myAssetsPanel(assets, profile) {
   const list = (arr, showFee) => `<div class="asset-grid">${arr.map(a => `
     <div class="asset-item">
       <div class="asset-name">${esc(a.name)}${qty(a)}${a.note ? `<div class="sub2">${esc(a.note)}</div>` : ''}</div>
-      ${showFee && +a.fee > 0 ? `<div class="asset-fee">${money(a.fee)}<span class="muted">/${esc(a.unit || 'cái')}</span></div>` : ''}
+      ${showFee && +a.fee > 0 ? `<div class="asset-fee"><span class="asset-fee-tag">Đền nếu mất/hư</span><span class="asset-fee-amt">${money(a.fee)}<span class="u">/${esc(a.unit || 'cái')}</span></span></div>` : ''}
     </div>`).join('')}</div>`;
 
   return `<div class="panel"><div class="hd"><h2>${IC.box} Cơ sở vật chất trong phòng${profile.room_name ? ` — ${esc(profile.room_name)}` : ''}</h2></div><div class="pad">
-    ${room.length ? `<h4 class="asset-h">Trang bị chung của phòng</h4>${list(room, false)}` : ''}
-    ${mine.length ? `<h4 class="asset-h" style="margin-top:18px">Bàn giao cho bạn <span class="muted">— mức bồi hoàn nếu mất / hư / không vệ sinh</span></h4>${list(mine, true)}` : ''}
-    <div class="hint" style="margin:18px 0 0">${IC.info}<span>Số tiền bên phải là <strong>mức bồi hoàn</strong>, sẽ được
-      <strong>trừ vào tiền cọc</strong> khi bạn trả phòng nếu món đó mất, hư hoặc chưa vệ sinh.
-      Đồ trong phòng hỏng do hao mòn thì <strong>không phải đền</strong> — bấm
-      <strong>${IC.wrench} Báo hư hỏng</strong> bên dưới để Ban quản lý cử người sửa.</span></div>
+    ${room.length ? `<h4 class="asset-h">Trang bị chung của phòng <span class="muted" style="text-transform:none;font-weight:500">(dùng chung, hỏng do hao mòn không phải đền)</span></h4>${list(room, false)}` : ''}
+    ${mine.length ? `<h4 class="asset-h" style="margin-top:18px">Bàn giao riêng cho bạn <span class="muted" style="text-transform:none;font-weight:500">— nếu làm mất / hư / không vệ sinh thì trừ tiền cọc theo mức bên phải</span></h4>${list(mine, true)}` : ''}
+    <div class="hint" style="margin:18px 0 0;flex-wrap:wrap;gap:10px">${IC.info}<span>Con số <strong>"Đền nếu mất/hư"</strong> bên phải sẽ bị
+      <strong>trừ vào tiền cọc</strong> khi bạn trả phòng — chỉ khi món đó <strong>mất, hư hoặc chưa vệ sinh</strong>.
+      Đồ hỏng do <strong>hao mòn bình thường</strong> thì <strong>không phải đền</strong>: báo cho Ban quản lý cử người sửa bằng nút dưới đây.</span>
+      <button class="btn sm pri" style="flex:0 0 auto" onclick="damageForm('damage')">${IC.wrench} Báo hư hỏng</button></div>
   </div></div>`;
 }
 

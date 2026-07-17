@@ -514,8 +514,12 @@ th.sortable.asc .sort-ar,th.sortable.desc .sort-ar{opacity:1;color:var(--brand-d
 .asset-item{display:flex;justify-content:space-between;align-items:center;gap:12px;
   background:var(--bg2);border:1px solid var(--line);border-radius:11px;padding:10px 13px}
 .asset-name{font-size:13.5px;font-weight:600;min-width:0}
-/* Tiền phải dùng font số rõ ràng + tabular-nums để các cột số thẳng hàng */
-.asset-fee{font-size:13px;font-weight:700;color:var(--brand-d);white-space:nowrap;font-variant-numeric:tabular-nums}
+/* Tiền phải NÓI RÕ là "đền nếu mất/hư", không để trơ con số (đọc nhầm thành giá thuê).
+   Nhãn nhỏ phía trên + số to bên dưới, canh phải, tabular-nums cho các cột thẳng hàng. */
+.asset-fee{display:flex;flex-direction:column;align-items:flex-end;gap:1px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.asset-fee-tag{font-size:10px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;color:var(--muted);line-height:1.1}
+.asset-fee-amt{font-size:14.5px;font-weight:800;color:var(--brand-d);line-height:1.1}
+.asset-fee-amt .u{font-size:11px;font-weight:600;color:var(--muted)}
 @media(max-width:520px){.asset-grid{grid-template-columns:1fr}}
 
 /* ===== Lịch trực nhật (trang "Phòng của tôi") ===== */
