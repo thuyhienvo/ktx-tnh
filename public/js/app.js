@@ -2661,23 +2661,6 @@ function viewSettings() {
       <button class="btn pri" onclick="saveSettings()">Lưu cài đặt</button>
     </div></div>
 
-    <div class="panel"><div class="hd"><h2>${IC.creditCard} Tài khoản nhận tiền (mã QR chuyển khoản)</h2></div><div class="pad">
-      <div class="hint">${IC.info} Nhập <strong>một lần</strong> — hệ thống tự sinh <strong>mã QR VietQR</strong> trên mỗi phiếu báo (đúng số tiền + nội dung). Học viên quét là chuyển khoản ngay, quản lý không phải chụp QR gửi Zalo thủ công nữa.</div>
-      <div class="grid2">
-        <div class="field"><label>Ngân hàng</label><select id="set_bank_bin">
-          <option value="">— Chọn ngân hàng —</option>
-          ${(window.VietQR ? VietQR.BANKS : []).map(b => `<option value="${b.bin}" ${s.bank_bin === b.bin ? 'selected' : ''}>${esc(b.short)} (${b.bin})</option>`).join('')}
-        </select></div>
-        <div class="field"><label>Số tài khoản</label><input id="set_bank_account_no" value="${esc(s.bank_account_no || '')}" placeholder="VD: 0011001234567" inputmode="numeric"></div>
-      </div>
-      <div class="field"><label>Tên chủ tài khoản <span class="opt">(không dấu, IN HOA — hiện trong app ngân hàng)</span></label><input id="set_bank_account_name" value="${esc(s.bank_account_name || '')}" placeholder="VD: KY TUC XA ESUHAI" oninput="this.value=this.value.toUpperCase()"></div>
-      <div id="bankQrPreview" style="margin:8px 0"></div>
-      <div class="rowbtns">
-        <button class="btn pri" onclick="saveBankSettings()">Lưu tài khoản</button>
-        <button class="btn" onclick="previewBankQr()">${IC.creditCard} Xem thử mã QR</button>
-      </div>
-    </div></div>
-
     <div class="panel"><div class="hd"><h2>${IC.receipt} Mã sản phẩm Bravo (đối chiếu doanh thu)</h2></div><div class="pad">
       <div class="field"><label>Loại phí chung</label><input id="set_bravo_fee_type" value="${esc(s.bravo_fee_type || '')}" placeholder="T0704" style="max-width:200px"></div>
       <div class="grid2">
@@ -2785,6 +2768,23 @@ function viewSettings() {
 
     <div class="panel"><div class="hd"><h2>${IC.key} Tài khoản của bạn</h2></div><div class="pad">
       <button class="btn" onclick="changePwd()">${IC.key} Đổi mật khẩu</button>
+    </div></div>
+
+    <div class="panel"><div class="hd"><h2>${IC.creditCard} Tài khoản nhận tiền (mã QR chuyển khoản)</h2><span class="badge amber" style="font-size:10px">Bật sau</span></div><div class="pad">
+      <div class="hint">${IC.info} <strong>Chưa dùng ngay</strong> — mục này để dành cho giai đoạn app tự xuất phiếu thu. Khi bật: nhập <strong>một lần</strong>, hệ thống tự sinh <strong>mã QR VietQR</strong> trên mỗi phiếu báo (đúng số tiền + nội dung), học viên quét là chuyển khoản ngay. Để trống thì phiếu báo vẫn ghi "QR gửi qua Zalo" như hiện tại.</div>
+      <div class="grid2">
+        <div class="field"><label>Ngân hàng</label><select id="set_bank_bin">
+          <option value="">— Chọn ngân hàng —</option>
+          ${(window.VietQR ? VietQR.BANKS : []).map(b => `<option value="${b.bin}" ${s.bank_bin === b.bin ? 'selected' : ''}>${esc(b.short)} (${b.bin})</option>`).join('')}
+        </select></div>
+        <div class="field"><label>Số tài khoản</label><input id="set_bank_account_no" value="${esc(s.bank_account_no || '')}" placeholder="VD: 0011001234567" inputmode="numeric"></div>
+      </div>
+      <div class="field"><label>Tên chủ tài khoản <span class="opt">(không dấu, IN HOA — hiện trong app ngân hàng)</span></label><input id="set_bank_account_name" value="${esc(s.bank_account_name || '')}" placeholder="VD: KY TUC XA ESUHAI" oninput="this.value=this.value.toUpperCase()"></div>
+      <div id="bankQrPreview" style="margin:8px 0"></div>
+      <div class="rowbtns">
+        <button class="btn pri" onclick="saveBankSettings()">Lưu tài khoản</button>
+        <button class="btn" onclick="previewBankQr()">${IC.creditCard} Xem thử mã QR</button>
+      </div>
     </div></div>`;
   loadAdminUsers();
   refreshRulesDocStatus();
