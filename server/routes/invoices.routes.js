@@ -22,12 +22,24 @@ function badMoney(b) {
   }
   return null;
 }
+// Số ngày trong một kỳ 'YYYY-MM'. Dùng để chặn days_stayed vô lý (TP-14): trước đây nhập 99999 ngày
+// cho tháng 31 ngày cũng lưu, không có trần.
+function daysInMonth(month) { const [y, m] = String(month).split('-').map(Number); return new Date(y, m, 0).getDate(); }
+function badDays(b) {
+  if (b.days_stayed == null || b.days_stayed === '' || !isValidMonth(b.month)) return null;
+  const d = Number(b.days_stayed), dim = daysInMonth(b.month);
+  if (Number.isFinite(d) && d > dim) return `Số ngày ở (${d}) vượt số ngày của tháng ${b.month} (${dim} ngày).`;
+  return null;
+}
 
 // Tính lại 1 hóa đơn theo dữ liệu hiện tại (số ngày ở, dịch vụ...)
 router.post('/:id/recalc', async (req, res, next) => {
   try {
-    const inv = (await query('SELECT student_id, month FROM invoices WHERE id=$1', [req.params.id])).rows[0];
+    const inv = (await query('SELECT student_id, month, status FROM invoices WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!inv) return res.status(404).json({ error: 'Không tìm thấy hóa đơn' });
+    // Bấm "Tính lại" trên phiếu ĐÃ THU -> chặn rõ ràng (TP-07). Trước đây recalc qua mặt khoá này,
+    // total đổi sau lưng số đã chốt Bravo.
+    if (inv.status === 'paid') return res.status(400).json({ error: 'Hoá đơn đã thu tiền — không tính lại được. Nếu cần điều chỉnh, chuyển trạng thái về "chưa thu" trước (thao tác này được ghi nhật ký).' });
     const updated = await recalcInvoice(inv.student_id, inv.month);
     res.json(updated);
   } catch (e) { next(e); }
@@ -67,17 +79,34 @@ router.post('/generate', async (req, res, next) => {
     if (!isValidMonth(month)) return res.status(400).json({ error: 'Kỳ (tháng) không hợp lệ — chọn dạng YYYY-MM.' });
     const fees = await getSettings();
 
+    // TP-17: KIỂM chỉ số TRƯỚC transaction. Một phòng có chỉ số lùi (công-tơ vừa thay) trước đây làm
+    // INSERT vi phạm ck_electric_sane -> ROLLBACK cả mẻ -> KHÔNG phiếu nào của cả KTX ra. Giờ báo 400
+    // liệt kê phòng cần sửa, chưa động vào gì.
+    const pmonth0 = (() => { const [py, pm2] = month.split('-').map(Number); const pd = new Date(py, pm2 - 2, 1); return `${pd.getFullYear()}-${String(pd.getMonth() + 1).padStart(2, '0')}`; })();
+    if (Array.isArray(readings)) {
+      const loi = [];
+      for (const r of readings) {
+        const end = Number(r.reading_end);
+        if (!Number.isFinite(end) || end < 0) { loi.push(`phòng #${r.room_id}: chỉ số "${r.reading_end}" không hợp lệ`); continue; }
+        const prev = await query('SELECT reading_end FROM electric_readings WHERE room_id=$1 AND month=$2', [r.room_id, pmonth0]);
+        const start = r.reading_start != null && r.reading_start !== '' ? Number(r.reading_start) : (prev.rows[0] ? +prev.rows[0].reading_end : 0);
+        if (!Number.isFinite(start) || start < 0 || end < start) loi.push(`phòng #${r.room_id}: chỉ số cuối (${end}) nhỏ hơn đầu kỳ (${start}) — kiểm lại`);
+      }
+      if (loi.length) {
+        const ten = {}; (await query('SELECT id, name FROM rooms WHERE id = ANY($1)', [readings.map(r => r.room_id)])).rows.forEach(x => { ten[x.id] = x.name; });
+        return res.status(400).json({ error: 'Chưa lập hoá đơn — có chỉ số điện chưa hợp lệ, sửa rồi làm lại:\n' + loi.map(l => l.replace(/phòng #(\d+)/, (m, id) => `phòng ${ten[id] || '#' + id}`)).join('\n') });
+      }
+    }
+
     await client.query('BEGIN');
 
     // Lưu chỉ số điện công-tơ (nếu gửi kèm): nhập số cuối, số đầu = số cuối tháng trước
     if (Array.isArray(readings)) {
-      const [py, pm2] = month.split('-').map(Number);
-      const pd = new Date(py, pm2 - 2, 1);
-      const pmonth = `${pd.getFullYear()}-${String(pd.getMonth() + 1).padStart(2, '0')}`;
+      const pmonth = pmonth0;
       for (const r of readings) {
         const prev = await client.query('SELECT reading_end FROM electric_readings WHERE room_id=$1 AND month=$2', [r.room_id, pmonth]);
-        const start = r.reading_start != null ? +r.reading_start : (prev.rows[0] ? +prev.rows[0].reading_end : 0);
-        const end = +r.reading_end || 0;
+        const start = r.reading_start != null && r.reading_start !== '' ? Number(r.reading_start) : (prev.rows[0] ? +prev.rows[0].reading_end : 0);
+        const end = Number(r.reading_end);
         const kwh = Math.max(0, end - start);
         await client.query(
           `INSERT INTO electric_readings (room_id, month, reading_start, reading_end, kwh) VALUES ($1,$2,$3,$4,$5)
@@ -249,13 +278,23 @@ router.post('/generate-one', async (req, res, next) => {
         [inv.days_stayed, inv.room_charge, inv.electric_kwh, inv.electric_charge, inv.water_charge,
          inv.service_charge, inv.washing_charge, inv.parking_charge, inv.leader_discount, inv.room_discount, total, dup.id])).rows[0];
     } else {
-      row = (await query(
-        `INSERT INTO invoices (student_id, room_id, month, days_stayed, room_charge, electric_kwh, electric_charge,
-           water_charge, service_charge, washing_charge, parking_charge, leader_discount, room_discount, other_charge, total, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'pending') RETURNING *`,
-        [student_id, s.room_id, month, inv.days_stayed, inv.room_charge, inv.electric_kwh, inv.electric_charge,
-         inv.water_charge, inv.service_charge, inv.washing_charge, inv.parking_charge,
-         inv.leader_discount, inv.room_discount, inv.other_charge, inv.total])).rows[0];
+      try {
+        row = (await query(
+          `INSERT INTO invoices (student_id, room_id, month, days_stayed, room_charge, electric_kwh, electric_charge,
+             water_charge, service_charge, washing_charge, parking_charge, leader_discount, room_discount, other_charge, total, status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'pending') RETURNING *`,
+          [student_id, s.room_id, month, inv.days_stayed, inv.room_charge, inv.electric_kwh, inv.electric_charge,
+           inv.water_charge, inv.service_charge, inv.washing_charge, inv.parking_charge,
+           inv.leader_discount, inv.room_discount, inv.other_charge, inv.total])).rows[0];
+      } catch (e) {
+        // TP-35: hai request cùng lúc -> cái sau va UNIQUE(student_id,month) (23505). Không để 500 thô;
+        // trả về phiếu vừa được cái kia tạo (coi như thành công, không tạo trùng).
+        if (e.code === '23505') {
+          row = (await query('SELECT * FROM invoices WHERE student_id=$1 AND month=$2 AND deleted_at IS NULL', [student_id, month])).rows[0];
+          return res.json({ ok: true, invoice: row, created: false, race: true });
+        }
+        throw e;
+      }
     }
     res.json({ ok: true, invoice: row, created: !dup });
   } catch (e) { next(e); }
@@ -270,6 +309,8 @@ router.post('/', async (req, res, next) => {
     if (!isValidMonth(b.month)) return res.status(400).json({ error: `Kỳ không hợp lệ: "${b.month}". Định dạng đúng: YYYY-MM (tháng 01–12).` });
     const neg = badMoney(b);
     if (neg) return res.status(400).json({ error: neg });
+    const badD = badDays(b);
+    if (badD) return res.status(400).json({ error: badD });
     const st = await query('SELECT room_id FROM students WHERE id=$1', [b.student_id]);
     const roomId = st.rows[0]?.room_id || null;
     const total = ['room_charge', 'electric_charge', 'water_charge', 'service_charge', 'washing_charge', 'parking_charge', 'other_charge']
@@ -308,11 +349,17 @@ router.put('/:id', async (req, res, next) => {
     const neg = badMoney(b);
     if (neg) return res.status(400).json({ error: neg });
     // KHÓA hoá đơn đã thu tiền: số đã chốt với Bravo không được sửa sau lưng
-    const cur = (await query('SELECT status FROM invoices WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    const cur = (await query('SELECT status, leader_discount, room_discount, month FROM invoices WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!cur) return res.status(404).json({ error: 'Không tìm thấy hóa đơn' });
     if (cur.status === 'paid') return res.status(400).json({ error: 'Hoá đơn đã thu tiền — không sửa được. Nếu cần điều chỉnh, chuyển trạng thái về "chưa thu" trước (thao tác này được ghi nhật ký).' });
+    const badD = badDays({ days_stayed: b.days_stayed, month: cur.month });
+    if (badD) return res.status(400).json({ error: badD });
+    // total = tổng 7 phí − CÁC KHOẢN GIẢM (phòng trưởng, giảm %). Trước đây PUT KHÔNG trừ giảm nên
+    // total lệch đúng bằng khoản giảm, và ba đường (generate/recalc/PUT) ra ba số (TP-08/11).
+    // Hai cột giảm không nằm trong ô sửa nên GIỮ nguyên (lấy từ cur) và trừ vào total.
+    const giam = (+cur.leader_discount || 0) + (+cur.room_discount || 0);
     const total = ['room_charge', 'electric_charge', 'water_charge', 'service_charge', 'washing_charge', 'parking_charge', 'other_charge']
-      .reduce((a, k) => a + (+b[k] || 0), 0);
+      .reduce((a, k) => a + (+b[k] || 0), 0) - giam;
     const { rows } = await query(
       `UPDATE invoices SET days_stayed=$1, room_charge=$2, electric_kwh=$3, electric_charge=$4,
          water_charge=$5, service_charge=$6, washing_charge=$7, parking_charge=$8, other_charge=$9,
@@ -349,21 +396,43 @@ router.post('/mark-paid', requireRole('admin'), async (req, res, next) => {
 // Đổi trạng thái: pending | sent | paid
 router.post('/:id/status', async (req, res, next) => {
   try {
-    const status = ['pending', 'sent', 'paid'].includes(req.body.status) ? req.body.status : 'pending';
+    // TP-24: trạng thái LẠ ("PAID" hoa, "đã thu"...) trước đây âm thầm về 'pending' -> phiếu đã thu
+    // bị lật về chưa thu mà không báo. Giờ báo lỗi rõ.
+    if (!['pending', 'sent', 'paid'].includes(req.body.status))
+      return res.status(400).json({ error: `Trạng thái không hợp lệ: "${req.body.status}" (chỉ 'pending', 'sent', 'paid').` });
+    const status = req.body.status;
     const paidDate = status === 'paid' ? (req.body.date || new Date().toISOString().slice(0, 10)) : null;
+    const cur = (await query('SELECT status, total FROM invoices WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    if (!cur) return res.status(404).json({ error: 'Không tìm thấy hóa đơn' });
     const { rows } = await query(
-      `UPDATE invoices SET status=$1, paid_date=$2 WHERE id=$3 RETURNING *`,
+      `UPDATE invoices SET status=$1, paid_date=$2 WHERE id=$3 AND deleted_at IS NULL RETURNING *`,
       [status, paidDate, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy hóa đơn' });
+    // TP-10: GỠ trạng thái "đã thu" là thao tác nhạy cảm (mở đường sửa số đã chốt). Ghi nhật ký kèm
+    // total để về sau tra ra "số này từng là bao nhiêu, ai gỡ, khi nào". Đặc biệt paid -> chưa thu.
+    if (cur.status !== status) {
+      pool.query(
+        `INSERT INTO audit_log (user_id, username, role, method, path, detail) VALUES ($1,$2,$3,'STATUS',$4,$5)`,
+        [req.user?.id || null, req.user?.username || '', req.user?.role || '', `/api/invoices/${req.params.id}`,
+         `Đổi trạng thái "${cur.status}" → "${status}" · total tại thời điểm đổi = ${cur.total}`]
+      ).catch(() => {});
+    }
     res.json(rows[0]);
   } catch (e) { next(e); }
 });
 
 // Xóa mềm (lập lại hóa đơn kỳ này sẽ hồi sinh với số liệu mới)
 router.delete('/:id', async (req, res, next) => {
-  try { await query('UPDATE invoices SET deleted_at=now() WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
-  catch (e) { next(e); }
+  try {
+    // Xoá phiếu ĐÃ THU = xoá doanh thu đã ghi nhận -> tổng "đã thu" tụt (TP-09). Chặn ở server, không
+    // chỉ confirm() phía UI. Muốn bỏ phiếu đã thu thì chuyển "chưa thu" trước (có ghi nhật ký).
+    const inv = (await query('SELECT status FROM invoices WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    if (!inv) return res.status(404).json({ error: 'Không tìm thấy hóa đơn' });
+    if (inv.status === 'paid') return res.status(400).json({ error: 'Hoá đơn đã thu tiền — không xoá được. Nếu cần huỷ, chuyển trạng thái về "chưa thu" trước (thao tác này được ghi nhật ký).' });
+    await query('UPDATE invoices SET deleted_at=now() WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
 module.exports = router;

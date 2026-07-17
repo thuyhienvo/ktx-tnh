@@ -1,6 +1,7 @@
 const express = require('express');
-const { query } = require('../db');
+const { query, withTransaction } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
+const { isValidMonth } = require('../valid');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
@@ -16,6 +17,7 @@ function prevMonth(month) {
 router.get('/', async (req, res, next) => {
   try {
     const month = req.query.month;
+    if (!isValidMonth(month)) return res.status(400).json({ error: 'Thiếu hoặc sai kỳ (tháng) — dạng YYYY-MM.' }); // TP-19: trước đây thiếu month -> 500 thô
     const pm = prevMonth(month);
     const { rows } = await query(`
       SELECT r.id AS room_id, r.name AS room_name, r.floor, r.gender,
@@ -62,20 +64,38 @@ router.get('/history', async (req, res, next) => {
 router.post('/bulk', async (req, res, next) => {
   try {
     const { month, readings } = req.body; // readings: [{room_id, reading_end}]
-    if (!month || !Array.isArray(readings)) return res.status(400).json({ error: 'Thiếu dữ liệu' });
+    if (!isValidMonth(month) || !Array.isArray(readings)) return res.status(400).json({ error: 'Thiếu hoặc sai dữ liệu (kỳ YYYY-MM + danh sách chỉ số).' });
     const pm = prevMonth(month);
+
+    // KIỂM TRƯỚC toàn bộ, gom lỗi, chưa ghi gì. Sai thì báo hết một lần, KHÔNG lưu nửa chừng (TP-18/20).
+    const chuan = [];
+    const loi = [];
     for (const r of readings) {
+      const end = Number(r.reading_end);
+      if (!Number.isFinite(end) || end < 0) { loi.push(`phòng #${r.room_id}: chỉ số "${r.reading_end}" không hợp lệ`); continue; }
       const prev = await query('SELECT reading_end FROM electric_readings WHERE room_id=$1 AND month=$2', [r.room_id, pm]);
-      const start = r.reading_start != null ? +r.reading_start : (prev.rows[0] ? +prev.rows[0].reading_end : 0);
-      const end = +r.reading_end || 0;
-      const kwh = Math.max(0, end - start);
-      await query(
-        `INSERT INTO electric_readings (room_id, month, reading_start, reading_end, kwh) VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (room_id, month) DO UPDATE SET reading_start=EXCLUDED.reading_start, reading_end=EXCLUDED.reading_end, kwh=EXCLUDED.kwh`,
-        [r.room_id, month, start, end, kwh]
-      );
+      const start = r.reading_start != null && r.reading_start !== '' ? Number(r.reading_start) : (prev.rows[0] ? +prev.rows[0].reading_end : 0);
+      if (!Number.isFinite(start) || start < 0) { loi.push(`phòng #${r.room_id}: số đầu kỳ không hợp lệ`); continue; }
+      // Chỉ số LÙI (số cuối < số đầu) — công-tơ vừa thay hoặc gõ nhầm. Không tự nuốt thành kWh=0 (mất
+      // tiền điện phòng đó), báo để sửa. Trước đây làm cả mẻ generate sập 500 (TP-17).
+      if (end < start) { loi.push(`phòng #${r.room_id}: chỉ số cuối (${end}) NHỎ HƠN đầu kỳ (${start}) — công-tơ mới thay? kiểm lại`); continue; }
+      chuan.push({ room_id: r.room_id, start, end, kwh: end - start });
     }
-    res.json({ ok: true, saved: readings.length });
+    if (loi.length) {
+      // Kèm tên phòng cho dễ hiểu
+      const ten = {}; (await query('SELECT id, name FROM rooms WHERE id = ANY($1)', [readings.map(r => r.room_id)])).rows.forEach(x => { ten[x.id] = x.name; });
+      return res.status(400).json({ error: 'Không lưu — có chỉ số chưa hợp lệ, vui lòng sửa rồi lưu lại:\n' + loi.map(l => l.replace(/phòng #(\d+)/, (m, id) => `phòng ${ten[id] || '#' + id}`)).join('\n') });
+    }
+    // Ghi TẤT CẢ trong một giao dịch — all-or-nothing.
+    await withTransaction(async (client) => {
+      for (const r of chuan) {
+        await client.query(
+          `INSERT INTO electric_readings (room_id, month, reading_start, reading_end, kwh) VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (room_id, month) DO UPDATE SET reading_start=EXCLUDED.reading_start, reading_end=EXCLUDED.reading_end, kwh=EXCLUDED.kwh`,
+          [r.room_id, month, r.start, r.end, r.kwh]);
+      }
+    });
+    res.json({ ok: true, saved: chuan.length });
   } catch (e) { next(e); }
 });
 

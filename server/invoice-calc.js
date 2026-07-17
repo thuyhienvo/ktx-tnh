@@ -72,6 +72,11 @@ async function studentElectric(studentId, month, unit) {
 async function recalcInvoice(studentId, month) {
   const inv = (await query('SELECT * FROM invoices WHERE student_id=$1 AND month=$2', [studentId, month])).rows[0];
   if (!inv) return null;
+  // KHOÁ "đã thu": hoá đơn đã thu tiền (đã chốt) thì KHÔNG tính lại — số đã chốt không đổi sau lưng.
+  // recalc bị 9 nơi gọi tự động (bạn cùng phòng chuyển đi, trả phòng...) nên ở đây chỉ BỎ QUA (trả
+  // phiếu nguyên trạng), không ném lỗi để khỏi làm gãy thao tác của người khác. Đường bấm "Tính lại"
+  // trực tiếp thì báo 400 rõ ràng ở endpoint. Nếu số thật cần đổi -> chuyển "chưa thu" rồi tính lại.
+  if (inv.status === 'paid') return inv;
   const s = (await query('SELECT * FROM students WHERE id=$1', [studentId])).rows[0];
   if (!s) return null;
   const room = s.room_id ? (await query('SELECT * FROM rooms WHERE id=$1', [s.room_id])).rows[0] : null;

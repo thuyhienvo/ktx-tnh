@@ -1782,7 +1782,7 @@ function exportRevenue(data) {
   const rows = data.map(m => [m.month, ...REV_SERVICES.map(([k]) => +m[k] || 0), +m.total || 0]);
   const sum = k => data.reduce((a, m) => a + (+m[k] || 0), 0);
   rows.push(['Ca nam', ...REV_SERVICES.map(([k]) => sum(k)), sum('total'), sum('paid')]);
-  const csv = '﻿' + [head, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const csv = '﻿' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   a.download = `doanh-thu-${revYear}.csv`; a.click();
@@ -2579,10 +2579,18 @@ function downloadPhieuBao(fname) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   toast('Đã tải phiếu báo');
 }
+// Ô CSV an toàn với Excel: chặn CSV injection — tên bắt đầu bằng = + - @ (hoặc tab/CR) sẽ chạy như
+// CÔNG THỨC khi mở bằng Excel. Người ngoài tự nhập tên ở /dang-ky nên đây là đường tấn công thật (TP-26).
+// Thêm dấu ' phía trước để Excel coi là văn bản, rồi bọc ngoặc kép + nhân đôi " như cũ.
+function csvCell(c) {
+  let s = String(c == null ? '' : c);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
 function exportCSV(rows) {
   const head = ['Ho ten', 'Ma HV', 'Phong', 'Ky', 'So ngay o', 'Tien phong', 'Dien (kWh)', 'Tien dien', 'Nuoc', 'Dich vu', 'May giat', 'Gui xe', 'Khac', 'Giam tien phong', 'Giam phong truong', 'Tong'];
   const data = rows.map(i => [i.student_name, i.student_code || '', i.room_name || '', i.month, i.days_stayed, i.room_charge, i.electric_kwh, i.electric_charge, i.water_charge, i.service_charge, i.washing_charge, i.parking_charge, i.other_charge, i.room_discount || 0, i.leader_discount || 0, i.total]);
-  const csv = '﻿' + [head, ...data].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const csv = '﻿' + [head, ...data].map(r => r.map(csvCell).join(',')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   a.download = `tien-phong-${invMonth}.csv`; a.click();

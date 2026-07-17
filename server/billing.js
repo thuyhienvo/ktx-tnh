@@ -202,7 +202,10 @@ function computeInvoice({ student, room, month, fees, occupants, roster, electri
   return {
     days_stayed: days,
     room_charge,
-    electric_kwh: Number(kwh || 0),
+    // kWh HIỂN THỊ trên phiếu = phần của RIÊNG học viên (suy từ tiền điện của họ ÷ đơn giá),
+    // KHÔNG phải kWh cả phòng. Trước đây hiện kWh cả phòng (vd 300) nhưng chỉ thu 1/3 -> HV đọc
+    // "300 kWh sao chỉ trả 1/3?" tưởng app tính sai (TP-27). Giờ hiện ~100 kWh, khớp số tiền.
+    electric_kwh: unit > 0 ? r0(electric_charge / unit) : 0,
     electric_charge,
     water_charge,
     service_charge,
