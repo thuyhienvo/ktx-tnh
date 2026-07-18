@@ -459,6 +459,19 @@ BEGIN
     -- Một phòng chỉ 1 chỉ số công-tơ cho một ngày
     ('uq_meter_reads_room_date',
      $q$CREATE UNIQUE INDEX IF NOT EXISTS uq_meter_reads_room_date ON meter_reads (room_id, read_date)$q$),
+    -- users.facility_id: đổi FK từ ON DELETE SET NULL -> ON DELETE RESTRICT. Xoá cơ sở khi còn tài khoản
+    -- gắn nó KHÔNG được âm thầm biến quản lý thành "điều hành" (facility_id về NULL = thấy mọi cơ sở).
+    -- App xoá cơ sở là XOÁ MỀM (không kích hoạt FK), nhưng đây là chốt chặn cứng cho lỡ có DELETE thật.
+    -- Idempotent: gỡ FK cũ (tên mặc định) nếu còn, thêm FK RESTRICT nếu chưa có.
+    ('fk_users_facility_restrict',
+     $q$DO $fk$ BEGIN
+       IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name='users_facility_id_fkey' AND table_name='users') THEN
+         ALTER TABLE users DROP CONSTRAINT users_facility_id_fkey;
+       END IF;
+       IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name='users_facility_fk' AND table_name='users') THEN
+         ALTER TABLE users ADD CONSTRAINT users_facility_fk FOREIGN KEY (facility_id) REFERENCES facilities(id) ON DELETE RESTRICT;
+       END IF;
+     END $fk$;$q$),
 
     -- ---- Tiền KHÔNG BAO GIỜ được âm. Ô nhập có min=0 nhưng đó chỉ là thuộc tính HTML.
     ('ck_invoices_no_negative',

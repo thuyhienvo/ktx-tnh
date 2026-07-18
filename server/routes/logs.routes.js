@@ -1,6 +1,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
+const { applyFacilityFilter } = require('../scope');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
@@ -9,9 +10,12 @@ router.use(requireAuth, requireRole('admin', 'staff'));
 router.get('/', async (req, res, next) => {
   try {
     const { type, limit } = req.query;
+    const cond = [];
     const params = [];
-    let where = '';
-    if (type === 'in' || type === 'out') { params.push(type); where = 'WHERE l.type=$1'; }
+    if (type === 'in' || type === 'out') { params.push(type); cond.push(`l.type=$${params.length}`); }
+    // Đa cơ sở: điều hành thấy nhật ký mọi cơ sở; quản lý cơ sở CHỈ thấy nhật ký cơ sở mình (qua HV).
+    applyFacilityFilter(req, 's.facility_id', cond, params);
+    const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
     const lim = Math.min(+limit || 500, 2000);
     // Phân trang tuỳ chọn: có page/limit -> { rows, total, page, limit }, không thì trả mảng như cũ.
     const paged = req.query.page != null || req.query.limit != null;

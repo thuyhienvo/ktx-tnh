@@ -8,8 +8,12 @@
 // Vai (role) quyết định LÀM ĐƯỢC GÌ; facility_id quyết định THẤY DỮ LIỆU NÀO. Hai trục độc lập.
 
 // Cơ sở hiệu lực của người dùng: số id, hoặc null = điều hành (thấy tất cả).
+// CHÍNH SÁCH (chốt 18/07): ADMIN LUÔN là điều hành, bất kể DB có lỡ lưu facility_id — chốt chặn kép
+// cùng với việc admin.routes ép facility_id=null khi tạo/sửa admin. Chỉ staff/maintenance mới bị bó cơ sở.
 function userFacility(req) {
-  return req && req.user && req.user.facility_id != null ? Number(req.user.facility_id) : null;
+  if (!req || !req.user) return null;
+  if (req.user.role === 'admin') return null;
+  return req.user.facility_id != null ? Number(req.user.facility_id) : null;
 }
 
 // True nếu người dùng là điều hành (không bị giới hạn cơ sở).

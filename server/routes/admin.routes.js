@@ -123,6 +123,8 @@ router.post('/users', async (req, res, next) => {
     // Đa cơ sở: NULL = điều hành (thấy tất cả); có id = quản lý đúng cơ sở đó.
     const fac = await parseFacilityId(req.body.facility_id);
     if (!fac.ok) return res.status(400).json({ error: fac.error });
+    // ADMIN LUÔN là điều hành: bỏ qua facility_id gửi lên, không gán cơ sở cho admin (chốt 18/07).
+    const facValue = role === 'admin' ? null : fac.value;
     // Trùng tên: chỉ tính tài khoản CÒN HIỆU LỰC (chưa xoá). Tài khoản đã xoá được đổi tên để nhả
     // tên gốc ra (xem route DELETE) nên đường này chủ yếu chặn trùng với tài khoản đang dùng.
     const dup = await query('SELECT 1 FROM users WHERE lower(username)=lower($1) AND deleted_at IS NULL', [username]);
@@ -131,7 +133,7 @@ router.post('/users', async (req, res, next) => {
     const { rows } = await query(
       `INSERT INTO users (username, password_hash, role, full_name, facility_id, must_change_password)
        VALUES ($1,$2,$3,$4,$5,true) RETURNING id, username, role, full_name, facility_id`,
-      [username, bcrypt.hashSync(password, 10), role, (req.body.full_name || '').trim(), fac.value]);
+      [username, bcrypt.hashSync(password, 10), role, (req.body.full_name || '').trim(), facValue]);
     res.status(201).json(rows[0]);
   } catch (e) { next(e); }
 });
@@ -159,13 +161,16 @@ router.put('/users/:id', async (req, res, next) => {
     const hasName = req.body.full_name != null;
     // Đa cơ sở: chỉ đổi facility_id khi CÓ gửi field (giống full_name). '' / null -> NULL (điều hành).
     // requireAuth đọc lại facility_id từ DB mỗi request nên đổi xong có hiệu lực ngay, không cần thu hồi vé.
-    const hasFac = req.body.facility_id !== undefined;
+    let hasFac = req.body.facility_id !== undefined;
     let facVal = null;
     if (hasFac) {
       const fac = await parseFacilityId(req.body.facility_id);
       if (!fac.ok) return res.status(400).json({ error: fac.error });
       facVal = fac.value;
     }
+    // ADMIN LUÔN là điều hành: nếu vai (mới) là admin thì ÉP facility_id=null, kể cả khi caller không
+    // gửi facility_id (vd nâng staff-có-cơ-sở lên admin mà quên bỏ cơ sở) (chốt 18/07).
+    if (newRole === 'admin') { hasFac = true; facVal = null; }
     await query(
       `UPDATE users SET full_name = CASE WHEN $1 THEN $2 ELSE full_name END, role=$3,
          facility_id = CASE WHEN $5 THEN $6 ELSE facility_id END

@@ -91,16 +91,21 @@ router.post('/handovers/:id/checkout', async (req, res, next) => {
     if (actual > today)
       return res.status(400).json({ error: 'Ngày trả phòng thực tế không thể ở tương lai.' });
     // Ngày trả không thể TRƯỚC ngày nhận phòng / trước ngày bắt đầu lượt ở hiện tại (BLK-3)
-    const cur = (await query('SELECT check_in_date, facility_id FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    const cur = (await query('SELECT check_in_date, facility_id, checkout_confirmed_at, status FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!cur) return res.status(404).json({ error: 'Không tìm thấy học viên' });
     const badF = assertFacility(req, cur.facility_id); if (badF) return res.status(badF.status).json(badF); // đa cơ sở
+    // Xác nhận MỘT LẦN (giống đường checkin). Xác nhận lại sẽ ghi đè ngày trả thật + chạy finalizeCheckout
+    // lần nữa (đóng lượt ở/dọn phiếu lại) -> dữ liệu lệch. Chặn ngay khi đã 'out'/đã xác nhận.
+    if (cur.checkout_confirmed_at || cur.status === 'out')
+      return res.status(409).json({ error: 'Đã xác nhận trả phòng trước đó — không xác nhận lại (tránh mất dấu lần bàn giao thật).' });
     const badDate = await badCheckoutDate(null, +req.params.id, actual, cur.check_in_date);
     if (badDate) return res.status(400).json({ error: badDate });
+    // WHERE checkout_confirmed_at IS NULL: CLAIM nguyên tử — 2 người xác nhận cùng lúc thì chỉ 1 thắng.
     const { rows } = await query(
       `UPDATE students SET checkout_confirmed_at=now(), checkout_actual_date=$1, checkout_confirm_note=$2,
          check_out_date=$1, status='out'
-       WHERE id=$3 AND deleted_at IS NULL RETURNING id, room_id`, [actual, note, req.params.id]);
-    if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+       WHERE id=$3 AND deleted_at IS NULL AND checkout_confirmed_at IS NULL RETURNING id, room_id`, [actual, note, req.params.id]);
+    if (!rows[0]) return res.status(409).json({ error: 'Đơn vừa được xác nhận bởi thao tác khác.' });
     // source theo VAI người thực hiện — bảo trì thì ghi 'maintenance', không ghi cứng 'admin' (V2-43)
     const src = req.user && req.user.role === 'maintenance' ? 'maintenance' : 'admin';
     try { await query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'out',$2,$3,$4,$5)`,

@@ -136,6 +136,13 @@ router.post('/checkout/:id/confirm', async (req, res, next) => {
       if (err) return res.status(400).json({ error: err });
     }
 
+    // CLAIM NGUYÊN TỬ trước khi check-out: chỉ MỘT request thắng `WHERE status='pending'`. Hai người bấm
+    // duyệt cùng lúc (hoặc double-click) trước đây đều đọc 'pending' ở trên rồi CẢ HAI chạy check-out ->
+    // ghi 2 dòng nhật ký ra/vào, tính lại tiền 2 lần. Giờ người sau rowCount=0 -> 409, KHÔNG chạy tiếp.
+    // (Validate đã xong ở trên nên đơn vẫn 'pending' nếu có lỗi -> sửa rồi duyệt lại được.)
+    const claim = await query(`UPDATE checkout_requests SET status='done', handled_at=now() WHERE id=$1 AND status='pending' RETURNING id`, [req.params.id]);
+    if (!claim.rows[0]) return res.status(409).json({ error: 'Đơn đã được xử lý bởi thao tác khác — tải lại để xem trạng thái mới nhất.' });
+
     await query(`UPDATE students SET status='out', check_out_date=$1, checkout_notice_date=$2, checkout_reason=$3 WHERE id=$4`,
       [date, noticeDate, cr.reason, cr.student_id]);
     if (hasMeter) {
@@ -148,7 +155,7 @@ router.post('/checkout/:id/confirm', async (req, res, next) => {
     // Ghi 'self' (học viên tự làm) là nói dối nhật ký — tra ra sai người chịu trách nhiệm.
     await query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'out',$2,$3,$4,'admin')`,
       [cr.student_id, date, roomId, `Trả phòng (duyệt đơn HV, bởi ${req.user && req.user.username || 'cán bộ'})`]);
-    await query(`UPDATE checkout_requests SET status='done', handled_at=now() WHERE id=$1`, [req.params.id]);
+    // (Trạng thái đơn đã được CLAIM='done' ở trên — không update lại ở đây nữa.)
 
     // BLK-1: đóng lượt ở + đóng phòng trưởng + dọn phiếu kỳ sau + tính lại (trước đây đường này ĐÓNG
     // room_stays nhưng QUÊN đóng phòng trưởng và QUÊN dọn phiếu kỳ sau).
@@ -176,13 +183,15 @@ router.put('/checkout/:id/note', async (req, res, next) => {
 router.post('/checkout/:id/reject', async (req, res, next) => {
   try {
     if (await blockByCheckoutReq(req, res, req.params.id)) return; // đa cơ sở
-    const cr = (await query('SELECT status FROM checkout_requests WHERE id=$1', [req.params.id])).rows[0];
-    if (!cr) return res.status(404).json({ error: 'Không tìm thấy đơn' });     // đừng trả {ok:true} cho đơn không có thật
-    // Chỉ từ chối được đơn ĐANG CHỜ. Từ chối một đơn ĐÃ DUYỆT thì đơn ghi "đã từ chối" nhưng
-    // học viên đã bị check-out thật (hoá đơn đã tính lại) -> mâu thuẫn vĩnh viễn, không gỡ được.
-    if (cr.status !== 'pending')
-      return res.status(409).json({ error: `Đơn này đã được xử lý (${cr.status === 'done' ? 'đã duyệt — học viên đã trả phòng' : 'đã từ chối'}) — không thể từ chối.` });
-    await query(`UPDATE checkout_requests SET status='rejected', handled_at=now() WHERE id=$1`, [req.params.id]);
+    // Từ chối NGUYÊN TỬ: chỉ đổi khi VẪN 'pending'. Chống đua với duyệt (confirm) chạy song song —
+    // trước đây SELECT-rồi-UPDATE cho cả hai lọt, đơn thành 'rejected' NHƯNG học viên đã bị check-out
+    // thật (confirm thắng) -> mâu thuẫn vĩnh viễn. WHERE status='pending' + kiểm rowCount chặn việc đó.
+    const r = await query(`UPDATE checkout_requests SET status='rejected', handled_at=now() WHERE id=$1 AND status='pending' RETURNING id`, [req.params.id]);
+    if (!r.rows[0]) {
+      const cur = (await query('SELECT status FROM checkout_requests WHERE id=$1', [req.params.id])).rows[0];
+      if (!cur) return res.status(404).json({ error: 'Không tìm thấy đơn' }); // đừng trả {ok:true} cho đơn không có thật
+      return res.status(409).json({ error: `Đơn này đã được xử lý (${cur.status === 'done' ? 'đã duyệt — học viên đã trả phòng' : 'đã từ chối'}) — không thể từ chối.` });
+    }
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

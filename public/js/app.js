@@ -480,6 +480,7 @@ function renderAdmin() {
           <button class="hamburger" onclick="toggleSide()" aria-label="Menu">${IC.menu}</button>
           <div style="flex:1;min-width:0"><h1 id="pgTitle">Tổng quan</h1><div class="sub" id="pgSub"></div></div>
           <div class="flex" style="gap:10px">
+            <span id="facSel"></span>
             <button class="notif-bell" id="notifBell" title="Thông báo" aria-haspopup="dialog" aria-expanded="false" onclick="toggleNotif(event)">${IC.bell}<span class="notif-dot" id="notifDot" style="display:none"></span></button>
             <div class="toolbar" id="topActions"></div>
           </div>
@@ -504,6 +505,25 @@ async function refreshCache() {
   ]);
   Object.assign(ST, { rooms, students, facilities, settings, applications, damage, couts, logs, assets, vtypes, vstats });
   updateNavBadges();
+  renderFacilitySelector();
+}
+// Đa cơ sở: bộ chọn cơ sở toàn cục — CHỈ cho ĐIỀU HÀNH (admin) và khi có >1 cơ sở. Quản lý/bảo trì đã
+// bị backend bó theo cơ sở nên không hiện. Đổi cơ sở -> nạp lại toàn bộ dữ liệu (API.setFacility) rồi vẽ lại.
+function renderFacilitySelector() {
+  const box = el('facSel'); if (!box) return;
+  const show = Auth.user && Auth.user.role === 'admin' && (ST.facilities || []).length > 1;
+  if (!show) { box.innerHTML = ''; return; }
+  const cur = ST.facilityFilter || 0;
+  box.innerHTML = `<select title="Lọc theo cơ sở" onchange="setFacilityFilter(this.value)" style="font-size:13px;padding:7px 9px;border-radius:10px;border:1px solid var(--line);background:var(--card)">
+    <option value="0">${IC.building} Tất cả cơ sở</option>
+    ${ST.facilities.map(f => `<option value="${f.id}" ${cur === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}
+  </select>`;
+}
+async function setFacilityFilter(f) {
+  ST.facilityFilter = +f || 0;
+  API.setFacility(ST.facilityFilter);        // áp cho mọi truy vấn danh sách
+  try { await refreshCache(); } catch (e) { return toast(e.message, 'err'); }
+  adminGo(ST.view || 'dashboard');           // vẽ lại view hiện tại với dữ liệu đã lọc
 }
 function updateNavBadges() {
   const dmg = ST.damage || [];
@@ -1051,8 +1071,8 @@ function viewStudents() {
   if (stuFilter === 'resi_registered') list = list.filter(s => isOccupying(s) && s.residency_status === 'registered');
   if (stuFilter === 'checkin_today') list = list.filter(s => s.check_in_date && s.check_in_date.slice(0, 10) === today());
   if (stuFilter === 'checkout_today') list = list.filter(s => s.check_out_date && s.check_out_date.slice(0, 10) === today());
-  // Đa cơ sở: điều hành lọc theo cơ sở (0 = tất cả). Quản lý cơ sở đã bị backend giới hạn nên list vốn 1 cơ sở.
-  if (stuFacilityFilter) list = list.filter(s => s.facility_id === stuFacilityFilter);
+  // Đa cơ sở: dữ liệu đã được lọc theo bộ chọn cơ sở toàn cục (ST.facilityFilter → API.setFacility) ở
+  // refreshCache, nên ST.students ở đây đã đúng phạm vi. Badge cơ sở hiện dưới tên khi xem "Tất cả cơ sở".
   // Tìm kiếm áp dụng bằng ẩn/hiện hàng (attachRowSearch) — không lọc dựng lại ở đây
   const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
   const cnt = f => ST.students.filter(f).length;
@@ -1077,10 +1097,6 @@ function viewStudents() {
       <button class="btn sm ${stuFilter === 'contract_overdue' ? 'pri' : ''}" onclick="stuFilter='contract_overdue';viewStudents()">${IC.alert} Ghép >7 ngày chưa ký HĐ (${cnt(contractOverdue)})</button>
     </div>
     <div class="panel"><div class="hd"><h2>Học viên (<span id="stuCount">${list.length}</span>)</h2>
-      ${showFacilityUI() ? `<select id="stuFacSel" onchange="stuFacilityFilter=+this.value||0;viewStudents()" style="font-size:13px;padding:6px 8px">
-        <option value="0">${IC.building} Tất cả cơ sở</option>
-        ${(ST.facilities || []).map(f => `<option value="${f.id}" ${stuFacilityFilter === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}
-      </select>` : ''}
       <div class="search"><span class="i">${IC.search}</span><input id="ss" placeholder="Tìm tên, mã, lớp, SĐT, số phòng..." value="${esc(stuSearch)}"></div>
     </div><div class="table-wrap">
       ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}${hasXC ? '<th>Dự kiến XC</th>' : ''}${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>

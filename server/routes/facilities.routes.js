@@ -48,6 +48,10 @@ router.delete('/:id', requireRole('admin'), async (req, res, next) => {
   try {
     const c = await query('SELECT COUNT(*)::int c FROM rooms WHERE facility_id=$1 AND deleted_at IS NULL', [req.params.id]);
     if (c.rows[0].c > 0) return res.status(400).json({ error: 'Cơ sở đang có phòng, không thể xóa' });
+    // Còn TÀI KHOẢN gắn cơ sở này -> xoá cơ sở sẽ biến họ thành "điều hành" âm thầm (thấy mọi cơ sở).
+    // Chặn, buộc chuyển/đổi tài khoản trước. (schema cũng đặt FK users.facility_id ON DELETE RESTRICT.)
+    const u = await query('SELECT COUNT(*)::int c FROM users WHERE facility_id=$1 AND deleted_at IS NULL', [req.params.id]);
+    if (u.rows[0].c > 0) return res.status(400).json({ error: 'Cơ sở đang có tài khoản quản lý/bảo trì, không thể xoá. Chuyển họ sang cơ sở khác (hoặc để "Tất cả cơ sở") trước.' });
     await query('UPDATE facilities SET deleted_at=now() WHERE id=$1', [req.params.id]); // xóa mềm
     res.json({ ok: true });
   } catch (e) { next(e); }

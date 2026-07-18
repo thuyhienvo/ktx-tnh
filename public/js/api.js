@@ -10,6 +10,11 @@ const Auth = {
   },
 };
 
+// Đa cơ sở: bộ lọc cơ sở của ĐIỀU HÀNH (0 = tất cả). Áp vào MỌI truy vấn danh sách bên dưới.
+// Quản lý/bảo trì bị backend bó theo cơ sở nên tham số này với họ vô hại (server bỏ qua).
+let _apiFacility = 0;
+const facAmp = has => _apiFacility ? (has ? '&' : '?') + 'facility=' + _apiFacility : '';
+
 async function api(path, { method = 'GET', body } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   let res;
@@ -74,12 +79,13 @@ const API = {
   updateSettings: b => api('/settings', { method: 'PUT', body: b }),
   testSmtp: b => api('/settings/smtp/test', { method: 'POST', body: b }),
 
+  setFacility: f => { _apiFacility = +f || 0; },   // đa cơ sở: đặt bộ lọc cơ sở toàn cục (điều hành)
   facilities: () => api('/facilities'),
   createFacility: b => api('/facilities', { method: 'POST', body: b }),
   updateFacility: (id, b) => api('/facilities/' + id, { method: 'PUT', body: b }),
   deleteFacility: id => api('/facilities/' + id, { method: 'DELETE' }),
 
-  rooms: deleted => api('/rooms' + (deleted ? '?deleted=1' : '')),
+  rooms: deleted => api('/rooms' + (deleted ? '?deleted=1' : '') + facAmp(!!deleted)),
   createRoom: b => api('/rooms', { method: 'POST', body: b }),
   updateRoom: (id, b) => api('/rooms/' + id, { method: 'PUT', body: b }),
   deleteRoom: id => api('/rooms/' + id, { method: 'DELETE' }),
@@ -88,7 +94,7 @@ const API = {
   setLeader: (id, b) => api('/rooms/' + id + '/leader', { method: 'POST', body: b }),
   unsetLeader: (id, date) => api('/rooms/' + id + '/leader?date=' + encodeURIComponent(date || ''), { method: 'DELETE' }),
 
-  students: deleted => api('/students' + (deleted ? '?deleted=1' : '')),
+  students: deleted => api('/students' + (deleted ? '?deleted=1' : '') + facAmp(!!deleted)),
   student: id => api('/students/' + id),
   createStudent: b => api('/students', { method: 'POST', body: b }),
   updateStudent: (id, b) => api('/students/' + id, { method: 'PUT', body: b }),
@@ -104,7 +110,7 @@ const API = {
   setDeposit: (id, b) => api('/students/' + id + '/deposit', { method: 'POST', body: b }),
   settleDeposit: (id, b) => api('/students/' + id + '/deposit-settle', { method: 'POST', body: b }),
 
-  vehicles: () => api('/vehicles'),
+  vehicles: () => api('/vehicles' + facAmp(false)),
   createVehicle: b => api('/vehicles', { method: 'POST', body: b }),
   updateVehicle: (id, b) => api('/vehicles/' + id, { method: 'PUT', body: b }),
   deleteVehicle: id => api('/vehicles/' + id, { method: 'DELETE' }),
@@ -114,13 +120,13 @@ const API = {
   updateAsset: (id, b) => api('/assets/' + id, { method: 'PUT', body: b }),
   deleteAsset: id => api('/assets/' + id, { method: 'DELETE' }),
 
-  logs: type => api('/logs' + (type ? '?type=' + type : '')),
+  logs: type => api('/logs' + (type ? '?type=' + type : '') + facAmp(!!type)),
 
   electric: month => api('/electric?month=' + month),
   electricHistory: (month, n) => api('/electric/history?month=' + month + (n ? '&n=' + n : '')),
   saveElectric: b => api('/electric/bulk', { method: 'POST', body: b }),
 
-  invoices: month => api('/invoices' + (month ? '?month=' + month : '')),
+  invoices: month => api('/invoices' + (month ? '?month=' + month : '') + facAmp(!!month)),
   invoiceMonths: () => api('/invoices/months'),
   generateInvoices: b => api('/invoices/generate', { method: 'POST', body: b }),
   generateOneInvoice: b => api('/invoices/generate-one', { method: 'POST', body: b }),
@@ -136,9 +142,9 @@ const API = {
   revenueYears: () => api('/reports/years'),
 
   // Vi phạm / nhắc nhở
-  violations: () => api('/violations'),
+  violations: () => api('/violations' + facAmp(false)),
   violationsByStudent: id => api('/violations/student/' + id),
-  violationStats: year => api('/violations/stats' + (year ? '?year=' + year : '')),
+  violationStats: year => api('/violations/stats' + (year ? '?year=' + year : '') + facAmp(!!year)),
   createViolation: b => api('/violations', { method: 'POST', body: b }),
   updateViolation: (id, b) => api('/violations/' + id, { method: 'PUT', body: b }),
   deleteViolation: id => api('/violations/' + id, { method: 'DELETE' }),
@@ -190,13 +196,13 @@ const API = {
   publicApply: b => api('/public/apply', { method: 'POST', body: b }),
 
   // Admin: đơn từ học viên
-  applications: () => api('/applications'),
+  applications: () => api('/applications' + facAmp(false)),
   approveApplication: (id, b) => api('/applications/' + id + '/approve', { method: 'POST', body: b }),
   rejectApplication: id => api('/applications/' + id + '/reject', { method: 'POST' }),
   setAppNote: (id, note) => api('/applications/' + id + '/note', { method: 'PUT', body: { note } }),
   setCoutNote: (id, note) => api('/requests/checkout/' + id + '/note', { method: 'PUT', body: { note } }),
   deleteApplication: id => api('/applications/' + id, { method: 'DELETE' }),
-  damageAll: () => api('/requests/damage'),
+  damageAll: () => api('/requests/damage' + facAmp(false)),
   updateDamage: (id, b) => api('/requests/damage/' + id, { method: 'PUT', body: b }),
   assignMaintenance: id => api('/requests/damage/' + id + '/assign', { method: 'POST' }),
 
@@ -208,7 +214,7 @@ const API = {
   handoverSummary: () => api('/maintenance/handovers/summary'),
   confirmHandoverCheckin: (id, note) => api('/maintenance/handovers/' + id + '/checkin', { method: 'POST', body: { note } }),
   confirmHandoverCheckout: (id, actual_date, note) => api('/maintenance/handovers/' + id + '/checkout', { method: 'POST', body: { actual_date, note } }),
-  checkoutReqs: () => api('/requests/checkout'),
+  checkoutReqs: () => api('/requests/checkout' + facAmp(false)),
   confirmCheckoutReq: (id, b) => api('/requests/checkout/' + id + '/confirm', { method: 'POST', body: b }),
   rejectCheckoutReq: id => api('/requests/checkout/' + id + '/reject', { method: 'POST' }),
 };

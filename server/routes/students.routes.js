@@ -267,6 +267,17 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
     // LUẬT XẾP PHÒNG (một nơi duy nhất): giới tính + thuê nguyên phòng -> chặn; quá tải -> cảnh báo + xác nhận + ghi vết
     const chk = await checkRoomAssignment({ studentId: null, gender: b.gender, rentalType: b.rental_type, roomId: b.room_id });
     if (blockOrConfirm(res, chk, b.confirm_overload === true)) return;
+    // Đa cơ sở: HV thuộc cơ sở của PHÒNG được xếp; không xếp phòng thì theo cơ sở người tạo (quản lý
+    // cơ sở -> ép cơ sở mình). Chặn quản lý tạo HV vào phòng cơ sở khác.
+    let facId;
+    if (b.room_id) {
+      const rm = (await query('SELECT facility_id FROM rooms WHERE id=$1 AND deleted_at IS NULL', [b.room_id])).rows[0];
+      if (!rm) return res.status(400).json({ error: 'Phòng không tồn tại' });
+      const badF = assertFacility(req, rm.facility_id); if (badF) return res.status(badF.status).json(badF);
+      facId = rm.facility_id != null ? rm.facility_id : null;
+    } else {
+      facId = resolveFacilityForCreate(req, req.body.facility_id);
+    }
     let uname = null, pass = null;
     if (b.create_login) {
       uname = (b.login_username || b.code || '').trim();
@@ -294,12 +305,12 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
           (code, name, gender, phone, id_card, birth_date, class_name, room_id, check_in_date, note,
            uses_washing, rental_type, residency_status, contract_no, contract_date, contract_status, cccd_image,
            status, check_out_date, deposit_amount, deposit_status, deposit_date, cccd_front, cccd_back, checkout_reason,
-           class_start_date, expected_departure, parent_phone, room_fee_discount_pct)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29) RETURNING *`,
+           class_start_date, expected_departure, parent_phone, room_fee_discount_pct, facility_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30) RETURNING *`,
         [...f, status, checkOut, takeDeposit ? depositFee : 0, takeDeposit ? 'held' : 'none', takeDeposit ? checkIn : null,
          null, null,
          (checkOut && ['departure', 'personal', 'facility', 'dropout', 'reserve', 'other'].includes(b.checkout_reason)) ? b.checkout_reason : (checkOut ? 'other' : null),
-         D(b.class_start_date), D(b.expected_departure), b.parent_phone || '', PCT(b.room_fee_discount_pct)]
+         D(b.class_start_date), D(b.expected_departure), b.parent_phone || '', PCT(b.room_fee_discount_pct), facId]
       );
       const st = rows[0];
 

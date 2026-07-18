@@ -6,7 +6,7 @@ const { recalcInvoice, roomRoster, studentElectric } = require('../invoice-calc'
 const roomLeaders = require('../room-leaders');
 const { isValidMonth } = require('../valid');
 const vehCount = require('../vehicle-count');
-const { applyFacilityFilter, isExecutive, assertFacility } = require('../scope');
+const { applyFacilityFilter, isExecutive, assertFacility, userFacility } = require('../scope');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
@@ -99,6 +99,13 @@ router.post('/generate', async (req, res, next) => {
     // isValidMonth chứ không chỉ "!month": trước đây "xin-chao" làm sập 500 ở month.split('-'),
     // còn "9999-12" thì LƯU THẬT cả loạt phiếu rồi "9999" nhảy vào ô chọn năm của báo cáo (V2-69).
     if (!isValidMonth(month)) return res.status(400).json({ error: 'Kỳ (tháng) không hợp lệ — chọn dạng YYYY-MM.' });
+    // Đa cơ sở: quản lý cơ sở chỉ ghi chỉ số cho phòng CƠ SỞ MÌNH (điều hành: mọi phòng).
+    if (!isExecutive(req) && Array.isArray(readings) && readings.length) {
+      const fid = userFacility(req);
+      const roomFacs = (await query('SELECT id, facility_id FROM rooms WHERE id = ANY($1)', [readings.map(r => +r.room_id)])).rows;
+      const outside = roomFacs.filter(x => x.facility_id !== fid).map(x => x.id);
+      if (outside.length) { client.release(); return res.status(403).json({ error: `Có phòng không thuộc cơ sở bạn phụ trách (phòng #${outside.join(', #')}) — không lưu.` }); }
+    }
     const fees = await getSettings();
 
     // TP-17: KIỂM chỉ số TRƯỚC transaction. Một phòng có chỉ số lùi (công-tơ vừa thay) trước đây làm
@@ -140,13 +147,20 @@ router.post('/generate', async (req, res, next) => {
 
     const mStart = billing.firstDay(month), mEnd = billing.lastDay(month);
     // Học viên có ở trong tháng (vào trước cuối tháng & chưa rời trước đầu tháng)
-    // Chỉ lấy cột cần dùng (không kéo ảnh CCCD/base64) -> nhẹ RAM & băng thông
+    // Chỉ lấy cột cần dùng (không kéo ảnh CCCD/base64) -> nhẹ RAM & băng thông.
+    // Đa cơ sở: quản lý cơ sở chỉ lập hoá đơn cho HV CƠ SỞ MÌNH (điều hành: tất cả / lọc ?facility).
+    const stCond = ['deleted_at IS NULL', 'check_in_date IS NOT NULL', 'check_in_date <= $1', '(check_out_date IS NULL OR check_out_date >= $2)'];
+    const stParams = [mEnd, mStart];
+    if (isExecutive(req)) {
+      if (req.query.facility) { stParams.push(+req.query.facility); stCond.push(`facility_id = $${stParams.length}`); }
+    } else {
+      applyFacilityFilter(req, 'facility_id', stCond, stParams);
+    }
     const students = (await client.query(
       `SELECT id, room_id, rental_type, check_in_date, check_out_date, uses_washing, uses_parking, room_fee_discount_pct
        FROM students
-       WHERE deleted_at IS NULL AND check_in_date IS NOT NULL AND check_in_date <= $1
-         AND (check_out_date IS NULL OR check_out_date >= $2)`,
-      [mEnd, mStart]
+       WHERE ${stCond.join(' AND ')}`,
+      stParams
     )).rows;
 
     // Chỉ số điện theo phòng
@@ -275,6 +289,7 @@ router.post('/generate-one', async (req, res, next) => {
     const fees = await getSettings();
     const s = (await query('SELECT * FROM students WHERE id=$1', [student_id])).rows[0];
     if (!s) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    const badF = assertFacility(req, s.facility_id); if (badF) return res.status(badF.status).json(badF); // đa cơ sở
     const dup = (await query('SELECT id, status, other_charge FROM invoices WHERE student_id=$1 AND month=$2', [student_id, month])).rows[0];
     if (dup && dup.status === 'paid') return res.status(400).json({ error: 'Hóa đơn kỳ này đã đóng — không sửa' });
 
@@ -333,8 +348,10 @@ router.post('/', async (req, res, next) => {
     if (neg) return res.status(400).json({ error: neg });
     const badD = badDays(b);
     if (badD) return res.status(400).json({ error: badD });
-    const st = await query('SELECT room_id FROM students WHERE id=$1', [b.student_id]);
-    const roomId = st.rows[0]?.room_id || null;
+    const st = await query('SELECT room_id, facility_id FROM students WHERE id=$1', [b.student_id]);
+    if (!st.rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    const badF = assertFacility(req, st.rows[0].facility_id); if (badF) return res.status(badF.status).json(badF); // đa cơ sở
+    const roomId = st.rows[0].room_id || null;
     const total = ['room_charge', 'electric_charge', 'water_charge', 'service_charge', 'washing_charge', 'parking_charge', 'other_charge']
       .reduce((a, k) => a + (+b[k] || 0), 0);
     const vals = [b.student_id, roomId, b.month, +b.days_stayed || 0, +b.room_charge || 0,

@@ -110,23 +110,34 @@ router.get('/stats', async (req, res, next) => {
     const threshold = +s.violation_mail_threshold || 3;
     const year = (req.query.year || new Date().toISOString().slice(0, 4));
 
-    const total = (await query('SELECT COUNT(*)::int c FROM violations WHERE deleted_at IS NULL')).rows[0].c;
-    const bySeverity = (await query(`SELECT severity, COUNT(*)::int c FROM violations WHERE deleted_at IS NULL GROUP BY severity`)).rows;
-    const byType = (await query(`SELECT type_name, COUNT(*)::int c FROM violations WHERE deleted_at IS NULL GROUP BY type_name ORDER BY c DESC`)).rows;
+    // Đa cơ sở: mọi thống kê JOIN students để LỌC theo cơ sở (điều hành thấy tổng; quản lý chỉ cơ sở mình).
+    // Mỗi truy vấn dựng cond/params riêng (facility là tham số ĐẦU nên placeholder khớp).
+    const facBase = () => { const c = ['v.deleted_at IS NULL', 's.deleted_at IS NULL'], p = []; applyFacilityFilter(req, 's.facility_id', c, p); return { c, p }; };
+    const JV = 'FROM violations v JOIN students s ON s.id=v.student_id';
+
+    const t = facBase();
+    const total = (await query(`SELECT COUNT(*)::int c ${JV} WHERE ${t.c.join(' AND ')}`, t.p)).rows[0].c;
+    const sv = facBase();
+    const bySeverity = (await query(`SELECT v.severity, COUNT(*)::int c ${JV} WHERE ${sv.c.join(' AND ')} GROUP BY v.severity`, sv.p)).rows;
+    const ty = facBase();
+    const byType = (await query(`SELECT v.type_name, COUNT(*)::int c ${JV} WHERE ${ty.c.join(' AND ')} GROUP BY v.type_name ORDER BY c DESC`, ty.p)).rows;
+    const mo = { c: [`to_char(v.date,'YYYY')=$1`, 'v.deleted_at IS NULL', 's.deleted_at IS NULL'], p: [String(year)] };
+    applyFacilityFilter(req, 's.facility_id', mo.c, mo.p);
     const byMonth = (await query(
-      `SELECT to_char(date,'YYYY-MM') AS month, COUNT(*)::int c FROM violations
-       WHERE deleted_at IS NULL AND to_char(date,'YYYY')=$1 GROUP BY month ORDER BY month`, [String(year)])).rows;
+      `SELECT to_char(v.date,'YYYY-MM') AS month, COUNT(*)::int c ${JV}
+       WHERE ${mo.c.join(' AND ')} GROUP BY month ORDER BY month`, mo.p)).rows;
     // Học viên theo số lần vi phạm (kèm cảnh báo ngưỡng gửi nhà trường)
+    const bs = facBase();
     const byStudent = (await query(
       `SELECT s.id, s.name, s.code, s.class_name, r.name AS room_name,
         COUNT(v.id)::int AS cnt,
         MAX(v.date) AS last_date,
         BOOL_OR(v.notified_school) AS notified
-       FROM violations v JOIN students s ON s.id=v.student_id
+       ${JV}
        LEFT JOIN rooms r ON r.id=s.room_id
-       WHERE v.deleted_at IS NULL AND s.deleted_at IS NULL
+       WHERE ${bs.c.join(' AND ')}
        GROUP BY s.id, s.name, s.code, s.class_name, r.name
-       ORDER BY cnt DESC, last_date DESC`)).rows;
+       ORDER BY cnt DESC, last_date DESC`, bs.p)).rows;
     const needMail = byStudent.filter(x => x.cnt >= threshold && !x.notified).length;
     res.json({ threshold, total, bySeverity, byType, byMonth, byStudent, needMail });
   } catch (e) { next(e); }

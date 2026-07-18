@@ -7,7 +7,7 @@
 ## 0. Mục tiêu & phạm vi
 - **Mục đích app:** quản lý toàn bộ vòng đời học viên nội trú (đăng ký → ở → trả phòng); lõi = tự động tính tiền phòng/điện + phiếu báo. Thay Excel/giấy. Định hướng: nhiều cơ sở.
 - **GĐ1 — go-live trước 06/08/2026:** toàn bộ nghiệp vụ + **ĐA CƠ SỞ** (mỗi cơ sở 1 quản lý chỉ thấy cơ sở mình; HV chỉ thấy cơ sở của họ; chỉ **điều hành** thấy tổng).
-- **GĐ2 (sau go-live):** tài chính KTX trong app (QR/phiếu thu/kế toán) — sếp đã đồng ý; code ở nhánh `feature/finance-qr`.
+- **GĐ2 (sau go-live):** tài chính KTX trong app (QR/phiếu thu/kế toán) — sếp đã đồng ý; code ở nhánh `feature/finance-qr`. Lộ trình chi tiết ở mục 8.
 - **Ngoài phạm vi dev (giai đoạn staging):** hạ tầng/vận hành/pháp lý-lưu trữ → **system admin** lo khi lên prod. (Backup/PITR vẫn theo dõi như dependency phải xong trước 06/08.)
 
 ## 1. Bản đồ phân hệ & trạng thái (toàn dự án)
@@ -23,7 +23,7 @@
 | Cổng học viên (tự phục vụ) | ✅ Có | 🔴 **chưa cách ly theo cơ sở** |
 | Trang công khai + đăng ký trực tuyến | ✅ Có | |
 | Quản trị hệ thống (phân quyền, audit log, cấu hình) | ✅ Có | 🔴 **chưa có vai "điều hành" vs "quản lý cơ sở"** |
-| **ĐA CƠ SỞ** (cách ly dữ liệu + phân quyền theo cơ sở) | 🔴 **Chưa bắt đầu** | **ĐƯỜNG GĂNG — xuyên suốt mọi phân hệ trên** |
+| **ĐA CƠ SỞ** (cách ly dữ liệu + phân quyền theo cơ sở) | 🟡 **Backend ~80% (bất ngờ đã tiến xa)** · Frontend 🔴 chưa | scope.js đúng, 10 route đã lọc; SÓT: logs, violations/stats + frontend chưa có bộ chọn cơ sở (xem review 18/07) |
 | Tài chính QR/phiếu thu (GĐ2) | 📦 Hoãn có chủ đích | nhánh `feature/finance-qr`; chưa lên lịch |
 
 ## 2. Chất lượng theo chiều (cross-cutting)
@@ -39,9 +39,11 @@
 ## 3. Punch list go-live 06/08 (việc phải xong)
 | # | Hạng mục | Ưu tiên | Trạng thái | Chủ |
 |---|---|---|---|---|
-| C | Đa cơ sở — nền (`users.facility_id` + vai điều hành/quản lý cơ sở) | P0 | 🔴 Chưa bắt đầu | dev |
-| D | Đa cơ sở — lọc mọi truy vấn theo cơ sở người đăng nhập | P0 | 🔴 Chưa bắt đầu | dev |
-| E | Đa cơ sở — cách ly cổng HV + UI chọn cơ sở cho điều hành | P0 | 🔴 Chưa bắt đầu | dev |
+| C | Đa cơ sở — nền (`users.facility_id` + `scope.js` + gán cơ sở tài khoản) | P0 | 🟢 Cơ bản xong | dev |
+| D | Đa cơ sở — lọc truy vấn backend theo cơ sở | P0 | 🟡 ~80% — sót `logs`, `violations/stats`, rà đủ handler | dev |
+| E | Đa cơ sở — frontend (bộ chọn cơ sở điều hành) + cách ly cổng HV | P0 | 🔴 Frontend chưa làm | dev |
+| J | Vá race duyệt/từ chối đơn trả phòng + guard bảo trì trả phòng lặp | P0 | 🔴 Mới phát hiện (review 18/07) | dev |
+| K | Chính sách đa cơ sở (chị chốt 18/07): quản lý cơ sở = **staff gắn facility_id** (admin luôn = điều hành); cơ sở **chỉ xoá mềm**, chặn xoá khi còn tài khoản/phòng | P0 | ✅ Đã chốt → áp vào code | dev |
 | F | Hardening: bật CSP, escape XSS (N-10), kiểm enum biên | P1 | 🟠 Còn tồn | dev |
 | G | UI/UX 30 case còn lại | P2 | 🟠 Còn tồn | dev |
 | H | Backup/PITR + test restore (BLK-6) | P0 | ⚙️ Chờ system admin/công ty | chị Hiền điều phối |
@@ -80,6 +82,18 @@
 
 Ghi chú nghiệp vụ đã xác nhận: phí HV vào 15/7 (tháng 31 ngày) = **17 ngày ở, thu phí cố định 100%** (>15 ngày). Mốc nhắc ký HĐ + lập phiếu = **7 ngày kể từ ngày nhận phòng**.
 
+## 8. Lộ trình phát triển (chị Hiền trình bày 18/07)
+**GĐ1 — như hiện tại** (go-live 06/08): quản lý vòng đời HV + tính tiền phòng/điện + phiếu báo + đa cơ sở. App chỉ quản TẠO phiếu, không quản đã thu.
+
+**GĐ2 — sau go-live**, gồm 3 nhóm:
+- **A. Thu tiền (QR + ngân hàng):** tạo lệnh thu + xuất QR cho HV thanh toán · đối soát lệnh thu với ngân hàng **tự động** · cảnh báo lệnh thu **quá hạn chưa thanh toán**.
+- **B. Kế toán Bravo:** xây mã sản phẩm khớp Bravo (đã có setting `bravo_*`) · hàng tháng gửi báo cáo doanh thu về **sổ cái Bravo** — ⚠️ *phương án nhận chưa chốt*.
+- **C. Tích hợp Bitrix:** API lấy thông tin HV chính xác · API lấy HV **sắp chuyển lên chi nhánh HCM** để chuẩn bị phòng trước.
+
+**Quyết định/phụ thuộc GĐ2 còn mở (PM theo dõi):** (1) phương án nhận báo cáo Bravo; (2) ngân hàng nào + có API đối soát tự động không; (3) quyền + ánh xạ trường dữ liệu Bitrix; (4) cổng/chuẩn QR (VietQR?).
+
 ## 7. Nhật ký cập nhật
+- **18/07/2026 (tối):** Ghi lộ trình GĐ1→GĐ2 (mục 8) + chốt 2 chính sách đa cơ sở (mục K). Chị chọn: quản lý cơ sở = staff gắn facility_id; cơ sở chỉ xoá mềm.
+- **18/07/2026 (tối):** Review toàn bộ code bằng 5 luồng → `docs/REVIEW-TONG-THE-2026-07-18.md`. Phát hiện lớn: **đa cơ sở backend đã ~80%** (không phải "chưa bắt đầu"); vá 1 lỗi boot do PM tự gây (index deleted_at); còn race checkout_requests + rò cơ sở (logs, violations/stats) + frontend đa cơ sở chưa làm + nợ hard-code. Cập nhật mục 1/3.
 - **18/07/2026 (chiều):** Chốt 4 điều chỉnh nghiệp vụ BR-1..4 (xem mục 6b) + xác nhận quy tắc phí tháng lẻ cho ca vào 15/7. Đưa vào prompt cho VS Code.
 - **18/07/2026:** Lập tracker toàn dự án. Rà v80: nghiệp vụ đã vá (#76/#77, 256 PASS); mọi phân hệ chức năng đã có; **rủi ro số 1 = đa cơ sở chưa bắt đầu** (bằng chứng: `users` chưa có `facility_id` — schema.sql:98; vai trò chỉ admin/staff/maintenance — admin.routes.js:89; lọc cơ sở là dropdown thủ công — students.routes.js:125). Thiết lập tác vụ tự rà mỗi 2 ngày.

@@ -2,7 +2,7 @@ const express = require('express');
 const { query, withTransaction } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { isValidMonth } = require('../valid');
-const { applyFacilityFilter, isExecutive } = require('../scope');
+const { applyFacilityFilter, isExecutive, userFacility } = require('../scope');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
@@ -74,6 +74,13 @@ router.post('/bulk', async (req, res, next) => {
   try {
     const { month, readings } = req.body; // readings: [{room_id, reading_end}]
     if (!isValidMonth(month) || !Array.isArray(readings)) return res.status(400).json({ error: 'Thiếu hoặc sai dữ liệu (kỳ YYYY-MM + danh sách chỉ số).' });
+    // Đa cơ sở: quản lý cơ sở chỉ ghi chỉ số cho phòng CƠ SỞ MÌNH (điều hành: mọi phòng).
+    if (!isExecutive(req) && readings.length) {
+      const fid = userFacility(req);
+      const roomFacs = (await query('SELECT id, facility_id FROM rooms WHERE id = ANY($1)', [readings.map(r => +r.room_id)])).rows;
+      const outside = roomFacs.filter(x => x.facility_id !== fid).map(x => x.id);
+      if (outside.length) return res.status(403).json({ error: `Có phòng không thuộc cơ sở bạn phụ trách (phòng #${outside.join(', #')}) — không lưu.` });
+    }
     const pm = prevMonth(month);
 
     // KIỂM TRƯỚC toàn bộ, gom lỗi, chưa ghi gì. Sai thì báo hết một lần, KHÔNG lưu nửa chừng (TP-18/20).
