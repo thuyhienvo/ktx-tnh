@@ -1,0 +1,237 @@
+// === app-admin-core.js — tach tu app.js (CHANG 4 refactor). Classic script, GIU global scope cho onclick. ===
+// KHONG doi thu tu nap trong index.html; boot()/chong-bam/click-listener nam o app-portals-boot.js (cuoi).
+function renderAdmin() {
+  const isAdmin = Auth.user.role === 'admin';
+  el('app').innerHTML = `
+    <div class="app">
+      <aside class="side">
+        <div class="logo">${IC.home} <span>Nội trú Esuhai</span></div>
+        <nav id="nav">
+          <div class="grp">Quản lý</div>
+          ${isAdmin ? `<button data-v="exec"><span class="ico">${IC.gauge}</span><span class="lbl">Điều hành</span></button>` : ''}
+          <button data-v="dashboard"><span class="ico">${IC.dashboard}</span><span class="lbl">Tổng quan</span></button>
+          <button data-v="students"><span class="ico">${IC.users}</span><span class="lbl">Học viên</span></button>
+          <button data-v="rooms"><span class="ico">${IC.doorOpen}</span><span class="lbl">Phòng</span></button>
+          <button data-v="services"><span class="ico">${IC.sparkles}</span><span class="lbl">Dịch vụ</span></button>
+          <div class="grp">Vận hành</div>
+          <button data-v="checkin"><span class="ico">${IC.key}</span><span class="lbl">Check-in / out</span></button>
+          <button data-v="invoices"><span class="ico">${IC.wallet}</span><span class="lbl">Tiền phòng</span></button>
+          ${isAdmin ? `<button data-v="revenue"><span class="ico">${IC.trendingUp}</span><span class="lbl">Dự báo doanh thu</span></button>` : ''}
+          <div class="grp">Tiếp nhận & Hỗ trợ</div>
+          <button data-v="reg"><span class="ico">${IC.filePen}</span><span class="lbl">Đăng ký ở nội trú</span><span class="cnt" id="navReg" style="display:none"></span></button>
+          <button data-v="checkout"><span class="ico">${IC.logOut}</span><span class="lbl">Đăng ký trả phòng</span><span class="cnt" id="navCheckout" style="display:none"></span></button>
+          <button data-v="repair"><span class="ico">${IC.wrench}</span><span class="lbl">Báo hư hỏng CSVC</span><span class="cnt" id="navRepair" style="display:none"></span></button>
+          <button data-v="violations"><span class="ico">${IC.alert}</span><span class="lbl">Quản lý vi phạm</span><span class="cnt" id="navViol" style="display:none"></span></button>
+          <button data-v="feedback"><span class="ico">${IC.inbox}</span><span class="lbl">Hộp thư hỗ trợ/góp ý</span><span class="cnt" id="navFeed" style="display:none"></span></button>
+          ${isAdmin ? `<div class="grp">Hệ thống</div>
+          <button data-v="audit"><span class="ico">${IC.history}</span><span class="lbl">Lịch sử</span></button>
+          <button data-v="settings"><span class="ico">${IC.settings}</span><span class="lbl">Cài đặt</span></button>` : ''}
+        </nav>
+        <div class="foot">
+          <div class="u">${esc(Auth.user.full_name || Auth.user.username)}</div>
+          <div class="r muted" style="font-size:11px">${isAdmin ? 'Quản trị viên' : 'Nhân viên'}</div>
+          <button onclick="changePwd()">${IC.key} Đổi mật khẩu</button>
+          <button onclick="Auth.logout()">${IC.logOut} Đăng xuất</button>
+        </div>
+      </aside>
+      <div class="side-backdrop" id="sideBackdrop" onclick="toggleSide()"></div>
+      <div class="main">
+        <div class="top">
+          <button class="hamburger" onclick="toggleSide()" aria-label="Menu">${IC.menu}</button>
+          <div style="flex:1;min-width:0"><h1 id="pgTitle">Tổng quan</h1><div class="sub" id="pgSub"></div></div>
+          <div class="flex" style="gap:10px">
+            <span id="facSel"></span>
+            <button class="notif-bell" id="notifBell" title="Thông báo" aria-haspopup="dialog" aria-expanded="false" onclick="toggleNotif(event)">${IC.bell}<span class="notif-dot" id="notifDot" style="display:none"></span></button>
+            <div class="toolbar" id="topActions"></div>
+          </div>
+        </div>
+        <div class="content" id="content"><div class="spinner"></div></div>
+      </div>
+    </div>`;
+  document.querySelectorAll('#nav button').forEach(b => b.addEventListener('click', () => adminGo(b.dataset.v)));
+  startTableResize();
+  const qp = new URLSearchParams(location.search);
+  const startView = qp.get('view');
+  const views = ['exec', 'dashboard', 'students', 'rooms', 'vehicles', 'services', 'checkin', 'invoices', 'revenue', 'reg', 'checkout', 'repair', 'violations', 'feedback', 'requests', 'audit', 'settings'];
+  refreshCache().then(() => adminGo(views.includes(startView) ? startView : 'dashboard')).catch(e => toast(e.message, 'err'));
+  startNotifPolling();
+}
+
+async function refreshCache() {
+  const [rooms, students, facilities, settings, applications, damage, couts, logs, assets, vtypes, vstats] = await Promise.all([
+    API.rooms(), API.students(), API.facilities(), API.settings(),
+    API.applications().catch(() => []), API.damageAll().catch(() => []), API.checkoutReqs().catch(() => []), API.logs().catch(() => []), API.assets().catch(() => []),
+    API.violationTypes().catch(() => []), API.violationStats().catch(() => ({ byStudent: [], needMail: 0, threshold: 3 })),
+  ]);
+  Object.assign(ST, { rooms, students, facilities, settings, applications, damage, couts, logs, assets, vtypes, vstats });
+  updateNavBadges();
+  renderFacilitySelector();
+}
+// Đa cơ sở: bộ chọn cơ sở toàn cục — CHỈ cho ĐIỀU HÀNH (admin) và khi có >1 cơ sở. Quản lý/bảo trì đã
+// bị backend bó theo cơ sở nên không hiện. Đổi cơ sở -> nạp lại toàn bộ dữ liệu (API.setFacility) rồi vẽ lại.
+function renderFacilitySelector() {
+  const box = el('facSel'); if (!box) return;
+  const show = Auth.user && Auth.user.role === 'admin' && (ST.facilities || []).length > 1;
+  if (!show) { box.innerHTML = ''; return; }
+  const cur = ST.facilityFilter || 0;
+  box.innerHTML = `<select title="Lọc theo cơ sở" onchange="setFacilityFilter(this.value)" style="font-size:13px;padding:7px 9px;border-radius:10px;border:1px solid var(--line);background:var(--card)">
+    <option value="0">${IC.building} Tất cả cơ sở</option>
+    ${ST.facilities.map(f => `<option value="${f.id}" ${cur === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}
+  </select>`;
+}
+async function setFacilityFilter(f) {
+  ST.facilityFilter = +f || 0;
+  API.setFacility(ST.facilityFilter);        // áp cho mọi truy vấn danh sách
+  try { await refreshCache(); } catch (e) { return toast(e.message, 'err'); }
+  adminGo(ST.view || 'dashboard');           // vẽ lại view hiện tại với dữ liệu đã lọc
+}
+function updateNavBadges() {
+  const dmg = ST.damage || [];
+  const setBadge = (id, n) => { const b = el(id); if (b) { b.textContent = n; b.style.display = n ? '' : 'none'; } };
+  setBadge('navReg', ST.applications.filter(a => a.status === 'pending').length);
+  setBadge('navCheckout', ST.couts.filter(c => c.status === 'pending').length);
+  setBadge('navRepair', dmg.filter(d => (d.category || 'damage') === 'damage' && d.status !== 'done').length);
+  setBadge('navViol', (ST.vstats && ST.vstats.needMail) || 0);
+  setBadge('navFeed', dmg.filter(d => ['violation', 'other'].includes(d.category) && d.status !== 'done').length);
+  updateNotif();
+}
+/* ---- Trung tâm thông báo (chuông) ---- */
+function notifItems() {
+  const items = [];
+  const pApps = ST.applications.filter(a => a.status === 'pending').length;
+  const pDmg = ST.damage.filter(d => (d.category || 'damage') === 'damage' && d.status !== 'done').length;
+  const pCout = ST.couts.filter(c => c.status === 'pending').length;
+  const needMail = (ST.vstats && ST.vstats.needMail) || 0;
+  const refund = ST.students.filter(s => liveStatus(s) === 'left' && s.deposit_status === 'held').length;
+  if (pApps) items.push({ n: pApps, ic: IC.filePen, tx: `${pApps} đơn đăng ký chờ duyệt`, act: `adminGo('reg')` });
+  if (pDmg) items.push({ n: pDmg, ic: IC.wrench, tx: `${pDmg} báo hư hỏng chưa xử lý`, act: `adminGo('repair')` });
+  if (pCout) items.push({ n: pCout, ic: IC.logOut, tx: `${pCout} đơn xin trả phòng`, act: `adminGo('checkout')` });
+  if (needMail) items.push({ n: needMail, ic: IC.alert, tx: `${needMail} học viên vi phạm cần báo nhà trường`, act: `adminGo('violations')` });
+  if (refund) items.push({ n: refund, ic: IC.handCoins, tx: `${refund} khoản cọc chờ hoàn (đã trả phòng)`, act: `quyCoc()` });
+  return items;
+}
+function updateNotif() {
+  const total = notifItems().reduce((a, i) => a + i.n, 0);
+  const d = el('notifDot'); if (d) { d.textContent = total > 99 ? '99+' : total; d.style.display = total ? '' : 'none'; }
+}
+// TỰ hỏi server định kỳ. Trước đây chuông chỉ đếm lại từ ST (nạp 1 lần lúc mở trang) và chỉ đổi
+// khi CHÍNH MÌNH bấm một nút có sửa dữ liệu -> việc mới từ máy khác nằm im, phải tự F5 mới thấy (V2-77).
+let _notifTimer = null;
+async function refreshNotifCounts() {
+  if (!Auth.user || document.hidden) return;   // không poll khi ẩn tab / đã đăng xuất
+  try {
+    const [applications, damage, couts, vstats] = await Promise.all([
+      API.applications(), API.damageAll(), API.checkoutReqs(), API.violationStats().catch(() => ST.vstats),
+    ]);
+    Object.assign(ST, { applications, damage, couts, vstats });
+    updateNavBadges();                          // cập nhật cả badge nav lẫn chuông
+    if (el('notifPanel')) {                      // panel đang mở -> vẽ lại nội dung cho khớp
+      const items = notifItems();
+      const inner = el('notifPanel');
+      inner.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" onclick="closeNotif();${i.act}">${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
+    }
+  } catch (e) { /* lỗi mạng tạm -> lần poll sau thử lại, không quấy người dùng */ }
+}
+function startNotifPolling() {
+  if (_notifTimer) clearInterval(_notifTimer);
+  _notifTimer = setInterval(refreshNotifCounts, 60000);   // 60s: đủ kịp thời, không nặng server
+  // Quay lại tab sau khi rời đi -> cập nhật ngay, khỏi chờ hết chu kỳ
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshNotifCounts(); });
+}
+function closeNotif() {
+  const p = el('notifPanel'); if (!p) return;
+  p.remove();
+  document.removeEventListener('mousedown', _notifOutside, true);
+  document.removeEventListener('touchstart', _notifOutside, true);
+  document.removeEventListener('keydown', _notifKey, true);
+  const b = el('notifBell'); if (b) b.setAttribute('aria-expanded', 'false');
+}
+function toggleNotif(e) {
+  if (e) e.stopPropagation();
+  if (el('notifPanel')) { closeNotif(); return; }
+  const items = notifItems();
+  const p = document.createElement('div'); p.className = 'notif-panel'; p.id = 'notifPanel';
+  p.setAttribute('role', 'dialog');
+  p.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" onclick="closeNotif();${i.act}">${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
+  document.body.appendChild(p);
+  const r = el('notifBell').getBoundingClientRect();
+  p.style.top = (r.bottom + 8) + 'px';
+  p.style.right = Math.max(10, window.innerWidth - r.right) + 'px';
+  const b = el('notifBell'); if (b) b.setAttribute('aria-expanded', 'true');
+  // Đóng khi: bấm/chạm ra ngoài (cả touchstart — iOS không phát mousedown khi chạm vùng trống),
+  // và khi bấm Esc (trước đây không có handler bàn phím nào -> mở panel bằng phím là kẹt luôn).
+  setTimeout(() => {
+    document.addEventListener('mousedown', _notifOutside, true);
+    document.addEventListener('touchstart', _notifOutside, true);
+    document.addEventListener('keydown', _notifKey, true);
+  }, 0);
+}
+function _notifOutside(e) {
+  const p = el('notifPanel');
+  if (p && !p.contains(e.target) && !e.target.closest('#notifBell')) closeNotif();
+}
+function _notifKey(e) { if (e.key === 'Escape') closeNotif(); }
+/* ---- Menu trượt trên mobile ---- */
+function toggleSide() {
+  const s = document.querySelector('.side'), b = el('sideBackdrop');
+  const open = s && s.classList.toggle('open');
+  if (b) b.classList.toggle('show', !!open);
+}
+function closeSide() {
+  const s = document.querySelector('.side'), b = el('sideBackdrop');
+  if (s) s.classList.remove('open'); if (b) b.classList.remove('show');
+}
+function adminGo(view) {
+  // Đang điền dở form mà bấm menu khác -> hỏi trước, đừng vứt luôn công sức của người ta.
+  // _dangLuu = đang trong luồng lưu (adminGo được gọi lại sau khi lưu xong) -> không hỏi.
+  if (!window._dangLuu && typeof formDangDo === 'function' && formDangDo()) {
+    if (!confirm('Bạn có dữ liệu chưa lưu.\n\nRời khỏi và bỏ những gì vừa nhập?')) return;
+    closeModalNgay();
+  }
+  if (view === 'requests') view = 'reg'; // alias cũ → trang Đăng ký ở nội trú
+  if (view === 'vehicles') { svcTab = 'parking'; view = 'services'; } // Xe đã gộp vào Dịch vụ → Gửi xe
+  // Chặn nhân viên (staff) truy cập các mục dành riêng quản trị (kể cả deep-link)
+  if (ADMIN_ONLY_VIEWS.includes(view) && Auth.user.role !== 'admin') view = 'dashboard';
+  ST.view = view; closeSide();
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.v === view));
+  el('pgTitle').textContent = AdminTitles[view][0];
+  el('pgSub').textContent = AdminTitles[view][1];
+  el('topActions').innerHTML = '';
+  ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, services: viewServices, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, reg: viewRequests, checkout: viewRequests, repair: viewRequests, violations: viewRequests, feedback: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
+}
+const roomById = id => ST.rooms.find(r => r.id === id);
+const studentById = id => ST.students.find(s => s.id === id);
+const facilityName = id => { const f = ST.facilities.find(x => x.id === id); return f ? f.name : '—'; };
+
+/* ---------- ĐIỀU HÀNH (DASHBOARD LÃNH ĐẠO) ---------- */
+// Biểu đồ cột: tổng (xám) + đã thu (vàng) chồng lên
+function svgBars(rows) {
+  const n = rows.length || 1;
+  // Khung hẹp lại khi ít cột (1 cột không nằm lọt thỏm giữa vùng trắng mênh mông)
+  const W = Math.max(260, Math.min(720, n * 60)), H = 240, pt = 16, pb = 30, pl = 6, pr = 6;
+  const max = Math.max(1, ...rows.map(r => r.total));
+  const cw = (W - pl - pr) / n, bw = Math.min(34, cw * 0.5), ch = H - pt - pb;
+  const yOf = v => pt + ch - (v / max) * ch;
+  const g = rows.map((r, i) => {
+    const x = pl + cw * i + (cw - bw) / 2, yt = yOf(r.total), yp = yOf(r.paid);
+    return `<g><rect x="${x}" y="${yt}" width="${bw}" height="${(pt + ch - yt).toFixed(1)}" rx="3" fill="var(--line2)"><title>${monthLabel(r.month)} · Tổng ${money(r.total)}</title></rect>` +
+      `<rect x="${x}" y="${yp}" width="${bw}" height="${(pt + ch - yp).toFixed(1)}" rx="3" fill="var(--brand)"><title>${monthLabel(r.month)} · Dự báo ${money(r.paid)}</title></rect>` +
+      `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${r.label}</text></g>`;
+  }).join('');
+  // Khoá chiều cao ${H}px: trước đây width:100% làm SVG phóng to theo bề ngang -> cao ~450px, nhìn như hỏng
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="font-family:var(--sans);width:100%;height:${H}px;display:block">${g}</svg>`;
+}
+// Biểu đồ tròn (donut)
+function svgDonut(segs) {
+  const total = segs.reduce((a, s) => a + s.value, 0) || 1;
+  const R = 78, r = 48, cx = 90, cy = 90;
+  let a0 = -Math.PI / 2;
+  const p = (ang, rad) => `${(cx + rad * Math.cos(ang)).toFixed(2)} ${(cy + rad * Math.sin(ang)).toFixed(2)}`;
+  const arcs = segs.filter(s => s.value > 0).map(s => {
+    const a1 = a0 + (s.value / total) * Math.PI * 2, large = (a1 - a0) > Math.PI ? 1 : 0;
+    const d = `M${p(a0, R)} A${R} ${R} 0 ${large} 1 ${p(a1, R)} L${p(a1, r)} A${r} ${r} 0 ${large} 0 ${p(a0, r)} Z`;
+    a0 = a1;
+    return `<path d="${d}" fill="${s.color}"><title>${s.label}: ${money(s.value)} · ${Math.round(s.value / total * 100)}%</title></path>`;
+  }).join('');
+  return `<svg viewBox="0 0 180 180" width="164" height="164">${arcs}</svg>`;
+}
