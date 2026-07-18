@@ -10,13 +10,6 @@ const vehCount = require('../vehicle-count');
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
 
-// Ngày HÔM NAY theo giờ Việt Nam (Asia/Ho_Chi_Minh), dạng YYYY-MM-DD.
-// KHÔNG dùng new Date().toISOString() vì trên Render TZ=UTC: gần nửa đêm giờ VN nó trả ngày HÔM QUA,
-// khiến ngày "đã thu" (paid_date) lệch 1 ngày → đối soát tiền sai kỳ. 'en-CA' cho sẵn định dạng YYYY-MM-DD.
-function todayVN() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
-}
-
 // Mọi khoản tiền phải là số KHÔNG ÂM. Ô nhập có min=0 nhưng đó chỉ là thuộc tính HTML —
 // gọi thẳng API thì room_charge=-99999999 vẫn lọt, kéo tụt doanh thu năm.
 const MONEY_FIELDS = ['room_charge', 'electric_charge', 'water_charge', 'service_charge', 'washing_charge', 'parking_charge', 'other_charge', 'electric_kwh', 'days_stayed'];
@@ -393,7 +386,7 @@ router.post('/mark-paid', requireRole('admin'), async (req, res, next) => {
       const n = (await query(`SELECT COUNT(*)::int c FROM invoices WHERE month=$1 AND status<>'paid' AND deleted_at IS NULL`, [month])).rows[0].c;
       return res.status(400).json({ error: `Thao tác này sẽ đánh dấu ĐÃ THU cho ${n} phiếu của kỳ ${month} và KHÔNG hoàn tác được. Gửi lại kèm "confirm": true nếu chắc chắn.`, would_update: n, month });
     }
-    const date = todayVN();
+    const date = new Date().toISOString().slice(0, 10);
     const r = await query(
       `UPDATE invoices SET status='paid', paid_date=$1 WHERE month=$2 AND status<>'paid' AND deleted_at IS NULL RETURNING id`, [date, month]);
     res.json({ ok: true, updated: r.rows.length, month });
@@ -408,7 +401,7 @@ router.post('/:id/status', async (req, res, next) => {
     if (!['pending', 'sent', 'paid'].includes(req.body.status))
       return res.status(400).json({ error: `Trạng thái không hợp lệ: "${req.body.status}" (chỉ 'pending', 'sent', 'paid').` });
     const status = req.body.status;
-    const paidDate = status === 'paid' ? (req.body.date || todayVN()) : null;
+    const paidDate = status === 'paid' ? (req.body.date || new Date().toISOString().slice(0, 10)) : null;
     const cur = (await query('SELECT status, total FROM invoices WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!cur) return res.status(404).json({ error: 'Không tìm thấy hóa đơn' });
     const { rows } = await query(

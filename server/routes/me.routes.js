@@ -41,12 +41,7 @@ router.get('/profile', async (req, res, next) => {
     // Có nội quy chưa — trả kèm ở đây thay vì để client đi thử gọi file rồi ăn 404.
     // Chưa tải nội quy thì MỌI học viên mở trang đều dính một lỗi 404 đỏ lòm trong console.
     const rules = (await query(`SELECT 1 FROM media WHERE key='noi-quy' AND path IS NOT NULL`)).rows[0];
-    res.json({
-      ...boChuNoiBo(cccdUrls(rows[0])), washing_fee: s.washing_fee, parking_fee: s.parking_fee, has_rules: !!rules,
-      // Tài khoản nhận tiền để HV tự sinh mã QR chuyển khoản ngay trong app (không có secret ở đây).
-      bank_bin: s.bank_bin || '', bank_account_no: s.bank_account_no || '', bank_account_name: s.bank_account_name || '',
-      dorm_name: s.dorm_name || '', due_day_from: s.due_day_from || '', due_day_to: s.due_day_to || '',
-    });
+    res.json({ ...boChuNoiBo(cccdUrls(rows[0])), washing_fee: s.washing_fee, parking_fee: s.parking_fee, has_rules: !!rules });
   } catch (e) { next(e); }
 });
 
