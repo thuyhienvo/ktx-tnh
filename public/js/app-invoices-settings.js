@@ -24,7 +24,7 @@ function deltaTag(cur, prev) {
   return `<span style="color:${up ? 'var(--red-ink)' : 'var(--green-ink)'};font-weight:600">${up ? '▲' : '▼'} ${Math.abs(d)} kWh</span>`;
 }
 async function viewInvoices() {
-  el('topActions').innerHTML = `<button class="btn" onclick="electricForm()">${IC.zap} Chỉ số điện</button><button class="btn" onclick="oneInvoiceForm()">${IC.plus} HĐ cho 1 HV</button><button class="btn pri" onclick="generateForm()">${IC.receipt} Tạo hóa đơn theo tháng</button>`;
+  el('topActions').innerHTML = `<button class="btn" data-act="electricForm">${IC.zap} Chỉ số điện</button><button class="btn" data-act="oneInvoiceForm">${IC.plus} HĐ cho 1 HV</button><button class="btn pri" data-act="generateForm">${IC.receipt} Tạo hóa đơn theo tháng</button>`;
   el('content').innerHTML = '<div class="spinner"></div>';
   const months = await guard(() => API.invoiceMonths());
   if (months.length && !months.includes(invMonth)) invMonth = months[0];
@@ -60,7 +60,7 @@ async function viewInvoices() {
         <div class="search"><span class="i">${IC.search}</span><input id="invs" placeholder="Tìm tên HV / số phòng..." value="${esc(invSearch)}"></div>
         ${all.length ? `<button class="btn sm" onclick='exportCSV(${JSON.stringify(list).replace(/'/g, "&#39;")})'>${IC.download} Xuất Excel (CSV)</button>` : ''}</div></div>
       <div class="table-wrap">
-      ${all.length === 0 ? `<div class="empty">Chưa có hóa đơn nào cho kỳ này.<br><br><button class="btn pri" onclick="generateForm()">${IC.receipt} Tạo hóa đơn</button></div>` :
+      ${all.length === 0 ? `<div class="empty">Chưa có hóa đơn nào cho kỳ này.<br><br><button class="btn pri" data-act="generateForm">${IC.receipt} Tạo hóa đơn</button></div>` :
       list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Giảm</th><th class="num">Tổng</th><th></th></tr></thead><tbody>
         ${list.map(i => `<tr data-s="${esc(((i.student_name || '') + ' ' + (i.student_code || '') + ' ' + (i.room_name || '')).toLowerCase())}">
           <td><strong>${esc(i.student_name)}</strong>${i.student_code ? `<div class="muted" style="font-size:11px">${esc(i.student_code)}</div>` : ''}</td>
@@ -78,9 +78,9 @@ async function viewInvoices() {
           <td class="num"><strong>${moneyN(i.total)}</strong></td>
           <td class="num"><div class="rowbtns" style="justify-content:flex-end">
             <button class="btn sm pri" onclick='phieuBao(${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.fileText} Phiếu báo</button>
-            <button class="btn sm ghost" title="Tính lại theo số ngày ở hiện tại" onclick="recalcInv(${i.id})">${IC.refresh}</button>
+            <button class="btn sm ghost" title="Tính lại theo số ngày ở hiện tại" data-act="recalcInv" data-args='[${i.id}]'>${IC.refresh}</button>
             <button class="btn sm ghost" onclick='invoiceForm(${i.id}, ${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.pencil}</button>
-            <button class="btn sm ghost" onclick="delInvoice(${i.id})">${IC.trash}</button>
+            <button class="btn sm ghost" data-act="delInvoice" data-args='[${i.id}]'>${IC.trash}</button>
           </div></td></tr>`).join('')}
         <tr class="no-result" style="display:none"><td colspan="12"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có hóa đơn ${invFilter === 'paid' ? 'đã đóng' : 'chưa đóng'} trong kỳ này.</div>`}
@@ -90,9 +90,9 @@ async function viewInvoices() {
   const iv = el('invs'); if (iv) { iv.addEventListener('input', () => invSearch = iv.value); attachRowSearch(iv, 'invCount'); }
 }
 function invActions(i) {
-  if (i.status === 'pending') return `<button class="btn sm" onclick="setInvStatus(${i.id},'sent')">Đã gửi QR</button><button class="btn sm green" onclick="setInvStatus(${i.id},'paid')">${IC.check} Đóng</button>`;
-  if (i.status === 'sent') return `<button class="btn sm green" onclick="setInvStatus(${i.id},'paid')">${IC.check} Đã đóng</button><button class="btn sm" onclick="setInvStatus(${i.id},'pending')">${IC.undo}</button>`;
-  return `<button class="btn sm" onclick="setInvStatus(${i.id},'pending')">Bỏ đóng</button>`;
+  if (i.status === 'pending') return `<button class="btn sm" data-act="setInvStatus" data-args='[${i.id},"sent"]'>Đã gửi QR</button><button class="btn sm green" data-act="setInvStatus" data-args='[${i.id},"paid"]'>${IC.check} Đóng</button>`;
+  if (i.status === 'sent') return `<button class="btn sm green" data-act="setInvStatus" data-args='[${i.id},"paid"]'>${IC.check} Đã đóng</button><button class="btn sm" data-act="setInvStatus" data-args='[${i.id},"pending"]'>${IC.undo}</button>`;
+  return `<button class="btn sm" data-act="setInvStatus" data-args='[${i.id},"pending"]'>Bỏ đóng</button>`;
 }
 async function setInvStatus(id, status) { await guard(() => API.setInvoiceStatus(id, status)); await refreshCache(); viewInvoices(); }
 async function recalcInv(id) { const r = await guard(() => API.recalcInvoice(id)); toast(`Đã tính lại: ${r.days_stayed} ngày ở → ${money(r.total)}`); viewInvoices(); }
@@ -103,7 +103,7 @@ function oneInvoiceForm() {
   const opts = ST.students.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'))
     .map(s => `<option value="${s.id}">${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}${s.room_name ? ' · ' + esc(s.room_name) : ''}</option>`).join('');
   openModal(`
-    <div class="mh"><h3>${IC.plus} Tạo hóa đơn cho 1 học viên</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.plus} Tạo hóa đơn cho 1 học viên</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">${IC.info} Dùng khi có học viên mới vào giữa tháng. Hệ thống <strong>tự tính</strong> theo phòng, số ngày ở và chỉ số điện đã lưu — không ảnh hưởng hóa đơn người khác (người đã đóng sẽ bị khóa).</div>
       <div class="grid2">
@@ -111,7 +111,7 @@ function oneInvoiceForm() {
         <div class="field"><label>Kỳ (tháng)</label><input id="oi_month" type="month" value="${invMonth}"></div>
       </div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveOneInvoice()">Tạo &amp; xem phiếu báo</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveOneInvoice">Tạo &amp; xem phiếu báo</button></div>`);
 }
 async function saveOneInvoice() {
   const student_id = +el('oi_stu').value, month = el('oi_month').value;
@@ -132,14 +132,14 @@ async function generateForm() {
 async function renderGenerateForm(month) {
   const rooms = await guard(() => API.electric(month));
   el('modal').innerHTML = `
-    <div class="mh"><h3>${IC.receipt} Tạo hóa đơn tháng</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.receipt} Tạo hóa đơn tháng</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
-      <div class="field"><label>Kỳ (tháng)</label><input id="g_month" type="month" value="${month}" onchange="renderGenerateForm(this.value)"></div>
+      <div class="field"><label>Kỳ (tháng)</label><input id="g_month" type="month" value="${month}" data-change="onGenMonth"></div>
       <div class="hint">${IC.bulb} Nhập <strong>số cuối công-tơ</strong>. Số đầu tự lấy = số cuối tháng trước (sửa được để test). Tiền điện = (cuối − đầu) × ${money(ST.settings.electric_unit)}, chia đều theo số người ở.</div>
       ${electricTable(rooms)}
       <p class="muted" style="font-size:12px;margin-top:10px">Hóa đơn <strong>chưa đóng</strong> sẽ được <strong>tính lại</strong> theo điện & ngày mới; hóa đơn <strong>đã đóng</strong> được giữ nguyên.</p>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="runGenerate()">Lưu số điện & tạo/cập nhật hóa đơn</button></div>`;
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="runGenerate">Lưu số điện & tạo/cập nhật hóa đơn</button></div>`;
 }
 // Bảng nhập chỉ số điện (số đầu + số cuối đều sửa được)
 function electricTable(rooms) {
@@ -147,8 +147,8 @@ function electricTable(rooms) {
     ${rooms.map(r => { const st = +r.reading_start || 0, en = +r.reading_end || 0; return `<tr>
       <td><strong>${esc(r.room_name)}</strong> <span class="muted">${r.gender === 'female' ? 'Nữ' : 'Nam'}</span></td>
       <td class="num">${r.occupancy}</td>
-      <td class="num"><input type="number" min="0" step="0.1" data-estart="${r.room_id}" value="${st || ''}" placeholder="0" style="width:90px;text-align:right" oninput="ecalc(${r.room_id})"></td>
-      <td class="num"><input type="number" min="0" step="0.1" data-room="${r.room_id}" value="${en || ''}" placeholder="0" style="width:90px;text-align:right" oninput="ecalc(${r.room_id})"></td>
+      <td class="num"><input type="number" min="0" step="0.1" data-estart="${r.room_id}" value="${st || ''}" placeholder="0" style="width:90px;text-align:right" data-input="ecalc" data-args='[${r.room_id}]'></td>
+      <td class="num"><input type="number" min="0" step="0.1" data-room="${r.room_id}" value="${en || ''}" placeholder="0" style="width:90px;text-align:right" data-input="ecalc" data-args='[${r.room_id}]'></td>
       <td class="num" id="ek_${r.room_id}">${Math.max(0, en - st)}</td>
       <td class="num" id="em_${r.room_id}">${money(Math.max(0, en - st) * (+ST.settings.electric_unit || 0))}</td></tr>`; }).join('')}
   </tbody></table></div>`;
@@ -178,13 +178,13 @@ async function renderElectricForm(month) {
   elecMonth = month;
   const rooms = await guard(() => API.electric(month));
   el('modal').innerHTML = `
-    <div class="mh"><h3>${IC.zap} Chỉ số điện theo tháng</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.zap} Chỉ số điện theo tháng</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
-      <div class="field"><label>Kỳ (tháng)</label><input id="e_month" type="month" value="${month}" onchange="renderElectricForm(this.value)"></div>
+      <div class="field"><label>Kỳ (tháng)</label><input id="e_month" type="month" value="${month}" data-change="onElecMonth"></div>
       <div class="hint">Nhập số đầu (lần đầu để test) và số cuối. Tháng sau số đầu sẽ tự nối tiếp. Bấm Lưu để ghi lại — dùng khi tạo hóa đơn.</div>
       ${electricTable(rooms)}
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Đóng</button><button class="btn pri" onclick="saveElectric()">Lưu chỉ số điện</button></div>`;
+    <div class="mf"><button class="btn" data-act="closeModal">Đóng</button><button class="btn pri" data-act="saveElectric">Lưu chỉ số điện</button></div>`;
 }
 async function saveElectric() {
   const readings = readElectricInputs();
@@ -213,7 +213,7 @@ function invoiceForm(id, i) {
   const opts = ST.students.map(s => `<option value="${s.id}" ${i.student_id === s.id ? 'selected' : ''}>${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}</option>`).join('');
   const f = (lbl, key, extra = '') => `<div class="field"><label>${lbl}</label><input id="i_${key}" type="number" min="0" value="${esc(i[key] || 0)}" ${extra}></div>`;
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa hóa đơn' : 'Thêm hóa đơn lẻ'}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa hóa đơn' : 'Thêm hóa đơn lẻ'}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Học viên *</label><select id="i_stu" ${id ? 'disabled' : ''}>${opts}</select></div>
@@ -225,7 +225,7 @@ function invoiceForm(id, i) {
       <div class="grid2">${f('Gửi xe', 'parking_charge')}${f('Khoản khác', 'other_charge')}</div>
       <div class="field"><label>Ghi chú khoản khác</label><input id="i_other_note" value="${esc(i.other_note || '')}"></div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveInvoice(${id || 0})">Lưu</button></div>`, true);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveInvoice" data-args='[${id || 0}]'>Lưu</button></div>`, true);
 }
 async function saveInvoice(id) {
   const g = k => +el('i_' + k).value || 0;
@@ -261,7 +261,7 @@ async function phieuBao(inv) {
   if (+inv.leader_discount) row('Giảm phòng trưởng', 'Miễn tiền nước + phí dịch vụ', -inv.leader_discount);
 
   openModal(`
-    <div class="mh rc-noprint"><h3>${IC.fileText} Phiếu báo tiền phòng</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh rc-noprint"><h3>${IC.fileText} Phiếu báo tiền phòng</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb"><div id="receiptArea"><div class="receipt">
       <div class="rc-head">
         <h2>${esc(set.dorm_name || 'Ký túc xá')}</h2>
@@ -283,8 +283,8 @@ async function phieuBao(inv) {
       </div>
     </div></div></div>
     <div class="mf rc-noprint">
-      <button class="btn" onclick="closeModal()">Đóng</button>
-      <button class="btn pri" onclick="downloadPhieuBao('phieu-bao-${esc(String(s.code || inv.student_id))}-${inv.month}')">${IC.download} Tải phiếu báo</button>
+      <button class="btn" data-act="closeModal">Đóng</button>
+      <button class="btn pri" data-act="downloadPhieuBao" data-args='["phieu-bao-${esc(String(s.code || inv.student_id))}-${inv.month}"]'>${IC.download} Tải phiếu báo</button>
     </div>`, true);
 }
 // Tải phiếu báo dưới dạng file HTML tự chứa (không in) — mở ra đúng định dạng, tự lưu PDF nếu muốn
@@ -337,7 +337,7 @@ function exportCSV(rows) {
 function viewSettings() {
   const s = ST.settings;
   // Số tiền 7 chữ số rất dễ gõ dư/thiếu số 0 -> hiện luôn bản đã phân cách nghìn ngay dưới ô, cập nhật khi gõ
-  const fee = (lbl, key, note = '') => `<div class="field"><label>${lbl} ${note ? `<span class="opt">${note}</span>` : ''}</label><input id="set_${key}" type="number" min="0" value="${esc(s[key] || 0)}" oninput="feeHint('${key}')"><div class="sub2" id="hint_${key}" style="margin-top:4px">${money(s[key] || 0)}</div></div>`;
+  const fee = (lbl, key, note = '') => `<div class="field"><label>${lbl} ${note ? `<span class="opt">${note}</span>` : ''}</label><input id="set_${key}" type="number" min="0" value="${esc(s[key] || 0)}" data-input="feeHint" data-args='["${key}"]'><div class="sub2" id="hint_${key}" style="margin-top:4px">${money(s[key] || 0)}</div></div>`;
   el('content').innerHTML = `
     <div class="panel"><div class="hd"><h2>${IC.home} Thông tin hiển thị trên phiếu báo</h2></div><div class="pad">
       <div class="field"><label>Tên ký túc xá</label><input id="set_dorm_name" value="${esc(s.dorm_name || '')}"></div>
@@ -377,7 +377,7 @@ function viewSettings() {
         <div class="field"><label>Pháp nhân phòng Nữ</label><input id="set_legal_female" value="${esc(s.legal_female || 'E2')}"></div>
         <div class="field"><label>Pháp nhân phòng Nam</label><input id="set_legal_male" value="${esc(s.legal_male || 'S2')}"></div>
       </div>
-      <button class="btn pri" onclick="saveSettings()">Lưu cài đặt</button>
+      <button class="btn pri" data-act="saveSettings">Lưu cài đặt</button>
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.alert} Ngưỡng nhắc / nghiệp vụ</h2></div><div class="pad">
@@ -403,7 +403,7 @@ function viewSettings() {
         <div class="field"><label>Hạng C</label><input id="set_room_cap_C" type="number" min="1" max="20" value="${esc(s.room_cap_C ?? 8)}"></div>
         <div class="field"><label>Hạng D</label><input id="set_room_cap_D" type="number" min="1" max="20" value="${esc(s.room_cap_D ?? 8)}"></div>
       </div>
-      <button class="btn pri" onclick="saveSettings()">Lưu cài đặt</button>
+      <button class="btn pri" data-act="saveSettings">Lưu cài đặt</button>
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.receipt} Mã sản phẩm Bravo (đối chiếu doanh thu)</h2></div><div class="pad">
@@ -420,23 +420,23 @@ function viewSettings() {
         <div class="field"><label>Phí gửi xe</label><input id="set_bravo_parking" value="${esc(s.bravo_parking || '')}" placeholder="GP00182"></div>
         <div class="field"><label>Phí máy giặt</label><input id="set_bravo_washing" value="${esc(s.bravo_washing || '')}" placeholder="GP00197"></div>
       </div>
-      <button class="btn pri" onclick="saveBravo()">Lưu mã Bravo</button>
+      <button class="btn pri" data-act="saveBravo">Lưu mã Bravo</button>
     </div></div>
 
-    <div class="panel"><div class="hd"><h2>${IC.building} Cơ sở ký túc xá</h2><button class="btn sm" onclick="facilityForm()">${IC.plus} Thêm cơ sở</button></div>
+    <div class="panel"><div class="hd"><h2>${IC.building} Cơ sở ký túc xá</h2><button class="btn sm" data-act="facilityForm">${IC.plus} Thêm cơ sở</button></div>
       <div class="table-wrap"><table><thead><tr><th>Tên</th><th>Địa chỉ</th><th class="num">Số phòng</th><th></th></tr></thead><tbody>
         ${ST.facilities.map(f => `<tr><td><strong>${esc(f.name)}</strong></td><td class="muted">${esc(f.address || '')}</td><td class="num">${f.room_count}</td>
-          <td class="num"><div class="rowbtns" style="justify-content:flex-end"><button class="btn sm" onclick="facilityForm(${f.id})">Sửa</button><button class="btn sm danger" onclick="delFacility(${f.id})">Xóa</button></div></td></tr>`).join('')}
+          <td class="num"><div class="rowbtns" style="justify-content:flex-end"><button class="btn sm" data-act="facilityForm" data-args='[${f.id}]'>Sửa</button><button class="btn sm danger" data-act="delFacility" data-args='[${f.id}]'>Xóa</button></div></td></tr>`).join('')}
       </tbody></table></div>
     </div>
 
-    <div class="panel"><div class="hd"><h2>${IC.armchair} Tài sản / trang thiết bị trong phòng</h2><button class="btn sm" onclick="assetForm()">${IC.plus} Thêm tài sản</button></div>
+    <div class="panel"><div class="hd"><h2>${IC.armchair} Tài sản / trang thiết bị trong phòng</h2><button class="btn sm" data-act="assetForm">${IC.plus} Thêm tài sản</button></div>
       <div class="table-wrap"><table><thead><tr><th>Tên tài sản</th><th>Loại</th><th>ĐVT</th><th class="num">SL</th><th class="num">Phí bồi hoàn</th><th></th></tr></thead><tbody>
         ${ST.assets.map(a => `<tr>
           <td><strong>${esc(a.name)}</strong></td>
           <td>${a.category === 'person' ? '<span class="badge blue">Theo người</span>' : '<span class="badge gray">Cố định</span>'}</td>
           <td>${esc(a.unit)}</td><td class="num">${a.quantity}</td><td class="num">${a.fee ? money(a.fee) : '<span class="muted">—</span>'}</td>
-          <td class="num"><div class="rowbtns" style="justify-content:flex-end"><button class="btn sm" onclick="assetForm(${a.id})">Sửa</button><button class="btn sm ghost" onclick="delAsset(${a.id})">${IC.trash}</button></div></td>
+          <td class="num"><div class="rowbtns" style="justify-content:flex-end"><button class="btn sm" data-act="assetForm" data-args='[${a.id}]'>Sửa</button><button class="btn sm ghost" data-act="delAsset" data-args='[${a.id}]'>${IC.trash}</button></div></td>
         </tr>`).join('')}
       </tbody></table></div>
       <div class="pad muted" style="font-size:12.5px">${IC.bulb} Phí bồi hoàn dùng để khấu trừ vào cọc khi học viên trả phòng (nếu tài sản hư/mất/không vệ sinh).</div>
@@ -449,30 +449,30 @@ function viewSettings() {
     <div class="panel"><div class="hd"><h2>${IC.filePen} Nội dung trang giới thiệu</h2><a class="btn sm" href="/dang-ky" target="_blank">Xem trang</a></div><div class="pad">
       <div class="hint">${IC.info} Chỉnh tiêu đề &amp; mô tả từng mục ở trang đăng ký công khai. Để trống sẽ dùng nội dung mặc định.</div>
       ${INTRO_FIELDS.map(([k, label, t]) => `<div class="field"><label>${label}</label>${t === 'ta' ? `<textarea id="set_${k}" rows="2">${esc(s[k] || '')}</textarea>` : `<input id="set_${k}" value="${esc(s[k] || '')}">`}</div>`).join('')}
-      <button class="btn pri" onclick="saveIntro()">Lưu nội dung</button>
+      <button class="btn pri" data-act="saveIntro">Lưu nội dung</button>
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.building} Ảnh khu nội trú (trang giới thiệu)</h2><a class="btn sm" href="/dang-ky" target="_blank">Xem trang</a></div><div class="pad">
       <div class="hint">${IC.info} Ảnh hiển thị ở <strong>trang đăng ký công khai</strong> cho học viên xem. Chọn ảnh từ máy — lưu ngay, <strong>không cần sửa code</strong>. Nên dùng ảnh ngang, dung lượng < 1MB để tải nhanh.</div>
       <div class="media-grid">
         ${INTRO_MEDIA.map(([key, label]) => `<div class="media-slot">
-          <div class="media-thumb"><img src="/api/public/image/${key}?t=${Date.now()}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="media-empty" style="display:none">${IC.building}<span>Chưa có ảnh</span></div></div>
+          <div class="media-thumb"><img src="/api/public/image/${key}?t=${Date.now()}" alt="" data-err="onImgFallback"><div class="media-empty" style="display:none">${IC.building}<span>Chưa có ảnh</span></div></div>
           <div class="media-info">${key === 'hero' ? `<strong>${label}</strong><div class="muted" style="font-size:11px">Ảnh nền — không có nhãn</div>` : `<label style="font-size:11px;color:var(--muted);font-weight:600">Nhãn hiển thị</label><input id="set_imgcap_${key}" value="${esc(s['imgcap_' + key] || label)}" placeholder="VD: ${esc(label)}">`}</div>
           <div class="rowbtns">
-            <label class="btn sm">${IC.download} Chọn ảnh<input type="file" accept="image/*" style="display:none" onchange="uploadIntroMedia('${key}', this)"></label>
-            <button class="btn sm ghost" title="Xóa ảnh" onclick="removeIntroMedia('${key}')">${IC.trash}</button>
+            <label class="btn sm">${IC.download} Chọn ảnh<input type="file" accept="image/*" style="display:none" data-change="onIntroMedia" data-mkey="${key}"></label>
+            <button class="btn sm ghost" title="Xóa ảnh" data-act="removeIntroMedia" data-args='["${key}"]'>${IC.trash}</button>
           </div>
         </div>`).join('')}
       </div>
-      <button class="btn pri" style="margin-top:14px" onclick="saveImgCaptions()">Lưu nhãn ảnh</button>
+      <button class="btn pri" style="margin-top:14px" data-act="saveImgCaptions">Lưu nhãn ảnh</button>
     </div></div>
 
-    <div class="panel"><div class="hd"><h2>${IC.alert} Loại vi phạm / nhắc nhở</h2><button class="btn sm" onclick="vtypeForm()">${IC.plus} Thêm loại</button></div>
+    <div class="panel"><div class="hd"><h2>${IC.alert} Loại vi phạm / nhắc nhở</h2><button class="btn sm" data-act="vtypeForm">${IC.plus} Thêm loại</button></div>
       <div class="table-wrap"><table><thead><tr><th>Tên loại vi phạm</th><th>Mức độ</th><th></th></tr></thead><tbody>
         ${(ST.vtypes || []).map(t => `<tr>
           <td><strong>${esc(t.name)}</strong>${t.active === false ? ' <span class="badge gray">Ẩn</span>' : ''}</td>
           <td>${vioSevBadge(t.severity)}</td>
-          <td class="num"><div class="rowbtns" style="justify-content:flex-end"><button class="btn sm" onclick="vtypeForm(${t.id})">Sửa</button><button class="btn sm ghost" onclick="delVtype(${t.id})">${IC.trash}</button></div></td>
+          <td class="num"><div class="rowbtns" style="justify-content:flex-end"><button class="btn sm" data-act="vtypeForm" data-args='[${t.id}]'>Sửa</button><button class="btn sm ghost" data-act="delVtype" data-args='[${t.id}]'>${IC.trash}</button></div></td>
         </tr>`).join('')}
       </tbody></table></div>
       <div class="pad muted" style="font-size:12.5px">${IC.bulb} Dùng khi ghi nhận vi phạm cho học viên. Đến ngưỡng cấu hình bên dưới, hệ thống gửi email nhà trường.</div>
@@ -499,20 +499,20 @@ function viewSettings() {
       </div>
       <div class="hint" style="font-size:12px">${IC.lock} Vì bảo mật, mật khẩu SMTP <strong>không bao giờ được trả về</strong>. Để trống ô mật khẩu khi lưu nếu muốn giữ nguyên mật khẩu đã lưu.</div>
       <div class="rowbtns" style="margin-top:6px">
-        <button class="btn pri" onclick="saveMailSettings()">Lưu cấu hình email</button>
-        <button class="btn" id="smtpTestBtn" onclick="testSmtpConnection()">${IC.mail} Kiểm tra kết nối</button>
+        <button class="btn pri" data-act="saveMailSettings">Lưu cấu hình email</button>
+        <button class="btn" id="smtpTestBtn" data-act="testSmtpConnection">${IC.mail} Kiểm tra kết nối</button>
         <span id="smtpTestResult" class="muted" style="font-size:12.5px;align-self:center"></span>
       </div>
     </div></div>
 
-    <div class="panel"><div class="hd"><h2>${IC.shield} Người dùng & phân quyền</h2><button class="btn sm" onclick="userForm()">${IC.plus} Thêm nhân viên</button></div>
+    <div class="panel"><div class="hd"><h2>${IC.shield} Người dùng & phân quyền</h2><button class="btn sm" data-act="userForm">${IC.plus} Thêm nhân viên</button></div>
       <div class="table-wrap"><table><thead><tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Vai trò</th><th>Cơ sở</th><th></th></tr></thead>
         <tbody id="usrRows"><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody></table></div>
       <div class="pad muted" style="font-size:12.5px">${IC.bulb} <strong>Quản trị viên</strong> có toàn quyền (kể cả Điều hành, Doanh thu, Nhật ký, Cài đặt). <strong>Nhân viên</strong> chỉ thao tác nghiệp vụ (Học viên, Phòng, Xe, Check-in/out, Tiền phòng, Tiếp nhận & Hỗ trợ) và đều được ghi vào Nhật ký.</div>
     </div>
 
     <div class="panel"><div class="hd"><h2>${IC.key} Tài khoản của bạn</h2></div><div class="pad">
-      <button class="btn" onclick="changePwd()">${IC.key} Đổi mật khẩu</button>
+      <button class="btn" data-act="changePwd">${IC.key} Đổi mật khẩu</button>
     </div></div>`;
   loadAdminUsers();
   refreshRulesDocStatus();
@@ -533,9 +533,9 @@ async function loadAdminUsers() {
       <td><span class="badge ${rc}">${rl}</span></td>
       <td>${u.facility_id ? esc(u.facility_name || facilityName(u.facility_id)) : '<span class="badge gray" title="Điều hành — thấy tất cả cơ sở">Tất cả</span>'}</td>
       <td class="num"><div class="rowbtns" style="justify-content:flex-end">
-        <button class="btn sm" onclick="userForm(${u.id})">Sửa</button>
-        <button class="btn sm" onclick="resetUserPwForm(${u.id})">${IC.key} MK</button>
-        ${u.id === me ? '' : `<button class="btn sm ghost" title="Xóa" onclick="delUser(${u.id}, '${esc(u.username).replace(/'/g, "\\'")}')">${IC.trash}</button>`}
+        <button class="btn sm" data-act="userForm" data-args='[${u.id}]'>Sửa</button>
+        <button class="btn sm" data-act="resetUserPwForm" data-args='[${u.id}]'>${IC.key} MK</button>
+        ${u.id === me ? '' : `<button class="btn sm ghost" title="Xóa" data-act="delUserRow" data-args='[${u.id}]' data-uname="${esc(u.username)}">${IC.trash}</button>`}
       </div></td>
     </tr>`;
   }).join('') || '<tr><td colspan="5" class="muted">Chưa có tài khoản.</td></tr>';
@@ -546,7 +546,7 @@ function userForm(id) {
   if (id && !u) return;
   const roleOpt = (v, l) => `<option value="${v}" ${u.role === v ? 'selected' : ''}>${l}</option>`;
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa tài khoản' : 'Thêm nhân viên'}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa tài khoản' : 'Thêm nhân viên'}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên đăng nhập *</label><input id="u_username" value="${esc(u.username)}" ${id ? 'disabled' : ''} placeholder="vd: nhanvien01"></div>
       <div class="field"><label>Họ tên</label><input id="u_full" value="${esc(u.full_name || '')}" placeholder="Nguyễn Văn A"></div>
@@ -558,7 +558,7 @@ function userForm(id) {
       ${id ? '' : `<div class="field"><label>Mật khẩu *</label><input id="u_pass" type="text" placeholder="Tối thiểu 4 ký tự"></div>`}
       ${id === Auth.user.id ? `<div class="hint">${IC.info} Bạn không thể tự hạ quyền chính mình.</div>` : ''}
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveUser(${id || 0})">Lưu</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveUser" data-args='[${id || 0}]'>Lưu</button></div>`);
 }
 async function saveUser(id) {
   const body = { full_name: el('u_full').value.trim(), role: el('u_role').value, facility_id: el('u_facility').value };
@@ -569,12 +569,12 @@ async function saveUser(id) {
 function resetUserPwForm(id) {
   const u = (window._usrCache || []).find(x => x.id === id);
   openModal(`
-    <div class="mh"><h3>Đặt lại mật khẩu</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>Đặt lại mật khẩu</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted" style="margin-top:0">Tài khoản: <strong>${esc(u ? u.username : '')}</strong></p>
       <div class="field"><label>Mật khẩu mới *</label><input id="u_newpass" type="text" placeholder="Tối thiểu 4 ký tự"></div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="doResetUserPw(${id})">Đổi mật khẩu</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="doResetUserPw" data-args='[${id}]'>Đổi mật khẩu</button></div>`);
 }
 async function doResetUserPw(id) {
   const pw = el('u_newpass').value.trim();
@@ -627,7 +627,7 @@ async function removeRulesDoc() {
    bản ghi cần sửa; không có nó thì ràng buộc trượt trong im lặng và ai cũng tưởng đã được bảo vệ. */
 function dataHealthBlock() {
   return `<div class="panel"><div class="hd"><h2>${IC.shield} Tình trạng dữ liệu</h2>
-    <button class="btn sm" onclick="loadDataHealth()">${IC.refresh} Kiểm tra lại</button></div>
+    <button class="btn sm" data-act="loadDataHealth">${IC.refresh} Kiểm tra lại</button></div>
     <div class="pad" id="dataHealth"><span class="muted">Đang kiểm tra...</span></div></div>`;
 }
 async function loadDataHealth() {
@@ -664,7 +664,7 @@ function rulesDocBlock() {
       <div id="rulesDocStatus" class="muted">Đang kiểm tra...</div>
       <div class="rowbtns" id="rulesDocBtns">
         <label class="btn sm pri" style="cursor:pointer;margin:0">${IC.plus} Tải file PDF
-          <input type="file" accept="application/pdf" style="display:none" onchange="uploadRulesDoc(this)"></label>
+          <input type="file" accept="application/pdf" style="display:none" data-change="onRulesDoc"></label>
       </div>
     </div>
     <div class="hint" style="margin:14px 0 0">${IC.info}<span>File PDF, tối đa 15MB. Học viên xem ở trang
@@ -683,9 +683,9 @@ async function refreshRulesDocStatus() {
     : 'Chưa có file. Học viên sẽ không thấy mục Nội quy.';
   st.className = up ? '' : 'muted';
   bt.innerHTML = `${up ? `<a class="btn sm" href="/api/public/doc/noi-quy" target="_blank" rel="noopener">Xem</a>
-      <button class="btn sm ghost" title="Xóa file nội quy" onclick="removeRulesDoc()">${IC.trash}</button>` : ''}
+      <button class="btn sm ghost" title="Xóa file nội quy" data-act="removeRulesDoc">${IC.trash}</button>` : ''}
     <label class="btn sm pri" style="cursor:pointer;margin:0">${IC.plus} ${up ? 'Thay file' : 'Tải file PDF'}
-      <input type="file" accept="application/pdf" style="display:none" onchange="uploadRulesDoc(this)"></label>`;
+      <input type="file" accept="application/pdf" style="display:none" data-change="onRulesDoc"></label>`;
 }
 async function saveIntro() {
   const body = {};
@@ -703,7 +703,7 @@ function vtypeForm(id) {
   const t = id ? (ST.vtypes || []).find(x => x.id === id) : { name: '', severity: 'minor', active: true };
   const sevOpt = (v, l) => `<option value="${v}" ${t.severity === v ? 'selected' : ''}>${l}</option>`;
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa loại vi phạm' : 'Thêm loại vi phạm'}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa loại vi phạm' : 'Thêm loại vi phạm'}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên loại vi phạm *</label><input id="vt_name" value="${esc(t.name)}" placeholder="VD: Về trễ giờ quy định"></div>
       <div class="grid2">
@@ -711,7 +711,7 @@ function vtypeForm(id) {
         ${id ? `<div class="field"><label>Trạng thái</label><select id="vt_active"><option value="1" ${t.active !== false ? 'selected' : ''}>Đang dùng</option><option value="0" ${t.active === false ? 'selected' : ''}>Ẩn</option></select></div>` : ''}
       </div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveVtype(${id || 0})">Lưu</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveVtype" data-args='[${id || 0}]'>Lưu</button></div>`);
   setTimeout(() => el('vt_name').focus(), 50);
 }
 async function saveVtype(id) {
@@ -760,7 +760,7 @@ async function testSmtpConnection() {
 function assetForm(id) {
   const a = id ? ST.assets.find(x => x.id === id) : { name: '', unit: 'Cái', category: 'fixed', quantity: 1, fee: 0, note: '' };
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa tài sản' : 'Thêm tài sản'}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa tài sản' : 'Thêm tài sản'}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên tài sản *</label><input id="as_name" value="${esc(a.name)}" placeholder="VD: Remote máy lạnh"></div>
       <div class="grid2">
@@ -772,7 +772,7 @@ function assetForm(id) {
         <div class="field"><label>Phí bồi hoàn <span class="opt">(đồng)</span></label><input id="as_fee" type="number" min="0" value="${esc(a.fee)}"></div>
       </div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveAsset(${id || 0})">Lưu</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveAsset" data-args='[${id || 0}]'>Lưu</button></div>`);
   setTimeout(() => el('as_name').focus(), 50);
 }
 async function saveAsset(id) {
@@ -806,12 +806,12 @@ async function saveSettings() {
 function facilityForm(id) {
   const f = id ? ST.facilities.find(x => x.id === id) : { name: '', address: '' };
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa cơ sở' : 'Thêm cơ sở'}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa cơ sở' : 'Thêm cơ sở'}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên cơ sở *</label><input id="fc_name" value="${esc(f.name)}" placeholder="VD: Cơ sở 2"></div>
       <div class="field"><label>Địa chỉ</label><input id="fc_addr" value="${esc(f.address || '')}"></div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveFacility(${id || 0})">Lưu</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveFacility" data-args='[${id || 0}]'>Lưu</button></div>`);
   setTimeout(() => el('fc_name').focus(), 50);
 }
 async function saveFacility(id) {
@@ -825,13 +825,13 @@ async function delFacility(id) { if (!confirm('Xóa cơ sở này?')) return; aw
 /* ---------- ĐỔI MẬT KHẨU ---------- */
 function changePwd() {
   openModal(`
-    <div class="mh"><h3>${IC.key} Đổi mật khẩu</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.key} Đổi mật khẩu</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Mật khẩu hiện tại</label><input id="cp_old" type="password"></div>
       <div class="field"><label>Mật khẩu mới <span class="opt">(tối thiểu 6 ký tự)</span></label><input id="cp_new" type="password"></div>
       <div class="field"><label>Nhập lại mật khẩu mới</label><input id="cp_new2" type="password"></div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="doChangePwd()">Đổi mật khẩu</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="doChangePwd">Đổi mật khẩu</button></div>`);
 }
 async function doChangePwd() {
   const oldP = el('cp_old').value, n1 = el('cp_new').value, n2 = el('cp_new2').value;

@@ -30,18 +30,18 @@ function renderAdmin() {
         <div class="foot">
           <div class="u">${esc(Auth.user.full_name || Auth.user.username)}</div>
           <div class="r muted" style="font-size:11px">${isAdmin ? 'Quản trị viên' : 'Nhân viên'}</div>
-          <button onclick="changePwd()">${IC.key} Đổi mật khẩu</button>
-          <button onclick="Auth.logout()">${IC.logOut} Đăng xuất</button>
+          <button data-act="changePwd">${IC.key} Đổi mật khẩu</button>
+          <button data-act="logout">${IC.logOut} Đăng xuất</button>
         </div>
       </aside>
-      <div class="side-backdrop" id="sideBackdrop" onclick="toggleSide()"></div>
+      <div class="side-backdrop" id="sideBackdrop" data-act="toggleSide"></div>
       <div class="main">
         <div class="top">
-          <button class="hamburger" onclick="toggleSide()" aria-label="Menu">${IC.menu}</button>
+          <button class="hamburger" data-act="toggleSide" aria-label="Menu">${IC.menu}</button>
           <div style="flex:1;min-width:0"><h1 id="pgTitle">Tổng quan</h1><div class="sub" id="pgSub"></div></div>
           <div class="flex" style="gap:10px">
             <span id="facSel"></span>
-            <button class="notif-bell" id="notifBell" title="Thông báo" aria-haspopup="dialog" aria-expanded="false" onclick="toggleNotif(event)">${IC.bell}<span class="notif-dot" id="notifDot" style="display:none"></span></button>
+            <button class="notif-bell" id="notifBell" title="Thông báo" aria-haspopup="dialog" aria-expanded="false" data-act="toggleNotif">${IC.bell}<span class="notif-dot" id="notifDot" style="display:none"></span></button>
             <div class="toolbar" id="topActions"></div>
           </div>
         </div>
@@ -74,7 +74,7 @@ function renderFacilitySelector() {
   const show = Auth.user && Auth.user.role === 'admin' && (ST.facilities || []).length > 1;
   if (!show) { box.innerHTML = ''; return; }
   const cur = ST.facilityFilter || 0;
-  box.innerHTML = `<select title="Lọc theo cơ sở" onchange="setFacilityFilter(this.value)" style="font-size:13px;padding:7px 9px;border-radius:10px;border:1px solid var(--line);background:var(--card)">
+  box.innerHTML = `<select title="Lọc theo cơ sở" data-change="onFacSel" style="font-size:13px;padding:7px 9px;border-radius:10px;border:1px solid var(--line);background:var(--card)">
     <option value="0">${IC.building} Tất cả cơ sở</option>
     ${ST.facilities.map(f => `<option value="${f.id}" ${cur === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}
   </select>`;
@@ -103,11 +103,11 @@ function notifItems() {
   const pCout = ST.couts.filter(c => c.status === 'pending').length;
   const needMail = (ST.vstats && ST.vstats.needMail) || 0;
   const refund = ST.students.filter(s => liveStatus(s) === 'left' && s.deposit_status === 'held').length;
-  if (pApps) items.push({ n: pApps, ic: IC.filePen, tx: `${pApps} đơn đăng ký chờ duyệt`, act: `adminGo('reg')` });
-  if (pDmg) items.push({ n: pDmg, ic: IC.wrench, tx: `${pDmg} báo hư hỏng chưa xử lý`, act: `adminGo('repair')` });
-  if (pCout) items.push({ n: pCout, ic: IC.logOut, tx: `${pCout} đơn xin trả phòng`, act: `adminGo('checkout')` });
-  if (needMail) items.push({ n: needMail, ic: IC.alert, tx: `${needMail} học viên vi phạm cần báo nhà trường`, act: `adminGo('violations')` });
-  if (refund) items.push({ n: refund, ic: IC.handCoins, tx: `${refund} khoản cọc chờ hoàn (đã trả phòng)`, act: `quyCoc()` });
+  if (pApps) items.push({ n: pApps, ic: IC.filePen, tx: `${pApps} đơn đăng ký chờ duyệt`, act: actAttr('adminGo', 'reg') });
+  if (pDmg) items.push({ n: pDmg, ic: IC.wrench, tx: `${pDmg} báo hư hỏng chưa xử lý`, act: actAttr('adminGo', 'repair') });
+  if (pCout) items.push({ n: pCout, ic: IC.logOut, tx: `${pCout} đơn xin trả phòng`, act: actAttr('adminGo', 'checkout') });
+  if (needMail) items.push({ n: needMail, ic: IC.alert, tx: `${needMail} học viên vi phạm cần báo nhà trường`, act: actAttr('adminGo', 'violations') });
+  if (refund) items.push({ n: refund, ic: IC.handCoins, tx: `${refund} khoản cọc chờ hoàn (đã trả phòng)`, act: actAttr('quyCoc') });
   return items;
 }
 function updateNotif() {
@@ -128,7 +128,7 @@ async function refreshNotifCounts() {
     if (el('notifPanel')) {                      // panel đang mở -> vẽ lại nội dung cho khớp
       const items = notifItems();
       const inner = el('notifPanel');
-      inner.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" onclick="closeNotif();${i.act}">${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
+      inner.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" data-closenotif ${i.act}>${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
     }
   } catch (e) { /* lỗi mạng tạm -> lần poll sau thử lại, không quấy người dùng */ }
 }
@@ -152,7 +152,7 @@ function toggleNotif(e) {
   const items = notifItems();
   const p = document.createElement('div'); p.className = 'notif-panel'; p.id = 'notifPanel';
   p.setAttribute('role', 'dialog');
-  p.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" onclick="closeNotif();${i.act}">${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
+  p.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" data-closenotif ${i.act}>${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
   document.body.appendChild(p);
   const r = el('notifBell').getBoundingClientRect();
   p.style.top = (r.bottom + 8) + 'px';

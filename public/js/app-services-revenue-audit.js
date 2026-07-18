@@ -13,7 +13,7 @@ async function viewServices() {
   const totalVeh = veh.length;
   el('topActions').innerHTML = '';
   const svcCard = (ico, cls, headline, sub) => `<div class="kpi"><span class="ic ${cls}">${ico}</span><div><div class="v">${headline}</div><div class="l">${sub}</div></div></div>`;
-  const pill = (k, ico, label, n) => `<button class="btn sm ${svcTab === k ? 'pri' : ''}" onclick="svcTab='${k}';viewServices()">${ico} ${label} (${n})</button>`;
+  const pill = (k, ico, label, n) => `<button class="btn sm ${svcTab === k ? 'pri' : ''}" data-act="svcGo" data-args='["${k}"]'>${ico} ${label} (${n})</button>`;
   el('content').innerHTML = `
     <div class="kpis">
       ${svcCard(IC.washer, 'ic-blue', `${washUsers.length}<span class="muted" style="font-size:14px;font-weight:600"> HV</span>`, `Máy giặt · ${money(washUsers.length * washFee)}/tháng · đơn giá ${money(washFee)}`)}
@@ -31,15 +31,15 @@ async function viewServices() {
       <div class="table-wrap">${totalVeh ? `<table><thead><tr><th>Biển số</th><th>Loại xe</th><th>Mã dán</th><th>Chủ xe</th><th>Phòng</th></tr></thead><tbody>
         ${veh.map(v => `<tr data-s="${esc((v.plate + ' ' + (v.vehicle_type || '') + ' ' + (v.student_name || '') + ' ' + (v.room_name || '') + ' ' + (v.sticker || '')).toLowerCase())}">
           <td><strong>${esc(v.plate || '—')}</strong></td><td>${esc(v.vehicle_type || '—')}</td><td>${esc(v.sticker || '—')}</td>
-          <td><a href="#" onclick="studentDetail(${v.student_id});return false">${esc(v.student_name)}</a></td><td>${esc(v.room_name || '—')}</td>
+          <td><a href="#" data-act="studentDetail" data-args='[${v.student_id}]'>${esc(v.student_name)}</a></td><td>${esc(v.room_name || '—')}</td>
         </tr>`).join('')}
         <tr class="no-result" style="display:none"><td colspan="5"><div class="empty">Không tìm thấy xe phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Chưa có HV đang ở gửi xe. Thêm xe trong <strong>Chi tiết học viên</strong>.</div>`}</div></div>`;
     const vs = el('vs'); if (vs) { vs.addEventListener('input', () => vehSearch = vs.value); attachRowSearch(vs, 'vehCount'); }
   } else {
-    el('svcBody').innerHTML = `<div class="panel"><div class="hd"><h2>${IC.washer} Máy giặt</h2><button class="btn sm pri" onclick="addWashingForm()">${IC.plus} Thêm HV dùng máy giặt</button></div>
+    el('svcBody').innerHTML = `<div class="panel"><div class="hd"><h2>${IC.washer} Máy giặt</h2><button class="btn sm pri" data-act="addWashingForm">${IC.plus} Thêm HV dùng máy giặt</button></div>
       <div class="table-wrap">${washUsers.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th></th></tr></thead><tbody>
-        ${washUsers.map(s => `<tr><td><a href="#" onclick="studentDetail(${s.id});return false"><strong>${esc(s.name)}</strong></a>${s.code ? `<div class="muted" style="font-size:11px">${esc(s.code)}</div>` : ''}</td><td>${esc(s.room_name || '—')}</td><td class="num"><button class="btn sm ghost" onclick="toggleWashing(${s.id}, false)">${IC.trash} Ngưng</button></td></tr>`).join('')}
+        ${washUsers.map(s => `<tr><td><a href="#" data-act="studentDetail" data-args='[${s.id}]'><strong>${esc(s.name)}</strong></a>${s.code ? `<div class="muted" style="font-size:11px">${esc(s.code)}</div>` : ''}</td><td>${esc(s.room_name || '—')}</td><td class="num"><button class="btn sm ghost" data-act="toggleWashing" data-args='[${s.id}, false]'>${IC.trash} Ngưng</button></td></tr>`).join('')}
       </tbody></table>` : '<div class="empty">Chưa có HV đăng ký máy giặt. Bấm "Thêm HV dùng máy giặt".</div>'}</div></div>`;
   }
 }
@@ -48,12 +48,12 @@ function addWashingForm() {
   if (!avail.length) return toast('Mọi học viên đang ở đều đã dùng máy giặt', 'err');
   const opts = avail.map(s => `<option value="${s.id}">${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}${s.room_name ? ' — ' + esc(s.room_name) : ''}</option>`).join('');
   openModal(`
-    <div class="mh"><h3>${IC.washer} Thêm HV dùng máy giặt</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.washer} Thêm HV dùng máy giặt</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Chọn học viên</label><select id="wash_stu">${opts}</select></div>
       <div class="hint">${IC.info} Phí máy giặt ${money(+ST.settings.washing_fee || 0)}/tháng sẽ được tính vào hóa đơn từ kỳ kế tiếp.</div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="toggleWashing(+el('wash_stu').value, true)">Thêm</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="washAdd">Thêm</button></div>`);
 }
 async function toggleWashing(id, on) {
   if (!id) return;
@@ -118,7 +118,7 @@ async function viewRevenue() {
           <td>${l}</td><td class="num">${money(v)}</td></tr>`; }).join('')}
         <tr style="background:#faf6f2"><td colspan="3"><strong>TỔNG TIỀN PHIẾU</strong></td><td class="num"><strong>${money(grand)}</strong></td></tr>
       </tbody></table></div>
-      <div class="pad muted" style="font-size:12.5px">${IC.bulb} Mã sản phẩm Bravo chỉnh trong <a href="#" onclick="adminGo('settings');return false">Cài đặt</a>. Số liệu = tổng tiền đã lập phiếu báo (chưa gồm cọc). Thu tiền thực tế do Bravo quản lý. Số HV xuất cảnh xem ở <a href="#" onclick="adminGo('exec');return false">Điều hành</a>.</div>
+      <div class="pad muted" style="font-size:12.5px">${IC.bulb} Mã sản phẩm Bravo chỉnh trong <a href="#" data-act="adminGo" data-args='["settings"]'>Cài đặt</a>. Số liệu = tổng tiền đã lập phiếu báo (chưa gồm cọc). Thu tiền thực tế do Bravo quản lý. Số HV xuất cảnh xem ở <a href="#" data-act="adminGo" data-args='["exec"]'>Điều hành</a>.</div>
     </div>`;
   const ry = el('ry'); if (ry) ry.onchange = e => { revYear = e.target.value; viewRevenue(); };
 }
@@ -197,7 +197,7 @@ function fmtDT(v) {
 let auditLimit = 200;
 let auditFilter = { user: '', from: '', to: '', offset: 0 };
 async function viewAudit() {
-  el('topActions').innerHTML = `<button class="btn" onclick="viewAudit()">${IC.refresh} Tải lại</button>`;
+  el('topActions').innerHTML = `<button class="btn" data-act="viewAudit">${IC.refresh} Tải lại</button>`;
   el('content').innerHTML = '<div class="spinner"></div>';
   const res = await guard(() => API.auditLog({ limit: auditLimit, ...auditFilter }));
   // Endpoint giờ trả { total, limit, offset, rows } (trước là mảng) để lọc + lật trang được (V2-66).

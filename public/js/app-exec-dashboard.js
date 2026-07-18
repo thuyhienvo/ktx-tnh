@@ -1,7 +1,7 @@
 // === app-exec-dashboard.js — tach tu app.js (CHANG 4 refactor). Classic script, GIU global scope cho onclick. ===
 // KHONG doi thu tu nap trong index.html; boot()/chong-bam/click-listener nam o app-portals-boot.js (cuoi).
 async function viewExec() {
-  el('topActions').innerHTML = `<button class="btn" onclick="window.print()">${IC.printer} In / Lưu PDF</button>`;
+  el('topActions').innerHTML = `<button class="btn" data-act="doPrint">${IC.printer} In / Lưu PDF</button>`;
   el('content').innerHTML = '<div class="spinner"></div>';
   const year = curMonth().slice(0, 4);
   const [rev, revPrev] = await Promise.all([guard(() => API.revenue(year)), API.revenue(String(+year - 1)).catch(() => [])]);
@@ -53,16 +53,16 @@ async function viewExec() {
   const vioTotal = vio.total || 0, vioNeedMail = vio.needMail || 0;
   const sevMap = { minor: 'Nhẹ', major: 'Nặng', severe: 'Nghiêm trọng' };
   const vioSev = (vio.bySeverity || []).map(x => `${sevMap[x.severity] || x.severity}: ${x.c}`).join(' · ');
-  const es = (ico, cls, title, main, sub, bar, act) => `<div class="es${act ? ' clickable' : ''}" ${act ? `onclick="${act}"` : ''}><div class="es-h"><span class="es-ic ${cls}">${ico}</span>${title}</div><div class="es-v">${main}</div>${bar != null ? `<div class="es-bar"><div style="width:${bar}%"></div></div>` : ''}<div class="es-sub">${sub}</div></div>`;
-  const kpi = (ic, cls, val, label, sub, act) => `<div class="kpi${act ? ' clickable' : ''}" ${act ? `onclick="${act}"` : ''}><span class="ic ${cls}">${ic}</span><div><div class="v">${val}</div><div class="l">${label}${sub ? ` · ${sub}` : ''}</div></div></div>`;
+  const es = (ico, cls, title, main, sub, bar, act) => `<div class="es${act ? ' clickable' : ''}" ${act || ''}><div class="es-h"><span class="es-ic ${cls}">${ico}</span>${title}</div><div class="es-v">${main}</div>${bar != null ? `<div class="es-bar"><div style="width:${bar}%"></div></div>` : ''}<div class="es-sub">${sub}</div></div>`;
+  const kpi = (ic, cls, val, label, sub, act) => `<div class="kpi${act ? ' clickable' : ''}" ${act || ''}><span class="ic ${cls}">${ic}</span><div><div class="v">${val}</div><div class="l">${label}${sub ? ` · ${sub}` : ''}</div></div></div>`;
 
   el('content').innerHTML = `<div id="printArea">
     <div class="print-only" style="margin-bottom:14px"><h2 style="font-family:var(--serif);margin:0">${esc(ST.settings.dorm_name || 'Ký túc xá')} — Báo cáo điều hành ${year}</h2><div class="muted">Xuất ngày ${fmtDate(today())}</div></div>
     <div class="kpis">
-      ${kpi(IC.userCheck, 'ic-green', occRate + '%', 'Tỉ lệ lấp đầy', `${usedBeds}/${capacity} giường${overPeople ? ` · <strong style="color:var(--red-ink)">${IC.alert} quá tải ${overPeople} người (${overRooms.length} phòng)</strong>` : ''}`, "adminGo('rooms')")}
-      ${kpi(IC.trendingUp, 'ic-brand', money(totalYear), 'Dự báo doanh thu ' + year, yoy != null ? (yoy >= 0 ? '▲' : '▼') + Math.abs(yoy) + '% vs ' + (+year - 1) : '', "adminGo('revenue')")}
-      ${kpi(IC.users, 'ic-blue', occ, 'Học viên đang ở', '', "stuFilter='in';adminGo('students')")}
-      ${kpi(IC.planeTakeoff, 'ic-gray', dep, 'Xuất cảnh năm ' + year, '', "stuFilter='departure';adminGo('students')")}
+      ${kpi(IC.userCheck, 'ic-green', occRate + '%', 'Tỉ lệ lấp đầy', `${usedBeds}/${capacity} giường${overPeople ? ` · <strong style="color:var(--red-ink)">${IC.alert} quá tải ${overPeople} người (${overRooms.length} phòng)</strong>` : ''}`, actAttr('adminGo', 'rooms'))}
+      ${kpi(IC.trendingUp, 'ic-brand', money(totalYear), 'Dự báo doanh thu ' + year, yoy != null ? (yoy >= 0 ? '▲' : '▼') + Math.abs(yoy) + '% vs ' + (+year - 1) : '', actAttr('adminGo', 'revenue'))}
+      ${kpi(IC.users, 'ic-blue', occ, 'Học viên đang ở', '', actAttr('stuGoAdmin', 'in'))}
+      ${kpi(IC.planeTakeoff, 'ic-gray', dep, 'Xuất cảnh năm ' + year, '', actAttr('stuGoAdmin', 'departure'))}
     </div>
     <div class="panel"><div class="hd"><h2>${IC.trendingUp} Dự báo doanh thu theo tháng — ${year}</h2><span class="muted" style="font-size:12px">Ước tính từ phiếu báo đã lập (thu thật do Bravo quản lý)</span></div>
     <div class="pad">${chartRows.some(r => r.total) ? svgBars(chartRows) : '<div class="empty">Chưa có phiếu báo năm này.</div>'}</div></div>
@@ -86,8 +86,8 @@ async function viewExec() {
       <div class="exec-stats">
         ${es(IC.flag, 'ic-amber', 'Tạm trú', `${resiReg}<span> đã đăng ký</span>`, `${resiUnreg} chưa đăng ký${resiOverdueE ? ` · <strong style="color:var(--red-ink)">${resiOverdueE} quá ${overdueDays()} ngày</strong>` : ''}`, resiPct, "residencyModal()")}
         ${es(IC.fileText, 'ic-brand', 'Hợp đồng (ghép dài hạn)', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá ${overdueDays()} ngày</strong>` : ''}${shortTerm ? ` · Ngắn hạn: ${shortTerm} bàn giao${shortPending ? ` (<strong style="color:var(--amber-ink)">${shortPending} chưa ký phiếu</strong>)` : ''}` : ''}`, cPct, "contractIssuesModal()")}
-        ${es(IC.wrench, 'ic-gray', 'Bảo trì', `${dmg.length}<span> lượt báo</span>`, `Đã xử lý ${dmgDone} · đang xử lý ${dmgOpen} · chưa xử lý được ${dmgBlocked}`, dmgPct, "adminGo('repair')")}
-        ${es(IC.alert, 'ic-red', 'Vi phạm', `${vioTotal}<span> lượt</span>`, `${vioNeedMail} HV cần báo trường${vioSev ? ' · ' + vioSev : ''}`, null, "adminGo('violations')")}
+        ${es(IC.wrench, 'ic-gray', 'Bảo trì', `${dmg.length}<span> lượt báo</span>`, `Đã xử lý ${dmgDone} · đang xử lý ${dmgOpen} · chưa xử lý được ${dmgBlocked}`, dmgPct, actAttr('adminGo', 'repair'))}
+        ${es(IC.alert, 'ic-red', 'Vi phạm', `${vioTotal}<span> lượt</span>`, `${vioNeedMail} HV cần báo trường${vioSev ? ' · ' + vioSev : ''}`, null, actAttr('adminGo', 'violations'))}
       </div>
     </div></div>
   </div>`;
@@ -100,9 +100,9 @@ function residencyModal() {
   const over = occ.filter(s => s.residency_status === 'unregistered' && stayDays(s) > overdueDays()).length;
   const proc = occ.filter(s => s.residency_status === 'processing').length;
   const reg = occ.filter(s => s.residency_status === 'registered').length;
-  const row = (ico, label, n, filter, cls) => `<div class="todo ${n ? cls : 'calm'}" ${n ? `onclick="closeModal();stuFilter='${filter}';adminGo('students')"` : ''}><span class="ic">${ico}</span><span class="tx">${label}</span><span class="n">${n}</span></div>`;
+  const row = (ico, label, n, filter, cls) => `<div class="todo ${n ? cls : 'calm'}" ${n ? actAttr('stuGoAdmin', filter) : ''}><span class="ic">${ico}</span><span class="tx">${label}</span><span class="n">${n}</span></div>`;
   openModal(`
-    <div class="mh"><h3>${IC.flag} Đăng ký tạm trú</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.flag} Đăng ký tạm trú</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">${IC.info} Tình trạng đăng ký tạm trú của học viên đang ở. Bấm từng nhóm để xem danh sách.</div>
       <div class="todo-grid" style="grid-template-columns:1fr;margin-top:10px">
@@ -111,7 +111,7 @@ function residencyModal() {
         ${row(IC.checkCircle, 'Đã có tạm trú', reg, 'resi_registered', 'on')}
       </div>
     </div>
-    <div class="mf"><button class="btn pri" onclick="tamTruSheet()">${IC.printer} Danh sách gửi công an</button><button class="btn" onclick="closeModal()">Đóng</button></div>`);
+    <div class="mf"><button class="btn pri" data-act="tamTruSheet">${IC.printer} Danh sách gửi công an</button><button class="btn" data-act="closeModal">Đóng</button></div>`);
 }
 
 // Tự gom CCCD 2 mặt của HV đang ở CHƯA đăng ký tạm trú -> danh sách in gửi công an.
@@ -127,7 +127,7 @@ function tamTruSheet() {
   const missSide = s => [!s.has_cccd_front ? 'mặt trước' : null, !s.has_cccd_back ? 'mặt sau' : null].filter(Boolean).join(' + ') || 'chưa có ảnh';
 
   el('topActions').innerHTML = ready.length
-    ? `<button class="btn pri" onclick="window.print()">${IC.printer} In / Lưu PDF (${ready.length})</button>`
+    ? `<button class="btn pri" data-act="doPrint">${IC.printer} In / Lưu PDF (${ready.length})</button>`
     : '';
 
   const block = (s, i) => `
@@ -163,7 +163,7 @@ function tamTruSheet() {
   </style>
   ${missing.length ? `<div class="rc-noprint" style="background:#fff6f2;border:1px solid #e9c9c0;border-radius:10px;padding:12px 14px;margin-bottom:14px">
       <strong style="color:var(--red-ink,#b4432b)">${IC.alert} ${missing.length} học viên chưa đủ ảnh CCCD — CHƯA đưa vào bản in:</strong>
-      <ul style="margin:8px 0 0 18px;font-size:13px;line-height:1.7">${missing.map(s => `<li>${esc(s.name)} — ${esc(s.room_name || '—')} <span style="color:var(--red-ink,#b4432b)">(thiếu ${missSide(s)})</span> · <a href="#" onclick="studentForm(${s.id});return false">bổ sung ảnh</a></li>`).join('')}</ul>
+      <ul style="margin:8px 0 0 18px;font-size:13px;line-height:1.7">${missing.map(s => `<li>${esc(s.name)} — ${esc(s.room_name || '—')} <span style="color:var(--red-ink,#b4432b)">(thiếu ${missSide(s)})</span> · <a href="#" data-act="studentForm" data-args='[${s.id}]'>bổ sung ảnh</a></li>`).join('')}</ul>
     </div>` : ''}
   <div id="printArea"><div class="tt-doc">
     <div class="tt-title">
@@ -181,9 +181,9 @@ function contractIssuesModal() {
   const nc = occ.filter(s => contractRequired(s) && !contractSigned(s)).length;
   const ov = occ.filter(contractOverdue).length;
   const ho = occ.filter(handoverPending).length;
-  const row = (ico, label, n, filter, cls) => `<div class="todo ${n ? cls : 'calm'}" ${n ? `onclick="closeModal();stuFilter='${filter}';adminGo('students')"` : ''}><span class="ic">${ico}</span><span class="tx">${label}</span><span class="n">${n}</span></div>`;
+  const row = (ico, label, n, filter, cls) => `<div class="todo ${n ? cls : 'calm'}" ${n ? actAttr('stuGoAdmin', filter) : ''}><span class="ic">${ico}</span><span class="tx">${label}</span><span class="n">${n}</span></div>`;
   openModal(`
-    <div class="mh"><h3>${IC.fileText} Hợp đồng chưa hoàn thiện</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.fileText} Hợp đồng chưa hoàn thiện</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">${IC.info} Các nhóm cần hoàn thiện hợp đồng / bàn giao. Bấm từng nhóm để xem danh sách học viên.</div>
       <div class="todo-grid" style="grid-template-columns:1fr;margin-top:10px">
@@ -192,23 +192,23 @@ function contractIssuesModal() {
         ${row(IC.fileText, 'Ngắn hạn chưa ký bàn giao', ho, 'handover_pending', 'warn')}
       </div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Đóng</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Đóng</button></div>`);
 }
 // Popup "Tiền cọc": gộp hoàn cọc + chưa đóng cọc
 function depositModal() {
   const refund = ST.students.filter(s => liveStatus(s) === 'left' && s.deposit_status === 'held').length;
   const noDep = ST.students.filter(s => isOccupying(s) && s.deposit_status === 'none').length;
-  const row = (ico, label, n, act, cls) => `<div class="todo ${n ? cls : 'calm'}" ${n ? `onclick="closeModal();${act}"` : ''}><span class="ic">${ico}</span><span class="tx">${label}</span><span class="n">${n}</span></div>`;
+  const row = (ico, label, n, act, cls) => `<div class="todo ${n ? cls : 'calm'}" ${n ? `data-close ${act}` : ''}><span class="ic">${ico}</span><span class="tx">${label}</span><span class="n">${n}</span></div>`;
   openModal(`
-    <div class="mh"><h3>${IC.handCoins} Tiền cọc</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.handCoins} Tiền cọc</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">${IC.info} Các việc liên quan tiền cọc. Bấm từng mục để xem danh sách.</div>
       <div class="todo-grid" style="grid-template-columns:1fr;margin-top:10px">
-        ${row(IC.handCoins, 'Hoàn cọc (đã trả phòng)', refund, "quyCoc()", 'bad')}
-        ${row(IC.lock, 'Chưa đóng cọc', noDep, "stuFilter='nodeposit';adminGo('students')", 'warn')}
+        ${row(IC.handCoins, 'Hoàn cọc (đã trả phòng)', refund, actAttr('quyCoc'), 'bad')}
+        ${row(IC.lock, 'Chưa đóng cọc', noDep, actAttr('stuGoAdmin', 'nodeposit'), 'warn')}
       </div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Đóng</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Đóng</button></div>`);
 }
 async function viewDashboard() {
   el('content').innerHTML = '<div class="spinner"></div>';
@@ -239,9 +239,9 @@ async function viewDashboard() {
   const noBill = occ.filter(s => !billStudents.has(s.id)).length; // HV đang ở chưa lập phiếu tháng này
 
   // act = onclick đầy đủ → mọi ô KPI đều drill-through tới đúng danh sách đằng sau con số
-  const kpi = (cls, ico, val, label, act) => `<div class="kpi${act ? ' clickable' : ''}" ${act ? `onclick="${act}"` : ''}><span class="ic ${cls}">${ico}</span><div><div class="v">${val}</div><div class="l">${label}</div></div></div>`;
+  const kpi = (cls, ico, val, label, act) => `<div class="kpi${act ? ' clickable' : ''}" ${act || ''}><span class="ic ${cls}">${ico}</span><div><div class="v">${val}</div><div class="l">${label}</div></div></div>`;
   // act = biểu thức onclick đầy đủ (đặt đúng bộ lọc / tab rồi mới điều hướng) → bấm vào đúng danh sách cần xử lý
-  const todo = (ico, tx, n, act, cls) => `<div class="todo ${n ? cls : 'calm'}" ${act && n ? `onclick="${act}"` : ''}><span class="ic">${ico}</span><span class="tx">${tx}</span><span class="n">${n}</span></div>`;
+  const todo = (ico, tx, n, act, cls) => `<div class="todo ${n ? cls : 'calm'}" ${act && n ? act : ''}><span class="ic">${ico}</span><span class="tx">${tx}</span><span class="n">${n}</span></div>`;
 
   // noc = không cần ký HĐ (ngắn hạn ký phiếu bàn giao, thuê nguyên phòng, phòng an ninh/nhân viên)
   // -> Đã ký + Chưa ký + Không cần HĐ = Tổng (bảng cộng ra đúng)
@@ -251,30 +251,30 @@ async function viewDashboard() {
 
   el('content').innerHTML = `
     <div class="kpis">
-      ${kpi('ic-green', IC.userCheck, inCount, 'Học viên đang ở', "stuFilter='in';adminGo('students')")}
-      ${kpi('ic-blue', IC.bed, `${beds}<span class="muted" style="font-size:15px;font-weight:600"> / ${capacity}</span>`, 'Giường còn trống', "adminGo('rooms')")}
-      ${kpi('ic-brand', IC.receipt, money(billedThisMonth), 'Phiếu báo tháng này', "adminGo('invoices')")}
-      ${kpi('ic-amber', IC.filePen, noBill, 'HV chưa lập phiếu tháng này', "adminGo('invoices')")}
+      ${kpi('ic-green', IC.userCheck, inCount, 'Học viên đang ở', actAttr('stuGoAdmin', 'in'))}
+      ${kpi('ic-blue', IC.bed, `${beds}<span class="muted" style="font-size:15px;font-weight:600"> / ${capacity}</span>`, 'Giường còn trống', actAttr('adminGo', 'rooms'))}
+      ${kpi('ic-brand', IC.receipt, money(billedThisMonth), 'Phiếu báo tháng này', actAttr('adminGo', 'invoices'))}
+      ${kpi('ic-amber', IC.filePen, noBill, 'HV chưa lập phiếu tháng này', actAttr('adminGo', 'invoices'))}
     </div>
 
     <div class="panel"><div class="hd"><h2>${IC.zap} Cần xử lý</h2></div><div class="pad">
       <div class="todo-grid">
-        ${todo(IC.filePen, 'Thuê phòng / trả phòng', pApps + pCout, pApps ? "adminGo('reg')" : "adminGo('checkout')", 'on')}
-        ${todo(IC.wrench, 'Bảo trì', pDmg, "adminGo('repair')", 'warn')}
+        ${todo(IC.filePen, 'Thuê phòng / trả phòng', pApps + pCout, pApps ? actAttr('adminGo', 'reg') : actAttr('adminGo', 'checkout'), 'on')}
+        ${todo(IC.wrench, 'Bảo trì', pDmg, actAttr('adminGo', 'repair'), 'warn')}
         ${todo(IC.flag, 'Đăng ký Tạm Trú', resiOverdue, "residencyModal()", 'warn')}
         ${todo(IC.fileText, 'Hợp đồng', contractIncomplete, "contractIssuesModal()", 'warn')}
         ${todo(IC.handCoins, 'Tiền cọc', refundPending + occ.filter(s => s.deposit_status === 'none').length, "depositModal()", 'warn')}
-        ${todo(IC.planeTakeoff, 'Dự kiến xuất cảnh (điều phối phòng)', depExpected, "stuFilter='departure_expected';adminGo('students')", 'on')}
-        ${todo(IC.alert, 'Quản lý vi phạm', needMail, "adminGo('violations')", 'bad')}
+        ${todo(IC.planeTakeoff, 'Dự kiến xuất cảnh (điều phối phòng)', depExpected, actAttr('stuGoAdmin', 'departure_expected'), 'on')}
+        ${todo(IC.alert, 'Quản lý vi phạm', needMail, actAttr('adminGo', 'violations'), 'bad')}
       </div>
     </div></div>
 
     <div class="grid2" style="align-items:start">
       <div class="panel" style="margin:0"><div class="hd"><h2>${IC.dashboard} Tình hình hôm nay</h2></div><div class="pad">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div style="cursor:pointer" onclick="stuFilter='checkin_today';adminGo('students')"><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-green">${IC.dot}</span> Nhận phòng hôm nay ›</div><div style="font-size:22px;font-weight:800">${checkinToday}</div></div>
-          <div style="cursor:pointer" onclick="stuFilter='checkout_today';adminGo('students')"><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-gray">${IC.dot}</span> Trả phòng hôm nay ›</div><div style="font-size:22px;font-weight:800">${checkoutToday}</div></div>
-          <div style="cursor:pointer" onclick="adminGo('vehicles')"><div class="muted" style="font-size:12.5px">${IC.bike} Xe đang gửi ›</div><div style="font-size:22px;font-weight:800">${totalVehicles}</div></div>
+          <div style="cursor:pointer" data-act="stuGoAdmin" data-args='["checkin_today"]'><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-green">${IC.dot}</span> Nhận phòng hôm nay ›</div><div style="font-size:22px;font-weight:800">${checkinToday}</div></div>
+          <div style="cursor:pointer" data-act="stuGoAdmin" data-args='["checkout_today"]'><div class="muted" style="font-size:12.5px"><span class="dot-svg dot-gray">${IC.dot}</span> Trả phòng hôm nay ›</div><div style="font-size:22px;font-weight:800">${checkoutToday}</div></div>
+          <div style="cursor:pointer" data-act="adminGo" data-args='["vehicles"]'><div class="muted" style="font-size:12.5px">${IC.bike} Xe đang gửi ›</div><div style="font-size:22px;font-weight:800">${totalVehicles}</div></div>
         </div>
       </div></div>
 
@@ -287,7 +287,7 @@ async function viewDashboard() {
       </div>
     </div>
 
-    <div class="panel"><div class="hd"><h2>${IC.history} Hoạt động gần đây</h2><button class="btn sm" onclick="adminGo('checkin')">Xem tất cả</button></div>
+    <div class="panel"><div class="hd"><h2>${IC.history} Hoạt động gần đây</h2><button class="btn sm" data-act="adminGo" data-args='["checkin"]'>Xem tất cả</button></div>
       <div class="table-wrap">${logsTable(logs.filter(l => String(l.date).slice(0, 10) <= today()).slice(0, 6))}</div></div>`;
 }
 function logsTable(logs) {

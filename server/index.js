@@ -16,15 +16,15 @@ try { generateIcons(); } catch (e) { console.warn('Không sinh được icon:', 
 const app = express();
 app.set('trust proxy', 1); // sau proxy Render → lấy đúng IP client cho rate-limit
 
-// Security headers + CSP baseline. GIỮ 'unsafe-inline' TẠM ở script/style vì app còn inline onclick/style
-// (sẽ bỏ 'unsafe-inline' khỏi scriptSrc ở CHẶNG 5 sau khi chuyển hết onclick sang event delegation).
-// KHÔNG dùng upgradeInsecureRequests để không gãy http://localhost khi dev.
+// Security headers + CSP. scriptSrc KHÔNG còn 'unsafe-inline' (CHẶNG 5: đã bỏ hết inline onclick/on* →
+// event delegation trong app-actions.js) → chặn được XSS chèn <script>/onclick. styleSrc VẪN giữ
+// 'unsafe-inline' vì app còn nhiều style="..." nội tuyến. KHÔNG dùng upgradeInsecureRequests (giữ http localhost).
 app.use(helmet({
   contentSecurityPolicy: {
     useDefaults: false,
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],

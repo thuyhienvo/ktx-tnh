@@ -2,8 +2,8 @@
 // KHONG doi thu tu nap trong index.html; boot()/chong-bam/click-listener nam o app-portals-boot.js (cuoi).
 async function viewRooms() {
   el('topActions').innerHTML = roomShowDeleted
-    ? `<button class="btn" onclick="roomShowDeleted=false;viewRooms()">← Danh sách phòng</button>`
-    : `<button class="btn pri" onclick="roomForm()">${IC.plus} Thêm phòng</button>`;
+    ? `<button class="btn" data-act="roomDel" data-args='[false]'>← Danh sách phòng</button>`
+    : `<button class="btn pri" data-act="roomForm">${IC.plus} Thêm phòng</button>`;
   const list = roomShowDeleted ? await guard(() => API.rooms(true)) : ST.rooms;
   const del = roomShowDeleted;
   el('content').innerHTML = `
@@ -11,7 +11,7 @@ async function viewRooms() {
       <h2>${del ? 'Phòng đã xóa' : 'Danh sách phòng'} (<span id="roomCount">${list.length}</span>)</h2>
       <div class="toolbar">
         <div class="search"><span class="i">${IC.search}</span><input id="rs" placeholder="Tìm phòng, tầng, giới tính..." value="${esc(roomSearch)}"></div>
-        ${del ? '' : `<button class="btn sm" onclick="roomShowDeleted=true;viewRooms()">${IC.trash} Đã xóa</button>`}
+        ${del ? '' : `<button class="btn sm" data-act="roomDel" data-args='[true]'>${IC.trash} Đã xóa</button>`}
       </div>
     </div><div class="table-wrap">
       ${list.length ? `<table><thead><tr><th>Phòng</th><th>Loại</th><th class="num">Đang ở</th><th>${IC.star} Phòng trưởng</th><th class="num">Giá thuê</th><th></th></tr></thead><tbody>
@@ -22,8 +22,8 @@ async function viewRooms() {
         <td>${leaderCell(r)}</td>
         <td class="num">${money(+r.monthly_fee > 0 ? r.monthly_fee : ST.settings.room_fee)}<span class="muted">/người</span><div class="sub2">Nguyên phòng: ${money(ST.settings['room_price_' + (r.hang || 'B')])}</div></td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
-          ${del ? `<button class="btn sm green" onclick="restoreRoom(${r.id})">${IC.undo} Khôi phục</button>`
-                : `<button class="btn sm ghost" title="Cử phòng trưởng" onclick="leaderForm(${r.id})">${IC.star}</button><button class="btn sm" onclick="roomForm(${r.id})">Sửa</button><button class="btn sm ghost" onclick="delRoom(${r.id})">${IC.trash}</button>`}
+          ${del ? `<button class="btn sm green" data-act="restoreRoom" data-args='[${r.id}]'>${IC.undo} Khôi phục</button>`
+                : `<button class="btn sm ghost" title="Cử phòng trưởng" data-act="leaderForm" data-args='[${r.id}]'>${IC.star}</button><button class="btn sm" data-act="roomForm" data-args='[${r.id}]'>Sửa</button><button class="btn sm ghost" data-act="delRoom" data-args='[${r.id}]'>${IC.trash}</button>`}
         </div></td></tr>`; }).join('')}
       <tr class="no-result" style="display:none"><td colspan="6"><div class="empty">Không tìm thấy phòng phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">${del ? 'Không có phòng đã xóa.' : `Chưa có phòng nào. Bấm <strong>${IC.plus} Thêm phòng</strong>.`}</div>`}
@@ -43,7 +43,7 @@ function leaderForm(roomId) {
   const cur = leaderOf(roomId);
   const inRoom = ST.students.filter(s => s.room_id === roomId && isOccupying(s));
   openModal(`
-    <div class="mh"><h3>${IC.star} Phòng trưởng: ${esc(r.name || '')}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.star} Phòng trưởng: ${esc(r.name || '')}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       ${!inRoom.length ? '<p class="muted">Phòng này chưa có ai ở — chưa cử phòng trưởng được.</p>' : `
       <div class="field"><label>Chọn phòng trưởng</label><select id="l_stu">
@@ -56,9 +56,9 @@ function leaderForm(roomId) {
         Người đang làm sẽ tự kết thúc nhiệm kỳ vào hôm trước ngày này.</span></div>`}
     </div>
     <div class="mf">
-      ${cur ? `<button class="btn danger" onclick="unsetLeader(${roomId})">Miễn nhiệm ${esc(cur.name)}</button>` : ''}
-      <button class="btn" onclick="closeModal()">Hủy</button>
-      ${inRoom.length ? `<button class="btn pri" onclick="doSetLeader(${roomId})">Cử làm phòng trưởng</button>` : ''}
+      ${cur ? `<button class="btn danger" data-act="unsetLeader" data-args='[${roomId}]'>Miễn nhiệm ${esc(cur.name)}</button>` : ''}
+      <button class="btn" data-act="closeModal">Hủy</button>
+      ${inRoom.length ? `<button class="btn pri" data-act="doSetLeader" data-args='[${roomId}]'>Cử làm phòng trưởng</button>` : ''}
     </div>`);
 }
 async function doSetLeader(roomId) {
@@ -84,21 +84,21 @@ function facilityOptions(sel) {
 function roomForm(id) {
   const r = id ? roomById(id) : { name: '', floor: 1, gender: 'female', hang: 'B', capacity: HANG_CAP.B, monthly_fee: ST.settings.room_fee || 1200000, note: '', facility_id: (ST.facilities[0] || {}).id };
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa phòng' : 'Thêm phòng'}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa phòng' : 'Thêm phòng'}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
-        <div class="field"><label>Tên / số phòng *</label><input id="f_name" value="${esc(r.name)}" placeholder="VD: 104" oninput="el('f_floor_disp').value='Tầng '+roomFloorOf(this.value)"></div>
+        <div class="field"><label>Tên / số phòng *</label><input id="f_name" value="${esc(r.name)}" placeholder="VD: 104" data-input="onFloorDisp"></div>
         <div class="field"><label>Cơ sở</label><select id="f_fac">${facilityOptions(r.facility_id)}</select></div>
       </div>
       <div class="grid2">
         <div class="field"><label>Tầng <span class="opt">(tự tính từ số phòng)</span></label><input id="f_floor_disp" readonly value="Tầng ${roomFloorOf(r.name)}" style="background:var(--bg2);color:var(--muted)"></div>
-        <div class="field"><label>Giới tính (pháp nhân tự gán)</label><select id="f_gender" onchange="el('lgHint').textContent='Pháp nhân: '+(this.value==='female'?(ST.settings.legal_female||'E2'):(ST.settings.legal_male||'S2'))">
+        <div class="field"><label>Giới tính (pháp nhân tự gán)</label><select id="f_gender" data-change="onLgHintGender">
           <option value="female" ${r.gender === 'female' ? 'selected' : ''}>Nữ (tầng 1–2)</option>
           <option value="male" ${r.gender === 'male' ? 'selected' : ''}>Nam (tầng 3–4)</option>
         </select><div class="muted" id="lgHint" style="font-size:12px;margin-top:4px">Pháp nhân: ${esc(legalEntity(r.gender))}</div></div>
       </div>
       <div class="grid2">
-        <div class="field"><label>Hạng phòng</label><select id="f_hang" onchange="el('f_cap').value=HANG_CAP[this.value]||el('f_cap').value">${HANGS.map(hh => `<option value="${hh}" ${(r.hang || 'B') === hh ? 'selected' : ''}>Hạng ${hh} — ${HANG_CAP[hh]} giường · nguyên phòng ${money(ST.settings['room_price_' + hh])}</option>`).join('')}</select></div>
+        <div class="field"><label>Hạng phòng</label><select id="f_hang" data-change="onFCapFromType">${HANGS.map(hh => `<option value="${hh}" ${(r.hang || 'B') === hh ? 'selected' : ''}>Hạng ${hh} — ${HANG_CAP[hh]} giường · nguyên phòng ${money(ST.settings['room_price_' + hh])}</option>`).join('')}</select></div>
         <div class="field"><label>Sức chứa (giường) <span class="opt">(tự điền theo hạng)</span></label><input id="f_cap" type="number" min="0" value="${esc(r.capacity)}"></div>
       </div>
       <div class="field"><label>Giá thuê ghép / người / tháng <span class="opt">(đồng)</span></label><input id="f_mfee" type="number" min="0" value="${esc(r.monthly_fee)}"></div>
@@ -107,7 +107,7 @@ function roomForm(id) {
       </select><div class="muted" style="font-size:11.5px;margin-top:4px">${IC.info} "Thuê nguyên phòng / An ninh / Nhân viên công tác" sẽ <strong>không tính vào giường trống</strong> cho thuê ghép.</div></div>
       <div class="field"><label>Ghi chú <span class="opt">(mỗi dòng một ghi chú)</span></label><textarea id="f_note" rows="3">${esc(r.note || '')}</textarea></div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveRoom(${id || 0})">Lưu</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveRoom" data-args='[${id || 0}]'>Lưu</button></div>`);
   setTimeout(() => el('f_name').focus(), 50);
 }
 async function saveRoom(id) {
@@ -138,7 +138,7 @@ function stuSortVal(s) {
   }
 }
 function viewStudents() {
-  el('topActions').innerHTML = `<button class="btn" onclick="renumberContractsModal()" title="Đánh số HĐ tự động theo pháp nhân & ngày ký">${IC.fileText} Đánh số HĐ</button><button class="btn" onclick="showDeletedStudents()">${IC.trash} Đã xóa</button><button class="btn pri" onclick="adminGo('reg')">${IC.filePen} Đăng ký / duyệt đơn</button>`;
+  el('topActions').innerHTML = `<button class="btn" data-act="renumberContractsModal" title="Đánh số HĐ tự động theo pháp nhân & ngày ký">${IC.fileText} Đánh số HĐ</button><button class="btn" data-act="showDeletedStudents">${IC.trash} Đã xóa</button><button class="btn pri" data-act="adminGo" data-args='["reg"]'>${IC.filePen} Đăng ký / duyệt đơn</button>`;
   let list = ST.students.slice();
   if (stuFilter === 'in') list = list.filter(isOccupying);
   if (stuFilter === 'upcoming') list = list.filter(s => liveStatus(s) === 'upcoming');
@@ -169,18 +169,18 @@ function viewStudents() {
   const nCols = hasXC ? 7 : 6;
   el('content').innerHTML = `
     <div class="pill-row">
-      <button class="btn sm ${stuFilter === 'all' ? 'pri' : ''}" onclick="stuFilter='all';viewStudents()">Tất cả (${ST.students.length})</button>
-      <button class="btn sm ${stuFilter === 'in' ? 'pri' : ''}" onclick="stuFilter='in';viewStudents()"><span class="dot-svg dot-green">${IC.dot}</span> Đang ở (${cnt(isOccupying)})</button>
-      <button class="btn sm ${stuFilter === 'upcoming' ? 'pri' : ''}" onclick="stuFilter='upcoming';viewStudents()"><span class="dot-svg dot-blue">${IC.dot}</span> Sắp vào (${cnt(s => liveStatus(s) === 'upcoming')})</button>
-      <button class="btn sm ${stuFilter === 'leaving' ? 'pri' : ''}" onclick="stuFilter='leaving';viewStudents()"><span class="dot-svg dot-amber">${IC.dot}</span> Sắp trả (${cnt(s => liveStatus(s) === 'leaving')})</button>
-      <button class="btn sm ${stuFilter === 'out' ? 'pri' : ''}" onclick="stuFilter='out';viewStudents()"><span class="dot-svg dot-gray">${IC.dot}</span> Đã trả (${cnt(s => liveStatus(s) === 'left')})</button>
-      <button class="btn sm ${stuFilter === 'departure' ? 'pri' : ''}" onclick="stuFilter='departure';viewStudents()">${IC.planeTakeoff} Xuất cảnh (${cnt(s => s.check_out_date && DEPARTURE_REASONS.includes(s.checkout_reason))})</button>
-      <button class="btn sm ${stuFilter === 'departure_expected' ? 'pri' : ''}" onclick="stuFilter='departure_expected';viewStudents()">${IC.planeTakeoff} Dự kiến XC (${cnt(willDepartSoon)})</button>
-      <button class="btn sm ${stuFilter === 'noresi' ? 'pri' : ''}" onclick="stuFilter='noresi';viewStudents()">${IC.flag} Chưa tạm trú (${cnt(s => isOccupying(s) && s.residency_status !== 'registered')})</button>
-      <button class="btn sm ${stuFilter === 'nocontract' ? 'pri' : ''}" onclick="stuFilter='nocontract';viewStudents()">${IC.filePen} HĐ chưa ký (${cnt(s => contractRequired(s) && !contractSigned(s))})</button>
-      <button class="btn sm ${stuFilter === 'washing' ? 'pri' : ''}" onclick="stuFilter='washing';viewStudents()">${IC.washer} Máy giặt (${cnt(s => isOccupying(s) && s.uses_washing)})</button>
-      <button class="btn sm ${stuFilter === 'nodeposit' ? 'pri' : ''}" onclick="stuFilter='nodeposit';viewStudents()">${IC.lock} Chưa đóng cọc (${cnt(s => isOccupying(s) && s.deposit_status === 'none')})</button>
-      <button class="btn sm ${stuFilter === 'contract_overdue' ? 'pri' : ''}" onclick="stuFilter='contract_overdue';viewStudents()">${IC.alert} Ghép >${overdueDays()} ngày chưa ký HĐ (${cnt(contractOverdue)})</button>
+      <button class="btn sm ${stuFilter === 'all' ? 'pri' : ''}" data-act="stuGo" data-args='["all"]'>Tất cả (${ST.students.length})</button>
+      <button class="btn sm ${stuFilter === 'in' ? 'pri' : ''}" data-act="stuGo" data-args='["in"]'><span class="dot-svg dot-green">${IC.dot}</span> Đang ở (${cnt(isOccupying)})</button>
+      <button class="btn sm ${stuFilter === 'upcoming' ? 'pri' : ''}" data-act="stuGo" data-args='["upcoming"]'><span class="dot-svg dot-blue">${IC.dot}</span> Sắp vào (${cnt(s => liveStatus(s) === 'upcoming')})</button>
+      <button class="btn sm ${stuFilter === 'leaving' ? 'pri' : ''}" data-act="stuGo" data-args='["leaving"]'><span class="dot-svg dot-amber">${IC.dot}</span> Sắp trả (${cnt(s => liveStatus(s) === 'leaving')})</button>
+      <button class="btn sm ${stuFilter === 'out' ? 'pri' : ''}" data-act="stuGo" data-args='["out"]'><span class="dot-svg dot-gray">${IC.dot}</span> Đã trả (${cnt(s => liveStatus(s) === 'left')})</button>
+      <button class="btn sm ${stuFilter === 'departure' ? 'pri' : ''}" data-act="stuGo" data-args='["departure"]'>${IC.planeTakeoff} Xuất cảnh (${cnt(s => s.check_out_date && DEPARTURE_REASONS.includes(s.checkout_reason))})</button>
+      <button class="btn sm ${stuFilter === 'departure_expected' ? 'pri' : ''}" data-act="stuGo" data-args='["departure_expected"]'>${IC.planeTakeoff} Dự kiến XC (${cnt(willDepartSoon)})</button>
+      <button class="btn sm ${stuFilter === 'noresi' ? 'pri' : ''}" data-act="stuGo" data-args='["noresi"]'>${IC.flag} Chưa tạm trú (${cnt(s => isOccupying(s) && s.residency_status !== 'registered')})</button>
+      <button class="btn sm ${stuFilter === 'nocontract' ? 'pri' : ''}" data-act="stuGo" data-args='["nocontract"]'>${IC.filePen} HĐ chưa ký (${cnt(s => contractRequired(s) && !contractSigned(s))})</button>
+      <button class="btn sm ${stuFilter === 'washing' ? 'pri' : ''}" data-act="stuGo" data-args='["washing"]'>${IC.washer} Máy giặt (${cnt(s => isOccupying(s) && s.uses_washing)})</button>
+      <button class="btn sm ${stuFilter === 'nodeposit' ? 'pri' : ''}" data-act="stuGo" data-args='["nodeposit"]'>${IC.lock} Chưa đóng cọc (${cnt(s => isOccupying(s) && s.deposit_status === 'none')})</button>
+      <button class="btn sm ${stuFilter === 'contract_overdue' ? 'pri' : ''}" data-act="stuGo" data-args='["contract_overdue"]'>${IC.alert} Ghép >${overdueDays()} ngày chưa ký HĐ (${cnt(contractOverdue)})</button>
     </div>
     <div class="panel"><div class="hd"><h2>Học viên (<span id="stuCount">${list.length}</span>)</h2>
       <div class="search"><span class="i">${IC.search}</span><input id="ss" placeholder="Tìm tên, mã, lớp, SĐT, số phòng..." value="${esc(stuSearch)}"></div>
@@ -196,12 +196,12 @@ function viewStudents() {
         </div></div></td>
         <td>${s.room_name ? `<strong>${esc(s.room_name)}</strong>` : '<span class="muted">Chưa xếp</span>'}<div class="sub2">${RENTAL_LABEL[s.rental_type] || 'Thuê ghép'}</div></td>
         <td><span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span>${s.contract_no ? `<div class="sub2">${esc(s.contract_no)}</div>` : ''}</td>
-        <td>${depositBadge(s)}${s.deposit_status === 'none' && isOccupying(s) ? ` <button class="btn sm ghost" style="white-space:nowrap" title="Ghi nhận đóng cọc" onclick="depositForm(${s.id})">＋ Thu cọc</button>` : ''}</td>
+        <td>${depositBadge(s)}${s.deposit_status === 'none' && isOccupying(s) ? ` <button class="btn sm ghost" style="white-space:nowrap" title="Ghi nhận đóng cọc" data-act="depositForm" data-args='[${s.id}]'>＋ Thu cọc</button>` : ''}</td>
         ${hasXC ? `<td class="muted" style="font-size:12px;white-space:nowrap">${xcOf(s) ? fmtDate(xcOf(s)) : '—'}</td>` : ''}
         <td>${statusBadge(s)}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
-          ${isOccupying(s) ? `<button class="btn sm danger" onclick="checkOutForm(${s.id})">Check-out</button>` : `<button class="btn sm" title="Nhận lại học viên đã trả phòng" onclick="checkInForm(${s.id})">Check-in</button>`}
-          <button class="btn sm pri" onclick="studentDetail(${s.id})">Chi tiết</button>
+          ${isOccupying(s) ? `<button class="btn sm danger" data-act="checkOutForm" data-args='[${s.id}]'>Check-out</button>` : `<button class="btn sm" title="Nhận lại học viên đã trả phòng" data-act="checkInForm" data-args='[${s.id}]'>Check-in</button>`}
+          <button class="btn sm pri" data-act="studentDetail" data-args='[${s.id}]'>Chi tiết</button>
         </div></td></tr>`; }).join('')}
       <tr class="no-result" style="display:none"><td colspan="${nCols}"><div class="empty">Không tìm thấy học viên phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có học viên phù hợp.</div>`}
@@ -244,7 +244,7 @@ async function studentForm(id) {
   _cccdData = s.cccd_image || null; _cccdChanged = false;
   const opt = (val, cur, label) => `<option value="${val}" ${cur === val ? 'selected' : ''}>${label}</option>`;
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa học viên' : 'Thêm học viên'}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa học viên' : 'Thêm học viên'}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Họ tên *</label><input id="f_name" value="${esc(s.name)}" placeholder="Nguyễn Văn A"></div>
@@ -255,7 +255,7 @@ async function studentForm(id) {
         <div class="field"><label>Ngày sinh</label><input id="f_birth"></div>
       </div>
       <div class="grid2">
-        <div class="field"><label>Giới tính</label><select id="f_gender" onchange="el('f_room').innerHTML=roomOptions('', this.value)">
+        <div class="field"><label>Giới tính</label><select id="f_gender" data-change="onFRoomFromGender">
           ${opt('female', s.gender, 'Nữ')}${opt('male', s.gender, 'Nam')}</select></div>
         <div class="field"><label>Số điện thoại</label><input id="f_phone" value="${esc(s.phone || '')}"></div>
       </div>
@@ -285,14 +285,14 @@ async function studentForm(id) {
         <div class="grid2">
           <div class="field" style="margin:0 0 12px"><label>Số HĐ <span class="opt">(tự động theo pháp nhân + ngày ký)</span></label>
             <div class="flex" style="gap:6px"><input id="f_cno" value="${esc(s.contract_no || '')}" placeholder="03/2026/HDKTX-E2" style="flex:1">
-            <button type="button" class="btn sm" onclick="suggestContractNo()" title="Tạo số HĐ tự động">${IC.zap}</button></div></div>
+            <button type="button" class="btn sm" data-act="suggestContractNo" title="Tạo số HĐ tự động">${IC.zap}</button></div></div>
           <div class="field" style="margin:0 0 12px"><label>Ngày ký HĐ</label><input id="f_cdate" type="date" value="${esc((s.contract_date || '').slice(0, 10))}"></div>
         </div>
         <div class="field" style="margin:0 0 12px"><label>Tình trạng HĐ</label><select id="f_cstatus">
           ${['done', 'scanned', 'unsigned', 'none', 'handover'].map(k => opt(k, s.contract_status || 'unsigned', CONTRACT_LABEL[k])).join('')}</select></div>
         <div class="hint" style="margin:0;font-size:11.5px">${IC.info} Thuê ghép <strong>dài hạn</strong> bắt buộc ký HĐ; quá ${overdueDays()} ngày chưa ký sẽ bị báo động. Thuê ghép <strong>ngắn hạn</strong> (dưới 2 tháng, có ngày trả) chỉ cần <strong>ký phiếu bàn giao</strong>.</div>
         <div class="field" style="margin:0"><label>Ảnh CCCD <span class="opt">(chụp/chọn ảnh)</span></label>
-          <input type="file" id="f_cccd" accept="image/*" onchange="previewCccd(this)">
+          <input type="file" id="f_cccd" accept="image/*" data-change="onCccdPreview">
           <div id="cccdPrev" style="margin-top:8px">${s.cccd_image ? `<img src="${s.cccd_image}" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--line)">` : ''}</div>
         </div>
       </div>
@@ -304,7 +304,7 @@ async function studentForm(id) {
       <div class="field"><label>Ghi chú</label><input id="f_note" value="${esc(s.note || '')}"></div>
       ${!id ? `
       <label class="check"><input type="checkbox" id="f_dep" checked> ${IC.lock} Đã đóng cọc ${money(ST.settings.deposit_fee)} khi nhận phòng</label>
-      <label class="check" style="margin-top:8px"><input type="checkbox" id="f_login" onchange="el('loginBox').style.display=this.checked?'block':'none'"> ${IC.key} Tạo tài khoản đăng nhập</label>
+      <label class="check" style="margin-top:8px"><input type="checkbox" id="f_login" data-change="onLoginBoxToggle"> ${IC.key} Tạo tài khoản đăng nhập</label>
       <div id="loginBox" style="display:none;background:var(--bg2);padding:12px;border-radius:10px;margin-top:8px">
         <div class="grid2">
           <div class="field" style="margin:0"><label>Tên đăng nhập <span class="opt">(trống = mã HV)</span></label><input id="f_luser"></div>
@@ -312,7 +312,7 @@ async function studentForm(id) {
         </div>
       </div>` : ''}
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveStudent(${id || 0})">Lưu</button></div>`, true);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveStudent" data-args='[${id || 0}]'>Lưu</button></div>`, true);
   attachDate(el('f_birth'), s.birth_date, { max: today() });
   attachDate(el('f_cstart'), s.class_start_date);
   attachDate(el('f_departure'), s.expected_departure);
@@ -367,14 +367,14 @@ async function renumberContractsModal() {
   if (!r) return;
   const rows = r.plan.filter(p => p.changed);
   openModal(`
-    <div class="mh"><h3>${IC.fileText} Đánh số hợp đồng theo ngày ký</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.fileText} Đánh số hợp đồng theo ngày ký</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">${IC.info} Số HĐ chạy tự động theo <strong>pháp nhân</strong> (${legalEntity('female')} · ${legalEntity('male')}) và <strong>ngày ký</strong>, đánh lại từ đầu mỗi năm. Tổng ${r.total} HĐ đã ký · <strong>${r.changed}</strong> sẽ thay đổi số.</div>
       ${rows.length ? `<div class="table-wrap" style="max-height:50vh;overflow:auto"><table><thead><tr><th>Học viên</th><th>Ngày ký</th><th>Số cũ</th><th>Số mới</th></tr></thead><tbody>
         ${rows.map(p => `<tr><td>${esc(p.name)}</td><td>${fmtDate(p.date)}</td><td class="muted">${esc(p.old || '—')}</td><td><strong>${esc(p.new)}</strong></td></tr>`).join('')}
       </tbody></table></div>` : '<div class="empty">Không có thay đổi — số HĐ đã đúng thứ tự theo ngày ký.</div>'}
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button>${rows.length ? `<button class="btn pri" onclick="applyRenumber()">Áp dụng (${r.changed})</button>` : ''}</div>`, true);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button>${rows.length ? `<button class="btn pri" data-act="applyRenumber">Áp dụng (${r.changed})</button>` : ''}</div>`, true);
 }
 async function applyRenumber() {
   const r = await guard(() => API.renumberContracts(false));
@@ -390,7 +390,7 @@ async function studentDetail(id) {
   const vios = s.violations || [];
   const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
   openModal(`
-    <div class="mh"><h3>${esc(s.name)} <span class="badge ${s.gender === 'female' ? 'red' : 'blue'}">${genderLabel(s.gender)}</span> ${statusBadge(s)}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${esc(s.name)} <span class="badge ${s.gender === 'female' ? 'red' : 'blue'}">${genderLabel(s.gender)}</span> ${statusBadge(s)}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="cards" style="margin-bottom:16px">
         <div class="stat"><div class="l">Phòng</div><div class="v sm">${esc(s.room_name || '—')}${s.room_hang ? ` <span class="badge gray">${s.room_hang}</span>` : ''}</div></div>
@@ -415,10 +415,10 @@ async function studentDetail(id) {
         </div></div>` : '<p class="muted" style="margin:8px 0 0;font-size:12px">Chưa có ảnh CCCD</p>'}
       </div></div>
 
-      <div class="panel"><div class="hd"><h2 style="font-size:14px">${IC.bike} Xe (${vehicles.length})</h2><button class="btn sm" onclick="vehicleForm(0, ${s.id})">${IC.plus} Thêm xe</button></div><div class="pad">
+      <div class="panel"><div class="hd"><h2 style="font-size:14px">${IC.bike} Xe (${vehicles.length})</h2><button class="btn sm" data-act="vehicleForm" data-args='[0, ${s.id}]'>${IC.plus} Thêm xe</button></div><div class="pad">
         ${vehicles.length ? vehicles.map(v => `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)">
           <div><strong>${esc(v.plate || '—')}</strong> <span class="muted">${esc(v.vehicle_type || '')}</span>${v.sticker ? ` · mã dán: ${esc(v.sticker)}` : ''}</div>
-          <div class="rowbtns"><button class="btn sm ghost" onclick="vehicleForm(${v.id}, ${s.id})">${IC.pencil}</button><button class="btn sm ghost" onclick="delVehicle(${v.id}, ${s.id})">${IC.trash}</button></div>
+          <div class="rowbtns"><button class="btn sm ghost" data-act="vehicleForm" data-args='[${v.id}, ${s.id}]'>${IC.pencil}</button><button class="btn sm ghost" data-act="delVehicle" data-args='[${v.id}, ${s.id}]'>${IC.trash}</button></div>
         </div>`).join('') : '<p class="muted" style="margin:0">Chưa có xe.</p>'}
       </div></div>
 
@@ -427,20 +427,20 @@ async function studentDetail(id) {
         ${+s.deposit_deduction ? `<p style="margin:0 0 10px;color:var(--red)">Khấu trừ hư hao: <strong>${money(s.deposit_deduction)}</strong>${s.deposit_deduction_note ? ` (${esc(s.deposit_deduction_note)})` : ''} · Hoàn thực tế: <strong>${money((+s.deposit_amount || 0) - (+s.deposit_deduction || 0))}</strong></p>` : ''}
         ${s.deposit_account ? `<p style="margin:0 0 10px" class="muted">Hoàn về: ${esc(s.deposit_account)} — ${esc(s.deposit_bank)}</p>` : ''}
         <div class="rowbtns">
-          ${s.deposit_status === 'none' ? `<button class="btn sm" onclick="depositForm(${s.id})">Ghi nhận đóng cọc</button>` : ''}
-          ${s.deposit_status === 'held' ? `<button class="btn sm green" onclick="refundForm(${s.id})">Hoàn cọc</button><button class="btn sm danger" onclick="settleDeposit(${s.id},'forfeit')">Không hoàn (giữ cọc)</button>` : ''}
-          ${s.deposit_status === 'refunded' || s.deposit_status === 'forfeited' ? `<button class="btn sm" onclick="depositForm(${s.id})">Điều chỉnh</button>` : ''}
+          ${s.deposit_status === 'none' ? `<button class="btn sm" data-act="depositForm" data-args='[${s.id}]'>Ghi nhận đóng cọc</button>` : ''}
+          ${s.deposit_status === 'held' ? `<button class="btn sm green" data-act="refundForm" data-args='[${s.id}]'>Hoàn cọc</button><button class="btn sm danger" data-act="settleDeposit" data-args='[${s.id},"forfeit"]'>Không hoàn (giữ cọc)</button>` : ''}
+          ${s.deposit_status === 'refunded' || s.deposit_status === 'forfeited' ? `<button class="btn sm" data-act="depositForm" data-args='[${s.id}]'>Điều chỉnh</button>` : ''}
         </div>
       </div></div>
 
       <div class="panel"><div class="hd"><h2 style="font-size:14px">${IC.alert} Vi phạm / Nhắc nhở (${vios.length})</h2>
         <div class="rowbtns">
-          ${vios.length >= vthr && !vios.some(v => v.notified_school) ? `<button class="btn sm danger" onclick="notifySchool(${s.id})">${IC.inbox} Gửi mail nhà trường</button>` : ''}
-          <button class="btn sm pri" onclick="violationForm(${s.id})">${IC.plus} Ghi nhận</button>
+          ${vios.length >= vthr && !vios.some(v => v.notified_school) ? `<button class="btn sm danger" data-act="notifySchool" data-args='[${s.id}]'>${IC.inbox} Gửi mail nhà trường</button>` : ''}
+          <button class="btn sm pri" data-act="violationForm" data-args='[${s.id}]'>${IC.plus} Ghi nhận</button>
         </div></div><div class="pad">
         ${vios.length >= vthr ? `<div class="hint" style="background:var(--red-bg);border-color:#e3b8ad;color:var(--red-ink)">${IC.alert} Học viên đã vi phạm <strong>${vios.length} lần</strong> (≥ ${vthr})${vios.some(v => v.notified_school) ? ' — đã gửi mail nhà trường' : ' — cần thông báo nhà trường'}.</div>` : ''}
         ${vios.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày</th><th>Loại vi phạm</th><th>Mức độ</th><th class="num">Lần</th><th></th></tr></thead><tbody>
-          ${vios.map(v => `<tr><td>${fmtDate(v.date)}</td><td><strong>${esc(v.type_name)}</strong>${v.note ? `<div class="muted" style="font-size:12px">${esc(v.note)}</div>` : ''}</td><td>${vioSevBadge(v.severity)}</td><td class="num"><span class="badge ${v.level >= vthr ? 'red' : 'gray'}">${v.level}</span></td><td class="num"><button class="btn sm ghost" onclick="delViolation(${v.id}, ${s.id})">${IC.trash}</button></td></tr>`).join('')}
+          ${vios.map(v => `<tr><td>${fmtDate(v.date)}</td><td><strong>${esc(v.type_name)}</strong>${v.note ? `<div class="muted" style="font-size:12px">${esc(v.note)}</div>` : ''}</td><td>${vioSevBadge(v.severity)}</td><td class="num"><span class="badge ${v.level >= vthr ? 'red' : 'gray'}">${v.level}</span></td><td class="num"><button class="btn sm ghost" data-act="delViolation" data-args='[${v.id}, ${s.id}]'>${IC.trash}</button></td></tr>`).join('')}
         </tbody></table></div>` : '<p class="muted" style="margin:0">Chưa có vi phạm.</p>'}
       </div></div>
 
@@ -454,10 +454,10 @@ async function studentDetail(id) {
       </tbody></table></div>` : '<p class="muted">Chưa có.</p>'}
     </div>
     <div class="mf">
-      <button class="btn" onclick="studentForm(${s.id})">${IC.pencil} Sửa</button>
-      ${isOccupying(s) ? `<button class="btn" onclick="transferForm(${s.id})">${IC.transfer} Chuyển phòng</button>` : ''}
-      ${isOccupying(s) ? `<button class="btn danger" onclick="checkOutForm(${s.id})">Check-out</button>` : `<button class="btn green" onclick="checkInForm(${s.id})">Check-in lại</button>`}
-      <button class="btn danger" onclick="delStudent(${s.id})">${IC.trash} Xóa</button>
+      <button class="btn" data-act="studentForm" data-args='[${s.id}]'>${IC.pencil} Sửa</button>
+      ${isOccupying(s) ? `<button class="btn" data-act="transferForm" data-args='[${s.id}]'>${IC.transfer} Chuyển phòng</button>` : ''}
+      ${isOccupying(s) ? `<button class="btn danger" data-act="checkOutForm" data-args='[${s.id}]'>Check-out</button>` : `<button class="btn green" data-act="checkInForm" data-args='[${s.id}]'>Check-in lại</button>`}
+      <button class="btn danger" data-act="delStudent" data-args='[${s.id}]'>${IC.trash} Xóa</button>
     </div>`, true);
 }
 /* Xe */
@@ -465,7 +465,7 @@ function vehicleForm(vid, studentId) {
   let v = { plate: '', vehicle_type: '', sticker: '', note: '' };
   if (vid) { const d = (window._detailVehicles || []).find(x => x.id === vid); if (d) v = d; }
   openModal(`
-    <div class="mh"><h3>${vid ? 'Sửa xe' : 'Thêm xe'}</h3><button class="x" onclick="studentDetail(${studentId})">×</button></div>
+    <div class="mh"><h3>${vid ? 'Sửa xe' : 'Thêm xe'}</h3><button class="x" data-act="studentDetail" data-args='[${studentId}]'>×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Biển số</label><input id="v_plate" value="${esc(v.plate || '')}" placeholder="63-B4 508.58"></div>
@@ -477,7 +477,7 @@ function vehicleForm(vid, studentId) {
       </div>
       <div class="hint">${IC.bulb} Phí gửi xe (${money(ST.settings.parking_fee)}/xe/tháng) sẽ tự tính vào hóa đơn theo số xe.</div>
     </div>
-    <div class="mf"><button class="btn" onclick="studentDetail(${studentId})">Hủy</button><button class="btn pri" onclick="saveVehicle(${vid || 0}, ${studentId})">Lưu</button></div>`);
+    <div class="mf"><button class="btn" data-act="studentDetail" data-args='[${studentId}]'>Hủy</button><button class="btn pri" data-act="saveVehicle" data-args='[${vid || 0}, ${studentId}]'>Lưu</button></div>`);
 }
 async function saveVehicle(vid, studentId) {
   const body = { student_id: studentId, plate: el('v_plate').value.trim(), vehicle_type: el('v_type').value.trim(), sticker: el('v_sticker').value.trim(), note: el('v_note').value.trim() };
@@ -495,7 +495,7 @@ function duplicateModal(d) {
   const s = d.existing || {};
   const dangO = s.status === 'in';
   openModal(`
-    <div class="mh"><h3>${IC.alert} Bạn này đã có hồ sơ</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.alert} Bạn này đã có hồ sơ</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint" style="margin:0 0 16px"><span>${esc(d.error)}</span></div>
       <div class="asset-item" style="padding:14px">
@@ -505,11 +505,11 @@ function duplicateModal(d) {
       </div>
     </div>
     <div class="mf">
-      <button class="btn" onclick="closeModal()">Đóng</button>
+      <button class="btn" data-act="closeModal">Đóng</button>
       ${s.id ? (dangO
-        ? `<button class="btn" onclick="closeModal();studentForm(${s.id})">Xem hồ sơ</button>
-           <button class="btn pri" onclick="closeModal();transferForm(${s.id})">${IC.transfer} Chuyển phòng cho bạn ấy</button>`
-        : `<button class="btn pri" onclick="closeModal();checkInForm(${s.id})">${IC.doorOpen} Check-in lại cho bạn ấy</button>`) : ''}
+        ? `<button class="btn" data-close data-act="studentForm" data-args='[${s.id}]'>Xem hồ sơ</button>
+           <button class="btn pri" data-close data-act="transferForm" data-args='[${s.id}]'>${IC.transfer} Chuyển phòng cho bạn ấy</button>`
+        : `<button class="btn pri" data-close data-act="checkInForm" data-args='[${s.id}]'>${IC.doorOpen} Check-in lại cho bạn ấy</button>`) : ''}
     </div>`);
 }
 
@@ -528,7 +528,7 @@ function meterField(id, roomName, verb) {
 function transferForm(id) {
   const s = studentById(id);
   openModal(`
-    <div class="mh"><h3>${IC.transfer} Chuyển phòng: ${esc(s.name)}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.transfer} Chuyển phòng: ${esc(s.name)}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted">Phòng hiện tại: <strong>${esc(s.room_name || '—')}</strong></p>
       <div class="grid2">
@@ -538,7 +538,7 @@ function transferForm(id) {
       <div class="field"><label>Ghi chú</label><input id="t_note" placeholder="Lý do chuyển..."></div>
       ${s.room_id ? meterField('t_meter', s.room_name, 'chuyển đi') : ''}
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="doTransfer(${id})">Chuyển</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="doTransfer" data-args='[${id}]'>Chuyển</button></div>`);
 }
 async function doTransfer(id) {
   const room_id = el('t_room').value; if (!room_id) return toast('Chọn phòng mới', 'err');
@@ -557,14 +557,14 @@ function refundForm(id) {
   const deposit = +s.deposit_amount || 0;
   const assetRow = a => `<tr>
     <td>${esc(a.name)} <span class="muted" style="font-size:11px">(${esc(a.unit)})</span></td>
-    <td class="num"><input type="number" min="0" step="1" data-dqty="${a.id}" value="0" style="width:64px;text-align:right" oninput="dedCalc()"></td>
+    <td class="num"><input type="number" min="0" step="1" data-dqty="${a.id}" value="0" style="width:64px;text-align:right" data-input="dedCalc"></td>
     <td class="num"><input type="number" data-dfee="${a.id}" data-dname="${esc(a.name)}" value="${+a.fee || 0}" style="width:110px;text-align:right;background:var(--bg2,#f5f5f5)" readonly title="Phí bồi hoàn lấy từ danh mục tài sản — sửa trong mục Cài đặt"></td>
     <td class="num" id="dl_${a.id}">0</td>
   </tr>`;
   const person = ST.assets.filter(a => a.category === 'person');
   const fixed = ST.assets.filter(a => a.category === 'fixed');
   openModal(`
-    <div class="mh"><h3>${IC.handCoins} Hoàn cọc: ${esc(s.name || '')}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.handCoins} Hoàn cọc: ${esc(s.name || '')}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">Tick số lượng tài sản <strong>hư hao / mất / không vệ sinh</strong> để khấu trừ vào cọc. Có thể sửa đơn giá bồi hoàn.</div>
       <div class="table-wrap" style="max-height:280px;overflow:auto"><table><thead><tr><th>Tài sản</th><th class="num">SL hư/mất</th><th class="num">Đơn giá</th><th class="num">Thành tiền</th></tr></thead><tbody>
@@ -582,7 +582,7 @@ function refundForm(id) {
       </div>
       <div class="field"><label>Ngày hoàn</label><input id="r_date" type="date" value="${today()}"></div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn green" onclick="doRefund(${id}, ${deposit})">Xác nhận hoàn cọc</button></div>`, true);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn green" data-act="doRefund" data-args='[${id}, ${deposit}]'>Xác nhận hoàn cọc</button></div>`, true);
   dedCalc();
 }
 function dedCalc() {
@@ -630,17 +630,17 @@ async function delStudent(id) {
 async function showDeletedStudents() {
   const list = await guard(() => API.students(true));
   openModal(`
-    <div class="mh"><h3>${IC.trash} Học viên đã xóa (${list.length})</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.trash} Học viên đã xóa (${list.length})</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Học viên</th><th>Mã</th><th>Phòng</th><th></th></tr></thead><tbody>
         ${list.map(s => `<tr>
           <td><strong>${esc(s.name)}</strong>${s.class_name ? ` <span class="muted">· ${esc(s.class_name)}</span>` : ''}</td>
           <td>${esc(s.code || '—')}</td><td>${esc(s.room_name || '—')}</td>
-          <td class="num"><button class="btn sm green" onclick="restoreStudentAndReload(${s.id})">${IC.undo} Khôi phục</button></td>
+          <td class="num"><button class="btn sm green" data-act="restoreStudentAndReload" data-args='[${s.id}]'>${IC.undo} Khôi phục</button></td>
         </tr>`).join('')}
       </tbody></table></div>` : '<div class="empty">Không có học viên nào trong thùng rác.</div>'}
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Đóng</button></div>`, true);
+    <div class="mf"><button class="btn" data-act="closeModal">Đóng</button></div>`, true);
 }
 async function restoreStudentAndReload(id) {
   await guard(() => API.restoreStudent(id));
@@ -651,7 +651,7 @@ async function restoreStudentAndReload(id) {
 function appForm() {
   const facOpts = (ST.facilities || []).map(f => `<option value="${f.id}">${esc(f.name)}</option>`).join('');
   openModal(`
-    <div class="mh"><h3>${IC.filePen} Tạo đơn đăng ký</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.filePen} Tạo đơn đăng ký</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">${IC.info} Đơn tạo ở đây vào danh sách <strong>Đăng ký ở nội trú</strong> ở trạng thái <strong>Chờ duyệt</strong>. Bấm <strong>“Thêm vào phòng”</strong> để duyệt & tạo học viên.</div>
       <div class="grid2">
@@ -675,7 +675,7 @@ function appForm() {
       <div class="field"><label>Biển số xe (nếu gửi xe)</label><input id="ap_plate" placeholder="59-..."></div>
       <div class="field"><label>Ghi chú</label><textarea id="ap_note" rows="2"></textarea></div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveApp()">Tạo đơn</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveApp">Tạo đơn</button></div>`);
   attachDate(el('ap_birth'), '', { max: today() });
 }
 async function saveApp() {
@@ -695,12 +695,12 @@ async function saveApp() {
 }
 function accountForm(id, code) {
   openModal(`
-    <div class="mh"><h3>Tài khoản đăng nhập học viên</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>Tài khoản đăng nhập học viên</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên đăng nhập <span class="opt">(bỏ trống nếu đã có)</span></label><input id="a_user" value="${esc(code || '')}"></div>
       <div class="field"><label>Mật khẩu mới</label><input id="a_pass" type="text" placeholder="tối thiểu 4 ký tự"></div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveAccount(${id})">Lưu</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveAccount" data-args='[${id}]'>Lưu</button></div>`);
   setTimeout(() => el('a_pass').focus(), 50);
 }
 async function saveAccount(id) {
@@ -711,14 +711,14 @@ async function saveAccount(id) {
 function depositForm(id) {
   const s = studentById(id) || {};
   openModal(`
-    <div class="mh"><h3>${IC.lock} Ghi nhận đóng cọc</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.lock} Ghi nhận đóng cọc</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Số tiền cọc</label><input id="d_amt" type="number" min="0" value="${esc(s.deposit_amount || ST.settings.deposit_fee || 1200000)}"></div>
         <div class="field"><label>Ngày đóng</label><input id="d_date" type="date" value="${(s.deposit_date || today()).slice(0, 10)}"></div>
       </div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveDeposit(${id})">Lưu</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveDeposit" data-args='[${id}]'>Lưu</button></div>`);
 }
 async function saveDeposit(id) {
   await guard(() => API.setDeposit(id, { amount: +el('d_amt').value || 0, date: el('d_date').value }));
@@ -743,10 +743,10 @@ function quyCoc() {
     <td class="num">${money(s.deposit_amount)}</td>
     <td>${fmtDate(s.deposit_date)}</td>
     <td>${statusBadge(s)}</td>
-    <td class="num">${liveStatus(s) === 'left' ? `<button class="btn sm green" onclick="closeModal();refundForm(${s.id})">Hoàn cọc</button>` : ''}</td>
+    <td class="num">${liveStatus(s) === 'left' ? `<button class="btn sm green" data-close data-act="refundForm" data-args='[${s.id}]'>Hoàn cọc</button>` : ''}</td>
   </tr>`;
   openModal(`
-    <div class="mh"><h3>${IC.lock} Quỹ cọc</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.lock} Quỹ cọc</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="kpis" style="margin-bottom:16px">
         <div class="kpi"><span class="ic ic-brand">${IC.lock}</span><div><div class="v">${money(total)}</div><div class="l">Tổng quỹ cọc đang giữ</div></div></div>
@@ -758,7 +758,7 @@ function quyCoc() {
       <h4 style="margin:6px 0 8px">Đang giữ cọc (${staying.length})</h4>
       ${staying.length ? `<div class="table-wrap"><table><thead><tr><th>Học viên</th><th class="num">Cọc</th><th>Ngày đóng</th><th>Trạng thái</th><th></th></tr></thead><tbody>${staying.map(rowFor).join('')}</tbody></table></div>` : '<p class="muted">Chưa có.</p>'}
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Đóng</button></div>`, true);
+    <div class="mf"><button class="btn" data-act="closeModal">Đóng</button></div>`, true);
 }
 
 /* ---------- XE ---------- */

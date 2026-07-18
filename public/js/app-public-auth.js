@@ -18,7 +18,7 @@ async function renderPublicRegister() {
   try { info = await API.publicInfo(); } catch (e) {}
   window._pubCccd = {};
   const dorm = esc(info.dorm_name || 'Ký túc xá Học viên');
-  const imgCard = (key, def) => { const label = esc(info['imgcap_' + key] || def); return `<figure class="ph-img"><img src="/api/public/image/${key}" alt="${label}" loading="lazy" onerror="this.remove()"><span class="ph-ico">${IC.building}</span><figcaption>${label}</figcaption></figure>`; };
+  const imgCard = (key, def) => { const label = esc(info['imgcap_' + key] || def); return `<figure class="ph-img"><img src="/api/public/image/${key}" alt="${label}" loading="lazy" data-err="onImgRemove"><span class="ph-ico">${IC.building}</span><figcaption>${label}</figcaption></figure>`; };
   const amen = (ico, label) => `<div class="amen-item"><span class="amen-ic">${ico}</span><span>${label}</span></div>`;
   const priceRow = (label, val, unit, note) => `<tr><td>${label}${note ? `<div class="price-sub">${note}</div>` : ''}</td><td class="num"><strong>${money(val)}</strong><span class="muted"> ${unit}</span></td></tr>`;
   const priceRowOpt = (label, val, unit) => `<tr><td>${label} <span class="price-opt">tùy chọn</span><div class="price-sub">Chỉ tính khi đăng ký sử dụng</div></td><td class="num"><strong>${money(val)}</strong><span class="muted"> ${unit}</span></td></tr>`;
@@ -26,7 +26,7 @@ async function renderPublicRegister() {
   el('app').innerHTML = `
   <div class="intro">
     <header class="intro-hero">
-      <figure class="intro-hero-bg ph-img"><img src="/api/public/image/hero" alt="" onerror="this.remove()"><span class="ph-ico">${IC.building}</span></figure>
+      <figure class="intro-hero-bg ph-img"><img src="/api/public/image/hero" alt="" data-err="onImgRemove"><span class="ph-ico">${IC.building}</span></figure>
       <div class="intro-hero-in">
         <div class="intro-brand">${IC.home} <span>${dorm}</span></div>
         <h1>${T('intro_hero_title', 'Không gian nội trú\nan tâm & nề nếp').replace(/\n/g, '<br>')}</h1>
@@ -134,16 +134,16 @@ async function renderPublicRegister() {
       </div>
       <div class="field"><label>Dịch vụ đăng ký thêm</label>
         <label class="check"><input type="checkbox" id="a_wash"> ${IC.washer} Máy giặt (${money(info.washing_fee)}/tháng)</label>
-        <label class="check" style="margin-top:8px"><input type="checkbox" id="a_park" onchange="el('plateBox').style.display=this.checked?'block':'none'"> ${IC.bike} Gửi xe (${money(info.parking_fee)}/xe/tháng)</label>
+        <label class="check" style="margin-top:8px"><input type="checkbox" id="a_park" data-change="onPlateBoxToggle"> ${IC.bike} Gửi xe (${money(info.parking_fee)}/xe/tháng)</label>
         <div id="plateBox" style="display:none;margin-top:8px"><input id="a_plate" placeholder="Biển số xe (VD: 63-B4 508.58)"></div>
       </div>
       <div class="field"><label>Ảnh CCCD (2 mặt)</label>
         <div class="muted" style="font-size:12px;margin:-2px 0 8px">${IC.info} Chụp <strong>ngang</strong>, đủ sáng, thấy rõ 4 góc. Ảnh sẽ tự xoay đúng chiều khi tải lên.</div>
         <div class="grid2">
           <div><div class="muted" style="font-size:12px;margin-bottom:4px"><strong>Mặt trước</strong> — có ảnh chân dung & số CCCD</div>
-            <input type="file" id="a_cccd_front" accept="image/*" onchange="pubCccd(this,'front')"><div id="cccdFrontPrev" style="margin-top:6px"></div></div>
+            <input type="file" id="a_cccd_front" accept="image/*" data-change="onPubCccdFront"><div id="cccdFrontPrev" style="margin-top:6px"></div></div>
           <div><div class="muted" style="font-size:12px;margin-bottom:4px"><strong>Mặt sau</strong> — có đặc điểm nhận dạng & ngày cấp</div>
-            <input type="file" id="a_cccd_back" accept="image/*" onchange="pubCccd(this,'back')"><div id="cccdBackPrev" style="margin-top:6px"></div></div>
+            <input type="file" id="a_cccd_back" accept="image/*" data-change="onPubCccdBack"><div id="cccdBackPrev" style="margin-top:6px"></div></div>
         </div>
       </div>
       <div class="field"><label>Ghi chú</label><textarea id="a_note" rows="2"></textarea></div>
@@ -222,8 +222,8 @@ async function renderLogin() {
       <div class="auth-right">
         <div class="auth-form">
           <div class="auth-tabs">
-            <button class="auth-tab active" data-t="admin" onclick="loginTab('admin')">${IC.shield} Ban quản lý</button>
-            <button class="auth-tab" data-t="student" onclick="loginTab('student')">${IC.graduation} Học viên</button>
+            <button class="auth-tab active" data-t="admin" data-act="loginTab" data-args='["admin"]'>${IC.shield} Ban quản lý</button>
+            <button class="auth-tab" data-t="student" data-act="loginTab" data-args='["student"]'>${IC.graduation} Học viên</button>
           </div>
           <h2>Đăng nhập</h2>
           <p class="sub" id="lgSub">Đăng nhập hệ thống quản lý ký túc xá.</p>
@@ -302,7 +302,7 @@ function renderForceChangePw() {
             <button class="btn pri lg auth-btn" type="submit">Cập nhật mật khẩu →</button>
           </form>
           <div class="auth-or"><span>hoặc</span></div>
-          <button class="btn" style="width:100%" onclick="Auth.logout()">${IC.logOut} Đăng xuất</button>
+          <button class="btn" style="width:100%" data-act="logout">${IC.logOut} Đăng xuất</button>
         </div>
       </div>
     </div>`;

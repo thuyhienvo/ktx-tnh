@@ -8,7 +8,7 @@ async function renderStudent() {
     <div class="app"><div class="main" style="margin:0 auto;max-width:760px;width:100%">
       <div class="top">
         <div><h1>${IC.home} Phòng của tôi</h1><div class="sub">Xin chào, ${esc(Auth.user.full_name || Auth.user.username)}</div></div>
-        <div class="toolbar"><button class="btn sm" onclick="changePwd()">${IC.key} Đổi mật khẩu</button><button class="btn sm" onclick="Auth.logout()">${IC.logOut} Đăng xuất</button></div>
+        <div class="toolbar"><button class="btn sm" data-act="changePwd">${IC.key} Đổi mật khẩu</button><button class="btn sm" data-act="logout">${IC.logOut} Đăng xuất</button></div>
       </div>
       <div class="content" id="content"><div class="spinner"></div></div>
     </div></div>`;
@@ -52,10 +52,10 @@ async function loadStudentPortal() {
       ${profile.uses_washing
         ? `<div class="flex" style="justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
             <div>${IC.checkCircle} Bạn <strong>đang dùng</strong> máy giặt — phí <strong>${money(profile.washing_fee)}/tháng</strong> (tính vào phiếu báo).</div>
-            <button class="btn sm ghost" onclick="toggleMyWashing(false)">Hủy đăng ký</button></div>`
+            <button class="btn sm ghost" data-act="toggleMyWashing" data-args='[false]'>Hủy đăng ký</button></div>`
         : `<div class="flex" style="justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
             <div class="muted">Bạn chưa dùng máy giặt. Đăng ký nếu có nhu cầu — phí <strong>${money(profile.washing_fee)}/tháng</strong>.</div>
-            <button class="btn sm pri" onclick="toggleMyWashing(true)">${IC.plus} Đăng ký máy giặt</button></div>`}
+            <button class="btn sm pri" data-act="toggleMyWashing" data-args='[true]'>${IC.plus} Đăng ký máy giặt</button></div>`}
     </div></div>
 
     ${myVios.length ? `<div class="panel"><div class="hd"><h2>${IC.alert} Nhắc nhở / Vi phạm (${myVios.length})</h2></div><div class="table-wrap">
@@ -79,13 +79,13 @@ async function loadStudentPortal() {
       <div class="pad muted" style="font-size:12.5px">${IC.creditCard} Đóng tiền qua mã QR quản lý gửi trên Zalo theo hạn hằng tháng.</div>
     </div></div>
 
-    <div class="panel"><div class="hd"><h2>${IC.handCoins} Hỗ trợ học viên</h2><button class="btn sm pri" onclick="damageForm()">${IC.plus} Gửi yêu cầu hỗ trợ</button></div><div class="table-wrap">
+    <div class="panel"><div class="hd"><h2>${IC.handCoins} Hỗ trợ học viên</h2><button class="btn sm pri" data-act="damageForm">${IC.plus} Gửi yêu cầu hỗ trợ</button></div><div class="table-wrap">
       ${damage.length ? `<table><thead><tr><th>Ngày</th><th>Loại</th><th>Nội dung</th><th>Trạng thái</th></tr></thead><tbody>
         ${damage.map(d => `<tr><td>${fmtDate(String(d.created_at).slice(0, 10))}</td><td>${supCatBadge(d.category)}</td><td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}${d.admin_note ? `<div style="font-size:12px;color:${d.status === 'blocked' ? 'var(--red-ink)' : 'var(--green)'}">${d.status === 'blocked' ? 'Lý do' : 'Phản hồi'}: ${esc(d.admin_note)}</div>` : ''}</td><td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>' : d.status === 'blocked' ? '<span class="badge red">Chưa xử lý được</span>' : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td></tr>`).join('')}
       </tbody></table>` : '<div class="empty">Chưa có yêu cầu nào.</div>'}
     </div></div>
 
-    <div class="panel"><div class="hd"><h2>${IC.logOut} Đăng ký trả phòng</h2>${!pendingCout && profile.status === 'in' && !notMovedIn ? '<button class="btn sm danger" onclick="checkoutReqForm()">Xin trả phòng</button>' : ''}</div><div class="pad">
+    <div class="panel"><div class="hd"><h2>${IC.logOut} Đăng ký trả phòng</h2>${!pendingCout && profile.status === 'in' && !notMovedIn ? '<button class="btn sm danger" data-act="checkoutReqForm">Xin trả phòng</button>' : ''}</div><div class="pad">
       ${pendingCout ? `<div class="hint">${IC.hourglass} Bạn đã gửi đơn trả phòng ngày <strong>${fmtDate(pendingCout.desired_date)}</strong> — đang chờ quản lý duyệt.</div>` :
       notMovedIn ? '<p class="muted" style="margin:0">Bạn chưa tới ngày nhận phòng nên chưa thể gửi đơn trả phòng.</p>' :
       profile.status !== 'in' ? '<p class="muted" style="margin:0">Bạn đã trả phòng.</p>' :
@@ -100,9 +100,9 @@ function damageForm(cat) {
   const sel = v => cat === v ? ' selected' : '';
   const tieuDe = cat === 'damage' ? `${IC.wrench} Báo hư hỏng trong phòng` : `${IC.handCoins} Gửi yêu cầu hỗ trợ`;
   openModal(`
-    <div class="mh"><h3>${tieuDe}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${tieuDe}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
-      <div class="field"><label>Loại yêu cầu *</label><select id="dm_cat" onchange="dmCatHint()">
+      <div class="field"><label>Loại yêu cầu *</label><select id="dm_cat" data-change="dmCatHint">
         <option value="damage"${sel('damage')}>Báo hư hỏng trong phòng</option>
         <option value="violation"${sel('violation')}>Báo cáo vi phạm</option>
         <option value="other"${sel('other')}>Khác (cần hỗ trợ trong quá trình ở)</option>
@@ -111,7 +111,7 @@ function damageForm(cat) {
       <div class="field"><label>Mô tả chi tiết</label><textarea id="dm_desc" rows="3" placeholder="Mô tả thêm nếu cần..."></textarea></div>
       <div class="hint" id="dmHint" style="font-size:12px">${IC.info} Báo hư hỏng thiết bị/cơ sở vật chất trong phòng để quản lý sửa chữa.</div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="submitDamage()">Gửi yêu cầu</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="submitDamage">Gửi yêu cầu</button></div>`);
   setTimeout(() => { dmCatHint(); el('dm_title').focus(); }, 50);
 }
 function dmCatHint() {
@@ -129,7 +129,7 @@ async function submitDamage() {
 }
 function checkoutReqForm() {
   openModal(`
-    <div class="mh"><h3>${IC.logOut} Đăng ký trả phòng</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.logOut} Đăng ký trả phòng</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Ngày dự kiến trả phòng</label><input id="co_date"></div>
       <div class="field"><label>Lý do</label><select id="co_reason">
@@ -138,7 +138,7 @@ function checkoutReqForm() {
       <div class="field"><label>Ghi chú</label><textarea id="co_note" rows="2"></textarea></div>
       <div class="hint">${IC.info} Đơn sẽ được gửi tới quản lý để duyệt. Cần báo trước 1 tháng để được hoàn cọc.</div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn danger" onclick="submitCheckoutReq()">Gửi đơn</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn danger" data-act="submitCheckoutReq">Gửi đơn</button></div>`);
   attachDate(el('co_date'), today());
 }
 async function submitCheckoutReq() {
@@ -237,7 +237,7 @@ async function renderMaintenance() {
     <div class="app"><div class="main" style="margin:0 auto;max-width:940px;width:100%">
       <div class="top">
         <div><h1>${IC.wrench} Bảo trì ký túc xá</h1><div class="sub">Xin chào, ${esc(Auth.user.full_name || Auth.user.username)}</div></div>
-        <div class="toolbar"><button class="btn sm" onclick="loadMaintenance()">${IC.refresh} Tải lại</button><button class="btn sm" onclick="changePwd()">${IC.key} Đổi mật khẩu</button><button class="btn sm" onclick="Auth.logout()">${IC.logOut} Đăng xuất</button></div>
+        <div class="toolbar"><button class="btn sm" data-act="loadMaintenance">${IC.refresh} Tải lại</button><button class="btn sm" data-act="changePwd">${IC.key} Đổi mật khẩu</button><button class="btn sm" data-act="logout">${IC.logOut} Đăng xuất</button></div>
       </div>
       <div class="content" id="content"><div class="spinner"></div></div>
     </div></div>`;
@@ -281,9 +281,9 @@ async function loadMaintenance() {
           <td>${t.status === 'blocked' ? `<span class="badge red">Chưa xử lý được</span>${t.admin_note ? `<div style="font-size:11px;color:var(--red-ink)">Lý do: ${esc(t.admin_note)}</div>` : ''}`
             : t.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới nhận</span>'}</td>
           <td class="num"><div class="rowbtns" style="justify-content:flex-end;flex-wrap:wrap;gap:4px">
-            ${t.status !== 'processing' ? `<button class="btn sm" onclick="maintDo(${t.id},'processing')">Bắt đầu xử lý</button>` : ''}
-            <button class="btn sm danger" onclick="maintBlockForm(${t.id})">${IC.alert} Chưa xử lý được</button>
-            <button class="btn sm green" onclick="maintDoneForm(${t.id})">${IC.check} Đã xử lý xong</button>
+            ${t.status !== 'processing' ? `<button class="btn sm" data-act="maintDo" data-args='[${t.id},"processing"]'>Bắt đầu xử lý</button>` : ''}
+            <button class="btn sm danger" data-act="maintBlockForm" data-args='[${t.id}]'>${IC.alert} Chưa xử lý được</button>
+            <button class="btn sm green" data-act="maintDoneForm" data-args='[${t.id}]'>${IC.check} Đã xử lý xong</button>
           </div></td></tr>`).join('')}
       </tbody></table>` : '<div class="empty">Không có công việc cần xử lý.</div>'}
     </div></div>
@@ -312,15 +312,15 @@ async function loadHandovers(month) {
     <td><strong>${esc(x.name)}</strong></td><td>${esc(x.room_name || '—')}</td><td>${fmtDate(x.date)}</td>
     <td class="num">${x.checkin_confirmed_at
       ? `<span class="badge green">${IC.check} Đã nhận phòng</span>${x.checkin_confirm_note ? `<div class="muted" style="font-size:11px;white-space:normal">${esc(x.checkin_confirm_note)}</div>` : ''}`
-      : `<button class="btn sm green" onclick="handoverCheckinForm(${x.id},'${esq(x.name)}')">${IC.check} Đã nhận phòng</button>`}</td></tr>`;
+      : `<button class="btn sm green" data-act="handoverCheckinRow" data-args='[${x.id}]' data-hname="${esc(x.name)}">${IC.check} Đã nhận phòng</button>`}</td></tr>`;
   const outRow = x => `<tr>
     <td><strong>${esc(x.name)}</strong></td><td>${esc(x.room_name || '—')}</td><td>${fmtDate(x.date)}</td>
     <td class="num">${x.checkout_confirmed_at
       ? `<span class="badge green">${IC.check} Đã trả ${fmtDate(x.checkout_actual_date)}</span>${x.checkout_confirm_note ? `<div class="muted" style="font-size:11px;white-space:normal">${esc(x.checkout_confirm_note)}</div>` : ''}`
-      : `<button class="btn sm green" onclick="handoverCheckoutForm(${x.id},'${esq(x.name)}','${x.date || ''}')">${IC.check} Đã trả phòng</button>`}</td></tr>`;
+      : `<button class="btn sm green" data-act="handoverCheckoutRow" data-args='[${x.id}]' data-hname="${esc(x.name)}" data-plandate="${esc(x.date || '')}">${IC.check} Đã trả phòng</button>`}</td></tr>`;
   area.innerHTML = `
     <div class="panel"><div class="hd"><h2>${IC.key} Bàn giao phòng</h2>
-      <select onchange="loadHandovers(this.value)" style="font-weight:600;padding:6px 8px;border-radius:8px">${monthOpts}</select></div>
+      <select data-change="onHandoverMonth" style="font-weight:600;padding:6px 8px;border-radius:8px">${monthOpts}</select></div>
       <div class="pad"><div class="hint">${IC.info} <strong>${monthLabel(hoMonth)}</strong>: ${d.checkins.length} nhận phòng (<strong>${pIn}</strong> chưa xác nhận) · ${d.checkouts.length} trả phòng (<strong>${pOut}</strong> chưa xác nhận). Xác nhận thực tế + kiểm tra tài sản, thu chìa khóa.</div></div>
       <div class="grid2" style="align-items:start;padding:0 16px 16px;gap:16px">
         <div><h4 style="margin:0 0 8px"><span class="dot-svg dot-green">${IC.dot}</span> Nhận phòng (${d.checkins.length})</h4>
@@ -332,12 +332,12 @@ async function loadHandovers(month) {
 }
 function handoverCheckinForm(id, name) {
   openModal(`
-    <div class="mh"><h3>${IC.check} Xác nhận đã nhận phòng</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.check} Xác nhận đã nhận phòng</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted" style="margin:0 0 10px">Học viên: <strong>${esc(name)}</strong></p>
       <div class="field"><label>Ghi chú bàn giao <span class="opt">(tình trạng phòng, đã giao chìa khóa...)</span></label><textarea id="ho_note" rows="3" placeholder="VD: Phòng sạch, đã giao 1 chìa khóa phòng + 1 chìa tủ locker..."></textarea></div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="submitHandoverCheckin(${id})">Xác nhận đã nhận phòng</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="submitHandoverCheckin" data-args='[${id}]'>Xác nhận đã nhận phòng</button></div>`);
 }
 async function submitHandoverCheckin(id) {
   await guard(() => API.confirmHandoverCheckin(id, el('ho_note').value.trim()));
@@ -345,14 +345,14 @@ async function submitHandoverCheckin(id) {
 }
 function handoverCheckoutForm(id, name, planDate) {
   openModal(`
-    <div class="mh"><h3>${IC.check} Xác nhận đã trả phòng</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.check} Xác nhận đã trả phòng</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted" style="margin:0 0 10px">Học viên: <strong>${esc(name)}</strong>${planDate ? ` · đăng ký trả: ${fmtDate(planDate)}` : ''}</p>
       <div class="field"><label>Ngày trả phòng THỰC TẾ *</label><input id="ho_date"></div>
       <div class="field"><label>Ghi chú (kiểm tra tài sản, thu chìa khóa) *</label><textarea id="ho_note" rows="3" placeholder="VD: Đã thu 2 chìa khóa, tài sản đủ, tường có vết bẩn nhỏ..."></textarea></div>
       <div class="hint" style="font-size:12px">${IC.info} Ngày trả thực tế sẽ cập nhật để phiếu báo tính đúng số ngày ở.</div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="submitHandoverCheckout(${id})">Xác nhận đã trả phòng</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="submitHandoverCheckout" data-args='[${id}]'>Xác nhận đã trả phòng</button></div>`);
   attachDate(el('ho_date'), planDate || today());
 }
 async function submitHandoverCheckout(id) {
@@ -364,9 +364,9 @@ async function submitHandoverCheckout(id) {
 async function maintDo(id, status) { await guard(() => API.maintenanceTaskStatus(id, status)); toast('Đã cập nhật'); loadMaintenance(); }
 function maintDoneForm(id) {
   openModal(`
-    <div class="mh"><h3>${IC.check} Hoàn thành công việc</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.check} Hoàn thành công việc</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb"><div class="field"><label>Ghi chú bảo trì (đã làm gì)</label><textarea id="mt_note" rows="3" placeholder="VD: Đã thay vòi nước mới, kiểm tra lại..."></textarea></div></div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="submitMaintDone(${id})">Xác nhận đã xong</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="submitMaintDone" data-args='[${id}]'>Xác nhận đã xong</button></div>`);
 }
 async function submitMaintDone(id) {
   await guard(() => API.maintenanceTaskStatus(id, 'done', el('mt_note').value.trim()));
@@ -374,12 +374,12 @@ async function submitMaintDone(id) {
 }
 function maintBlockForm(id) {
   openModal(`
-    <div class="mh"><h3>${IC.alert} Chưa xử lý được</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="mh"><h3>${IC.alert} Chưa xử lý được</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb"><div class="field"><label>Lý do chưa xử lý được *</label>
       <textarea id="mt_reason" rows="3" placeholder="VD: Cần thay linh kiện, đang đặt hàng · Ngoài khả năng, cần thợ ngoài · Chờ học viên có mặt..."></textarea></div>
       <div class="hint" style="font-size:12px">${IC.info} Công việc vẫn nằm trong danh sách "Cần xử lý"; quản lý & học viên sẽ thấy lý do này.</div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn danger" onclick="submitMaintBlock(${id})">Lưu lý do</button></div>`);
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn danger" data-act="submitMaintBlock" data-args='[${id}]'>Lưu lý do</button></div>`);
   setTimeout(() => el('mt_reason').focus(), 50);
 }
 async function submitMaintBlock(id) {
