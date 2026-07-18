@@ -441,8 +441,13 @@ router.post('/:id/checkout', requireRole('admin', 'staff'), async (req, res, nex
     if (notice_date != null && notice_date !== '' && !isValidYmd(notice_date)) return res.status(400).json({ error: 'Ngày báo trả phòng không hợp lệ' });
     const d = date || new Date().toISOString().slice(0, 10);
     // Ngày rời đi KHÔNG được trước ngày nhận phòng / trước ngày bắt đầu lượt ở hiện tại (BLK-3)
-    const ci = (await query('SELECT check_in_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    const ci = (await query('SELECT check_in_date, status, check_out_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!ci) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    // M-2: chặn check-out LẦN 2. Đã 'out' mà gọi lại sẽ ghi đè check_out_date sang ngày mới trong khi
+    // room_stays đã đóng ở ngày CŨ (openStayOf trả null) -> tiền phòng (theo check_out_date) và tiền
+    // điện (theo room_stays) lệch số ngày. Muốn đổi ngày trả thì nhận phòng lại (check-in) trước.
+    if (ci.status === 'out')
+      return res.status(409).json({ error: `Học viên đã trả phòng${ci.check_out_date ? ' ngày ' + String(ci.check_out_date).slice(0, 10) : ''}. Nếu cần đổi ngày trả, hãy nhận phòng lại (check-in) trước.` });
     const badDate = await badCheckoutDate(null, +req.params.id, d, ci.check_in_date);
     if (badDate) return res.status(400).json({ error: badDate });
     const rs = ['departure', 'personal', 'facility', 'dropout', 'reserve', 'other'].includes(reason) ? reason : 'other';
@@ -597,6 +602,15 @@ router.post('/:id/deposit-settle', requireRole('admin', 'staff'), async (req, re
     const stu = (await query('SELECT deposit_amount, deposit_status, checkout_notice_date, check_out_date, checkout_reason FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!stu) return res.status(404).json({ error: 'Không tìm thấy học viên' });
     const coc = Number(stu.deposit_amount) || 0;
+    // M-1: MÁY TRẠNG THÁI cọc. Trước đây không kiểm deposit_status -> bấm lại đảo refunded<->forfeited
+    // tuỳ ý (số cọc/khấu trừ nhảy không lưu vết); và forfeit không qua cổng đủ-điều-kiện -> giữ/xử cọc
+    // của HV còn ĐANG Ở. Chỉ tất toán được cọc ĐANG GIỮ ('held') và khi HV ĐÃ TRẢ PHÒNG.
+    if (stu.deposit_status === 'refunded' || stu.deposit_status === 'forfeited')
+      return res.status(409).json({ error: `Cọc đã được tất toán (${stu.deposit_status === 'refunded' ? 'đã hoàn' : 'không hoàn'}) — không tất toán lại. Nếu cần điều chỉnh, liên hệ quản trị viên.` });
+    if (coc <= 0 || stu.deposit_status === 'none')
+      return res.status(400).json({ error: 'Học viên không có khoản cọc đang giữ để tất toán.' });
+    if (!stu.check_out_date)
+      return res.status(400).json({ error: 'Học viên chưa trả phòng — tất toán cọc sau khi check-out.' });
     // Khấu trừ hư hao: không âm (âm = TRẢ cho HV nhiều hơn số họ cọc) và không vượt số cọc
     if (!Number.isFinite(deduction) || deduction < 0)
       return res.status(400).json({ error: `Khấu trừ hư hao không được âm (đang nhận: ${req.body.deduction})` });

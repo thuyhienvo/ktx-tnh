@@ -428,6 +428,13 @@ BEGIN
     ('uq_vehicles_plate',
      $q$CREATE UNIQUE INDEX IF NOT EXISTS uq_vehicles_plate ON vehicles (lower(btrim(plate)))
         WHERE deleted_at IS NULL AND COALESCE(plate,'') <> ''$q$),
+    -- M-5: index CŨ chỉ lower(btrim) -> "63-B4 508.58" và "63B450858" coi là KHÁC. Hai người khai
+    -- ĐỒNG THỜI cùng xe khác định dạng lọt cả 2 (chống trùng ở app chạy trước-INSERT, không khoá) ->
+    -- NHÂN ĐÔI phí gửi xe. Thêm index chuẩn hoá GIỐNG app (bỏ mọi ký tự không phải chữ-số) làm chốt
+    -- cuối ở DB. Fail-safe qua schema_guard nếu dữ liệu cũ có bản trùng dạng này (dọn rồi khởi động lại).
+    ('uq_vehicles_plate_norm',
+     $q$CREATE UNIQUE INDEX IF NOT EXISTS uq_vehicles_plate_norm ON vehicles (regexp_replace(upper(plate),'[^0-9A-Z]','','g'))
+        WHERE deleted_at IS NULL AND COALESCE(plate,'') <> ''$q$),
     -- Hai phòng cùng tên trong một cơ sở -> xếp người vào nhầm phòng
     ('uq_rooms_name_per_facility',
      $q$CREATE UNIQUE INDEX IF NOT EXISTS uq_rooms_name_per_facility ON rooms (facility_id, lower(btrim(name)))

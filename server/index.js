@@ -34,10 +34,15 @@ const apiLimiter = rateLimit({ windowMs: 60 * 1000, max: 600, standardHeaders: t
 // Chống dò mật khẩu = đếm lần ĐĂNG NHẬP SAI. skipSuccessfulRequests: đăng nhập ĐÚNG không bị tính.
 // Trước đây đếm cả lần đúng -> người dùng thật đăng nhập nhiều thiết bị / hết phiên vài lần là bị khoá,
 // mà câu báo lỗi lại nói "đăng nhập sai quá nhiều lần" — sai sự thật, không ai hiểu tại sao mình bị chặn.
+// M-3: đếm theo IP + TÊN ĐĂNG NHẬP, không chỉ theo IP. Cả KTX (~240 người) ra Internet bằng MỘT IP
+// NAT — nếu khoá theo IP thì vài người gõ nhầm mật khẩu là KHOÁ CẢ NHÀ đăng nhập (sáng đầu tháng
+// nhiều người quên mật khẩu = kẹt hết). Rào THẬT chống dò mật khẩu là login-guard.js (khoá theo TỪNG
+// tài khoản: 10 sai/15ph). Limiter này chỉ là net phụ, nên tách theo tài khoản để không phạt hàng xóm.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 20, skipSuccessfulRequests: true,
   standardHeaders: true, legacyHeaders: false,
-  message: { error: 'Đăng nhập sai quá nhiều lần. Vui lòng đợi vài phút rồi thử lại.' },
+  keyGenerator: (req) => `${req.ip}|${String((req.body && req.body.username) || (req.user && req.user.username) || '').toLowerCase().trim()}`,
+  message: { error: 'Đăng nhập sai quá nhiều lần với tài khoản này. Vui lòng đợi vài phút rồi thử lại.' },
 });
 // Nộp đơn đăng ký: đường DUY NHẤT cho người HOÀN TOÀN ẨN DANH ghi vào CSDL và đẩy ảnh lên S3,
 // lại đi qua parser 16MB. Trần chung 600/phút quá rộng: đo thật thấy 40 đơn giống hệt nhau

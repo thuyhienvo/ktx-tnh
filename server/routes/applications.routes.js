@@ -108,6 +108,24 @@ router.post('/:id/approve', async (req, res, next) => {
       const locked = (await client.query('SELECT status FROM applications WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [app.id])).rows[0];
       if (!locked) { const e = new Error('Không tìm thấy đơn'); e.status = 404; throw e; }
       if (locked.status !== 'pending') { const e = new Error('Đơn đã được xử lý (có thể một người khác vừa duyệt).'); e.status = 409; throw e; }
+      // M-6: FOR UPDATE ở trên chỉ khoá ĐÚNG đơn này. Cùng một người nộp 2 đơn pending KHÁC NHAU (mã HV
+      // để trống, tên lệch 1 ký tự) rồi 2 staff duyệt ĐỒNG THỜI -> mỗi bên khoá đơn của mình, cả hai qua
+      // dedup (chạy trước transaction, lúc chưa ai tạo student) -> 2 hồ sơ, thu tiền 2 lần. Khoá tư vấn
+      // theo SĐT/mã để 2 approve cùng người xếp hàng, rồi KIỂM TRÙNG LẠI trong transaction: người sau
+      // thấy hồ sơ người trước vừa tạo -> dừng. Chỉ khoá khi KHÔNG chủ ý ghi đè trùng (confirm_duplicate).
+      if (!b.confirm_duplicate) {
+        const key = String(app.code || '').trim() ? 'code:' + app.code.trim().toLowerCase()
+          : String(app.phone || '').trim() ? 'phone:' + app.phone.replace(/\D/g, '') : '';
+        if (key) {
+          await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [key]);
+          const dupIn = (await client.query(
+            `SELECT s.name FROM students s WHERE s.deleted_at IS NULL AND (
+                (btrim($1) <> '' AND lower(btrim(s.code)) = lower(btrim($1)))
+                OR (regexp_replace($2,'\\D','','g') <> '' AND regexp_replace(s.phone,'\\D','','g') = regexp_replace($2,'\\D','','g'))
+              ) LIMIT 1`, [app.code || '', app.phone || ''])).rows[0];
+          if (dupIn) { const e = new Error(`${dupIn.name} vừa được tạo hồ sơ (trùng mã HV/SĐT) bởi thao tác khác — không tạo hồ sơ thứ hai.`); e.status = 409; throw e; }
+        }
+      }
       const { rows } = await client.query(
         `INSERT INTO students (code, name, gender, phone, birth_date, class_name, room_id, check_in_date, status, note,
            rental_type, residency_status, contract_no, contract_date, contract_status, uses_washing, deposit_amount, deposit_status, deposit_date,
