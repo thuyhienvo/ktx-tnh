@@ -26,12 +26,11 @@ Demo STAGING (dữ liệu mẫu, demo cho sếp): https://ktx-tnh.onrender.com
 - Mail test: dùng hộp thư giả local (127.0.0.1), không gửi mail thật
 - Trước khi coi là xong: `npm test` phải PASS
 
-## Trạng thái hiện tại (cập nhật 2026-07-16) — GIAI ĐOẠN SỬA LỖI TRƯỚC GO-LIVE
-- **Mục tiêu production: trước 30/07/2026**
-- **V1: còn 10 lỗi chưa sửa** (báo cáo cũ ghi 7 là nhầm) — xem `docs/TEST-RESULT-2026-07-15.md`
-- **V2 (đối kháng, 15 nhóm) ĐÃ CHẠY 16/07: 71 FAIL / 12 PASS** — xem `docs/TEST-RESULT-V2-FULL-2026-07-16.md`.
-  Nhóm CHẶN PHÁT HÀNH gồm: V2-51 (gender sai từ lúc nhận đơn → nam vào phòng nữ), V2-41b (xác nhận trả phòng xoá sạch lịch sử ở phòng → tiền điện chia sai), V2-42b (đơn "đã từ chối" nhưng vẫn trả phòng thật)...
-- **4 rủi ro chỉ bùng nổ đúng lúc lên prod:** ① TZ=UTC trên Render (lệch ngày VN) ② `schema.sql` áp lại mỗi lần boot ③ rate-limit theo IP (cả KTX chung 1 IP NAT) ④ **chưa có backup CSDL**
+## Trạng thái hiện tại (cập nhật 2026-07-18) — CHUẨN BỊ GO-LIVE
+- **Mục tiêu production: trước 06/08/2026**. Mảng **tài chính (QR/phiếu thu) = GIAI ĐOẠN 2** (sau khi GĐ1 chạy ổn) — đã GỠ khỏi app, code ở nhánh `feature/finance-qr`. Xem [[finance-roadmap-qr]] trong memory.
+- **Rà soát logic toàn diện 18/07 (6 agent, code v80)** — báo cáo `docs/REVIEW-LOGIC-GO-LIVE-2026-07-18.md`. Kết luận: lõi tính tiền + auth/phân quyền VỮNG; báo cáo "71 FAIL" (16/07) phần lớn đã vá ở #64–#71.
+- **7 lỗi CHẶN PHÁT HÀNH đã fix (#76) + 6 lỗi TRUNG BÌNH (#77):** 3 đường trả phòng gộp về `server/checkout.js` chung; chặn ngày trả < lượt ở; đổi giới tính phòng có người khác giới; reject/delete đơn nguyên tử; **TZ=Asia/Ho_Chi_Minh** (index.js+db.js+render.yaml); schema chốt tiền âm; máy trạng thái cọc; check-out 2 lần; rate-limit ip+username; escape mail; trùng biển số; advisory lock duyệt trùng SĐT. `npm test` **256 PASS**.
+- **CÒN LẠI trước go-live:** ① **BLK-6 backup CSDL** — công ty bật **Supabase PITR** + cron `tools/backup-db.sh` (chưa xong) ② nhóm 🟠 còn vài mục nhỏ (siết validate biên, CSP đang tắt) — xem cuối báo cáo review.
 - UI/UX: xem `docs/TEST-RESULT-UIUX-2026-07-16.md`
 
 ## Quy ước code (theo repo hiện có)
