@@ -244,8 +244,7 @@ router.post('/generate', async (req, res, next) => {
 
       if (dup) {
         const other = Number(dup.other_charge) || 0;
-        const total = inv.room_charge + inv.electric_charge + inv.water_charge + inv.service_charge + inv.washing_charge
-          + inv.parking_charge + other - inv.leader_discount - inv.room_discount;
+        const total = billing.invoiceTotal({ ...inv, other_charge: other });  // 1 nguồn công thức (billing.js)
         await client.query(
           `UPDATE invoices SET days_stayed=$1, room_charge=$2, electric_kwh=$3, electric_charge=$4, water_charge=$5,
              service_charge=$6, washing_charge=$7, parking_charge=$8, leader_discount=$9, room_discount=$10,
@@ -306,8 +305,7 @@ router.post('/generate-one', async (req, res, next) => {
     let row;
     if (dup) {
       const other = Number(dup.other_charge) || 0;
-      const total = inv.room_charge + inv.electric_charge + inv.water_charge + inv.service_charge + inv.washing_charge
-        + inv.parking_charge + other - inv.leader_discount - inv.room_discount;
+      const total = billing.invoiceTotal({ ...inv, other_charge: other });  // 1 nguồn công thức (billing.js)
       row = (await query(
         `UPDATE invoices SET days_stayed=$1, room_charge=$2, electric_kwh=$3, electric_charge=$4, water_charge=$5,
            service_charge=$6, washing_charge=$7, parking_charge=$8, leader_discount=$9, room_discount=$10,
@@ -352,8 +350,7 @@ router.post('/', async (req, res, next) => {
     if (!st.rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
     const badF = assertFacility(req, st.rows[0].facility_id); if (badF) return res.status(badF.status).json(badF); // đa cơ sở
     const roomId = st.rows[0].room_id || null;
-    const total = ['room_charge', 'electric_charge', 'water_charge', 'service_charge', 'washing_charge', 'parking_charge', 'other_charge']
-      .reduce((a, k) => a + (+b[k] || 0), 0);
+    const total = billing.invoiceTotal(b);  // 1 nguồn công thức (billing.js); body không có discount -> 0
     const vals = [b.student_id, roomId, b.month, +b.days_stayed || 0, +b.room_charge || 0,
       +b.electric_kwh || 0, +b.electric_charge || 0, +b.water_charge || 0, +b.service_charge || 0,
       +b.washing_charge || 0, +b.parking_charge || 0, +b.other_charge || 0, b.other_note || '', total];
@@ -397,8 +394,8 @@ router.put('/:id', async (req, res, next) => {
     // total lệch đúng bằng khoản giảm, và ba đường (generate/recalc/PUT) ra ba số (TP-08/11).
     // Hai cột giảm không nằm trong ô sửa nên GIỮ nguyên (lấy từ cur) và trừ vào total.
     const giam = (+cur.leader_discount || 0) + (+cur.room_discount || 0);
-    const total = ['room_charge', 'electric_charge', 'water_charge', 'service_charge', 'washing_charge', 'parking_charge', 'other_charge']
-      .reduce((a, k) => a + (+b[k] || 0), 0) - giam;
+    // 1 nguồn công thức (billing.js). Discount không nằm trong ô sửa nên lấy từ bản ghi hiện tại (cur).
+    const total = billing.invoiceTotal({ ...b, leader_discount: cur.leader_discount, room_discount: cur.room_discount });
     // BLK-7: total = Σphí − giảm có thể ÂM nếu giảm > tổng phí (vd sửa phí nhỏ trên phiếu phòng trưởng).
     // badMoney chỉ chặn từng cột phí <0, KHÔNG kiểm total. Chốt DB ck_invoices_no_negative có thể VẮNG
     // ở boot đầu của DB mới → chặn thẳng ở tầng API, không phụ thuộc DB.

@@ -188,7 +188,7 @@ async function normalizeImage(file, maxDim = 1600, quality = 0.85) {
 }
 async function pubCccd(input, side) {
   const f = input.files[0]; if (!f) return;
-  if (f.size > 12 * 1024 * 1024) { input.value = ''; return toast('Ảnh quá lớn (tối đa 12MB)', 'err'); }
+  if (f.size > cccdMaxBytes()) { input.value = ''; return toast(`Ảnh CCCD quá lớn (tối đa ${cccdMaxBytes() / 1024 / 1024}MB)`, 'err'); }
   const box = el(side === 'front' ? 'cccdFrontPrev' : 'cccdBackPrev');
   box.innerHTML = '<span class="muted" style="font-size:12px">Đang xử lý ảnh…</span>';
   try {
@@ -366,6 +366,9 @@ const CONTRACT_LABEL = { done: 'Đã hoàn tất', scanned: 'Đã scan HĐ', uns
 const CONTRACT_BADGE = { done: 'green', scanned: 'blue', unsigned: 'amber', none: 'gray', handover: 'blue' };
 const CHECKOUT_REASONS = [['departure', 'Xuất cảnh (đi Nhật)'], ['personal', 'Cá nhân'], ['facility', 'Cơ sở vật chất'], ['dropout', 'Nghỉ học'], ['reserve', 'Bảo lưu'], ['other', 'Khác']];
 const REASON_LABEL = { departure: 'Xuất cảnh', personal: 'Cá nhân', facility: 'Cơ sở vật chất', dropout: 'Nghỉ học', reserve: 'Bảo lưu', other: 'Khác', normal: 'Khác', urgent_visa: 'Xuất cảnh' };
+// Lý do trả phòng = XUẤT CẢNH (đi Nhật). 'urgent_visa' là giá trị CŨ (dữ liệu di sản) — luồng mới chỉ
+// sinh 'departure', nhưng vẫn nhận diện urgent_visa cho hồ sơ cũ. Gom 1 chỗ thay vì rải mảng nhiều nơi.
+const DEPARTURE_REASONS = ['departure', 'urgent_visa'];
 const VIO_SEV = { minor: ['Nhẹ', 'gray'], major: ['Nặng', 'amber'], severe: ['Nghiêm trọng', 'red'] };
 const INTRO_FIELDS = [
   ['hotline', '📞 Hotline (hiện ở mục "Liên hệ & đường đến")', 'in'],
@@ -410,15 +413,19 @@ const isOccupying = s => ['staying', 'leaving'].includes(liveStatus(s));
 
 // ---- Rule hợp đồng thuê ghép (điểm 5 — Sếp) ----
 const DAY_MS = 86400000;
+// Ngưỡng nghiệp vụ LẤY TỪ Cài đặt (Đợt 3 — dọn hard-code), có fallback nếu setting rỗng/NaN.
+const overdueDays = () => +(ST.settings && ST.settings.overdue_remind_days) || 7;      // quá N ngày chưa ký HĐ/tạm trú → nhắc
+const shortTermMaxDays = () => +(ST.settings && ST.settings.shortterm_max_days) || 60; // ở dưới N ngày = ngắn hạn
+const cccdMaxBytes = () => (+(ST.settings && ST.settings.max_cccd_mb) || 12) * 1024 * 1024;
 function stayDays(s) { // số ngày đã vào ở tính đến hôm nay
   const ci = s.check_in_date && s.check_in_date.slice(0, 10); if (!ci) return 0;
   return Math.floor((Date.parse(today()) - Date.parse(ci)) / DAY_MS);
 }
-// Thuê ghép ngắn hạn: có ngày trả & ở < 2 tháng → chỉ cần phiếu bàn giao, không cần HĐ
+// Thuê ghép ngắn hạn: có ngày trả & ở dưới ngưỡng ngắn hạn → chỉ cần phiếu bàn giao, không cần HĐ
 function isShortTermGhep(s) {
   if (s.rental_type !== 'ghep' || !s.check_out_date || !s.check_in_date) return false;
   const d = (Date.parse(s.check_out_date.slice(0, 10)) - Date.parse(s.check_in_date.slice(0, 10))) / DAY_MS;
-  return d > 0 && d < 60;
+  return d > 0 && d < shortTermMaxDays();
 }
 const contractSigned = s => ['done', 'scanned'].includes(s.contract_status);
 // HV ở phòng an ninh / nhân viên công tác (không cho thuê) → không cần ký HĐ ghép
@@ -426,7 +433,7 @@ const studentRoomShared = s => { if (!s.room_id) return true; const r = roomById
 // Thuê ghép dài hạn đang ở trong phòng cho thuê ghép → bắt buộc ký HĐ
 const contractRequired = s => isOccupying(s) && s.rental_type === 'ghep' && !isShortTermGhep(s) && studentRoomShared(s);
 // Báo động: bắt buộc HĐ, đã vào ở > 7 ngày mà vẫn chưa ký
-const contractOverdue = s => contractRequired(s) && !contractSigned(s) && stayDays(s) > 7;
+const contractOverdue = s => contractRequired(s) && !contractSigned(s) && stayDays(s) > overdueDays();
 // Ngắn hạn nhưng chưa ký phiếu bàn giao
 const handoverPending = s => isOccupying(s) && isShortTermGhep(s) && !['handover', 'done', 'scanned'].includes(s.contract_status);
 
@@ -434,7 +441,7 @@ const handoverPending = s => isOccupying(s) && isShortTermGhep(s) && !['handover
 // Lấy ngày xuất cảnh: ưu tiên ngày dự kiến (Kaizen) + lịch trả phòng do xuất cảnh; chọn ngày TƯƠNG LAI gần nhất.
 function nextDepartureDate(s) {
   const t = today();
-  const cands = [s.expected_departure, (['departure', 'urgent_visa'].includes(s.checkout_reason) ? s.check_out_date : null)]
+  const cands = [s.expected_departure, (DEPARTURE_REASONS.includes(s.checkout_reason) ? s.check_out_date : null)]
     .filter(Boolean).map(d => String(d).slice(0, 10)).filter(d => d >= t).sort();
   return cands[0] || '';
 }
@@ -694,7 +701,7 @@ async function viewExec() {
   const overRooms = ST.rooms.filter(r => roomIsShared(r) && r.capacity > 0 && r.occupancy > r.capacity);
   const overPeople = overRooms.reduce((a, r) => a + (r.occupancy - r.capacity), 0);
   const outstanding = totalYear - paidYear;
-  const dep = ST.students.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason) && String(s.check_out_date).slice(0, 4) === year).length;
+  const dep = ST.students.filter(s => s.check_out_date && DEPARTURE_REASONS.includes(s.checkout_reason) && String(s.check_out_date).slice(0, 4) === year).length;
   const svcs = [
     ['Tiền phòng', sum(rev, 'room'), 'var(--brand)'], ['Điện', sum(rev, 'electric'), '#5f7ea3'],
     ['Nước', sum(rev, 'water'), '#4f8f63'], ['Dịch vụ', sum(rev, 'service'), '#b5822f'],
@@ -717,7 +724,7 @@ async function viewExec() {
   const shortPending = occStu.filter(handoverPending).length; // ngắn hạn chưa ký phiếu bàn giao
   const resiReg = occStu.filter(s => s.residency_status === 'registered').length;
   const resiUnreg = occStu.length - resiReg;
-  const resiOverdueE = occStu.filter(s => s.residency_status === 'unregistered' && stayDays(s) > 7).length;
+  const resiOverdueE = occStu.filter(s => s.residency_status === 'unregistered' && stayDays(s) > overdueDays()).length;
   const resiPct = occStu.length ? Math.round(resiReg / occStu.length * 100) : 0;
   const dmg = (ST.damage || []).filter(d => (d.category || 'damage') === 'damage');
   const dmgDone = dmg.filter(d => d.status === 'done').length;
@@ -759,8 +766,8 @@ async function viewExec() {
     </div>
     <div class="panel"><div class="hd"><h2>${IC.shield} Vận hành &amp; Tuân thủ</h2></div><div class="pad">
       <div class="exec-stats">
-        ${es(IC.flag, 'ic-amber', 'Tạm trú', `${resiReg}<span> đã đăng ký</span>`, `${resiUnreg} chưa đăng ký${resiOverdueE ? ` · <strong style="color:var(--red-ink)">${resiOverdueE} quá 7 ngày</strong>` : ''}`, resiPct, "residencyModal()")}
-        ${es(IC.fileText, 'ic-brand', 'Hợp đồng (ghép dài hạn)', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá 7 ngày</strong>` : ''}${shortTerm ? ` · Ngắn hạn: ${shortTerm} bàn giao${shortPending ? ` (<strong style="color:var(--amber-ink)">${shortPending} chưa ký phiếu</strong>)` : ''}` : ''}`, cPct, "stuFilter='nocontract';adminGo('students')")}
+        ${es(IC.flag, 'ic-amber', 'Tạm trú', `${resiReg}<span> đã đăng ký</span>`, `${resiUnreg} chưa đăng ký${resiOverdueE ? ` · <strong style="color:var(--red-ink)">${resiOverdueE} quá ${overdueDays()} ngày</strong>` : ''}`, resiPct, "residencyModal()")}
+        ${es(IC.fileText, 'ic-brand', 'Hợp đồng (ghép dài hạn)', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá ${overdueDays()} ngày</strong>` : ''}${shortTerm ? ` · Ngắn hạn: ${shortTerm} bàn giao${shortPending ? ` (<strong style="color:var(--amber-ink)">${shortPending} chưa ký phiếu</strong>)` : ''}` : ''}`, cPct, "contractIssuesModal()")}
         ${es(IC.wrench, 'ic-gray', 'Bảo trì', `${dmg.length}<span> lượt báo</span>`, `Đã xử lý ${dmgDone} · đang xử lý ${dmgOpen} · chưa xử lý được ${dmgBlocked}`, dmgPct, "adminGo('repair')")}
         ${es(IC.alert, 'ic-red', 'Vi phạm', `${vioTotal}<span> lượt</span>`, `${vioNeedMail} HV cần báo trường${vioSev ? ' · ' + vioSev : ''}`, null, "adminGo('violations')")}
       </div>
@@ -772,7 +779,7 @@ async function viewExec() {
 // Popup "Đăng ký tạm trú": 3 trạng thái, bấm từng trạng thái xem danh sách
 function residencyModal() {
   const occ = ST.students.filter(isOccupying);
-  const over = occ.filter(s => s.residency_status === 'unregistered' && stayDays(s) > 7).length;
+  const over = occ.filter(s => s.residency_status === 'unregistered' && stayDays(s) > overdueDays()).length;
   const proc = occ.filter(s => s.residency_status === 'processing').length;
   const reg = occ.filter(s => s.residency_status === 'registered').length;
   const row = (ico, label, n, filter, cls) => `<div class="todo ${n ? cls : 'calm'}" ${n ? `onclick="closeModal();stuFilter='${filter}';adminGo('students')"` : ''}><span class="ic">${ico}</span><span class="tx">${label}</span><span class="n">${n}</span></div>`;
@@ -781,12 +788,74 @@ function residencyModal() {
     <div class="mb">
       <div class="hint">${IC.info} Tình trạng đăng ký tạm trú của học viên đang ở. Bấm từng nhóm để xem danh sách.</div>
       <div class="todo-grid" style="grid-template-columns:1fr;margin-top:10px">
-        ${row(IC.alert, 'Chưa đăng ký (đã ở >7 ngày)', over, 'resi_overdue', 'bad')}
+        ${row(IC.alert, `Chưa đăng ký (đã ở >${overdueDays()} ngày)`, over, 'resi_overdue', 'bad')}
         ${row(IC.hourglass, 'Đang xử lý', proc, 'resi_processing', 'warn')}
         ${row(IC.checkCircle, 'Đã có tạm trú', reg, 'resi_registered', 'on')}
       </div>
     </div>
-    <div class="mf"><button class="btn" onclick="closeModal()">Đóng</button></div>`);
+    <div class="mf"><button class="btn pri" onclick="tamTruSheet()">${IC.printer} Danh sách gửi công an</button><button class="btn" onclick="closeModal()">Đóng</button></div>`);
+}
+
+// Tự gom CCCD 2 mặt của HV đang ở CHƯA đăng ký tạm trú -> danh sách in gửi công an.
+// Ảnh lấy trực tiếp qua proxy /api/students/:id/cccd/... (cookie phiên admin tự gửi -> ảnh hiện khi in).
+function tamTruSheet() {
+  closeModal();
+  const S = ST.settings || {};
+  const occ = ST.students.filter(isOccupying);
+  const targets = occ.filter(s => s.residency_status === 'unregistered')
+    .sort((a, b) => String(a.room_name || '').localeCompare(String(b.room_name || ''), 'vi') || String(a.name).localeCompare(String(b.name), 'vi'));
+  const ready = targets.filter(s => s.has_cccd_front && s.has_cccd_back);   // đủ 2 mặt -> đưa vào bản in
+  const missing = targets.filter(s => !(s.has_cccd_front && s.has_cccd_back)); // thiếu ảnh -> cảnh báo, chưa in
+  const missSide = s => [!s.has_cccd_front ? 'mặt trước' : null, !s.has_cccd_back ? 'mặt sau' : null].filter(Boolean).join(' + ') || 'chưa có ảnh';
+
+  el('topActions').innerHTML = ready.length
+    ? `<button class="btn pri" onclick="window.print()">${IC.printer} In / Lưu PDF (${ready.length})</button>`
+    : '';
+
+  const block = (s, i) => `
+    <div class="tt-block">
+      <div class="tt-head"><span class="tt-no">${i + 1}</span>
+        <span class="tt-name">${esc(s.name)}</span>
+        <span class="tt-meta">Ngày sinh: ${fmtDate(s.birth_date) || '—'} · CCCD: ${esc(s.id_card || '—')} · Phòng: ${esc(s.room_name || '—')} · Vào ở: ${fmtDate(s.check_in_date) || '—'}</span>
+      </div>
+      <div class="tt-imgs">
+        <figure><img src="/api/students/${s.id}/cccd/front" alt="" loading="lazy"><figcaption>Mặt trước</figcaption></figure>
+        <figure><img src="/api/students/${s.id}/cccd/back" alt="" loading="lazy"><figcaption>Mặt sau</figcaption></figure>
+      </div>
+    </div>`;
+
+  el('content').innerHTML = `
+  <style>
+    #printArea .tt-doc{max-width:210mm;margin:0 auto}
+    .tt-title{text-align:center;margin-bottom:16px}
+    .tt-title .org{font-size:13px;color:#555}
+    .tt-title h2{font-family:var(--serif,serif);margin:6px 0 0;font-size:20px;letter-spacing:.3px}
+    .tt-title .sub{color:#555;font-size:13px;margin-top:4px}
+    .tt-title .addr{color:#555;font-size:12.5px;margin-top:4px}
+    .tt-block{border:1px solid #d8cdbd;border-radius:8px;padding:10px 12px;margin-bottom:12px;break-inside:avoid;page-break-inside:avoid}
+    .tt-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+    .tt-no{background:var(--brand,#1b5e3b);color:#fff;border-radius:50%;width:22px;height:22px;min-width:22px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+    .tt-name{font-weight:800;font-size:15px}
+    .tt-meta{color:#555;font-size:12.5px}
+    .tt-imgs{display:flex;gap:10px}
+    .tt-imgs figure{flex:1;margin:0}
+    .tt-imgs img{width:100%;aspect-ratio:85.6/54;object-fit:contain;background:#fff;border:1px solid #ddd;border-radius:6px;display:block}
+    .tt-imgs figcaption{text-align:center;font-size:11px;color:#999;margin-top:3px}
+    @media print{ @page{size:A4;margin:12mm} .tt-block{border-color:#999} }
+  </style>
+  ${missing.length ? `<div class="rc-noprint" style="background:#fff6f2;border:1px solid #e9c9c0;border-radius:10px;padding:12px 14px;margin-bottom:14px">
+      <strong style="color:var(--red-ink,#b4432b)">${IC.alert} ${missing.length} học viên chưa đủ ảnh CCCD — CHƯA đưa vào bản in:</strong>
+      <ul style="margin:8px 0 0 18px;font-size:13px;line-height:1.7">${missing.map(s => `<li>${esc(s.name)} — ${esc(s.room_name || '—')} <span style="color:var(--red-ink,#b4432b)">(thiếu ${missSide(s)})</span> · <a href="#" onclick="studentForm(${s.id});return false">bổ sung ảnh</a></li>`).join('')}</ul>
+    </div>` : ''}
+  <div id="printArea"><div class="tt-doc">
+    <div class="tt-title">
+      <div class="org">${esc(S.dorm_name || 'Ký túc xá')}${S.hotline ? ' · ĐT: ' + esc(S.hotline) : ''}</div>
+      <h2>DANH SÁCH ĐỀ NGHỊ ĐĂNG KÝ TẠM TRÚ</h2>
+      <div class="addr">Địa chỉ chỗ ở: ...................................................................................</div>
+      <div class="sub">Tổng ${ready.length} học viên · Xuất ngày ${fmtDate(today())}</div>
+    </div>
+    ${ready.length ? ready.map(block).join('') : '<div class="empty" style="padding:36px;text-align:center;color:#888">Không có học viên nào đang chờ đăng ký tạm trú (có đủ ảnh CCCD 2 mặt).</div>'}
+  </div></div>`;
 }
 // Popup gộp "Hợp đồng chưa hoàn thiện": 3 loại cần xử lý, bấm từng loại xem danh sách
 function contractIssuesModal() {
@@ -801,7 +870,7 @@ function contractIssuesModal() {
       <div class="hint">${IC.info} Các nhóm cần hoàn thiện hợp đồng / bàn giao. Bấm từng nhóm để xem danh sách học viên.</div>
       <div class="todo-grid" style="grid-template-columns:1fr;margin-top:10px">
         ${row(IC.fileText, 'Hợp đồng chưa ký', nc, 'nocontract', 'warn')}
-        ${row(IC.alert, 'Thuê ghép ở >7 ngày chưa ký HĐ (báo động)', ov, 'contract_overdue', 'bad')}
+        ${row(IC.alert, `Thuê ghép ở >${overdueDays()} ngày chưa ký HĐ (báo động)`, ov, 'contract_overdue', 'bad')}
         ${row(IC.fileText, 'Ngắn hạn chưa ký bàn giao', ho, 'handover_pending', 'warn')}
       </div>
     </div>
@@ -831,7 +900,7 @@ async function viewDashboard() {
   const checkoutToday = ST.students.filter(s => s.check_out_date && s.check_out_date.slice(0, 10) === today()).length; // trả phòng hôm nay
   const capacity = rentCapOf(ST.rooms);           // tổng giường thuộc quỹ cho thuê (ghép + nguyên phòng)
   const beds = availBedsOf(ST.rooms);             // giường trống: CHỈ phòng cho thuê ghép còn slot
-  const resiOverdue = occ.filter(s => s.residency_status === 'unregistered' && stayDays(s) > 7).length; // chưa ĐK tạm trú, đã ở >7 ngày
+  const resiOverdue = occ.filter(s => s.residency_status === 'unregistered' && stayDays(s) > overdueDays()).length; // chưa ĐK tạm trú, đã ở >7 ngày
   // Gộp 3 loại "hợp đồng chưa hoàn thiện" (đếm không trùng): cần ký chưa ký + ngắn hạn chưa ký bàn giao
   const contractIncomplete = occ.filter(s => (contractRequired(s) && !contractSigned(s)) || handoverPending(s)).length;
   const depExpected = occ.filter(willDepartSoon).length; // dự kiến xuất cảnh (điều phối phòng)
@@ -842,7 +911,9 @@ async function viewDashboard() {
   let invAll = [];
   try { invAll = await API.invoices(); } catch {}
   const pApps = apps.filter(a => a.status === 'pending').length;
-  const pDmg = damage.filter(d => d.status !== 'done').length;
+  // CHỈ đếm hư hỏng phòng (category='damage') — ô "Bảo trì" bấm vào mở trang repair (chỉ hiện damage).
+  // Trước đây đếm gộp cả feedback/vi phạm (category violation/other) -> số > số dòng thực (khớp updateNavBadges).
+  const pDmg = damage.filter(d => (d.category || 'damage') === 'damage' && d.status !== 'done').length;
   const pCout = couts.filter(c => c.status === 'pending').length;
   // App CHỈ lập phiếu báo tiền phòng — KHÔNG quản lý doanh thu/công nợ (đã có Bravo)
   const billedThisMonth = invAll.filter(i => i.month === curMonth()).reduce((a, i) => a + (+i.total || 0), 0);
@@ -1064,9 +1135,9 @@ function viewStudents() {
   if (stuFilter === 'contract_overdue') list = list.filter(contractOverdue);
   if (stuFilter === 'handover_pending') list = list.filter(handoverPending);
   if (stuFilter === 'leaving') list = list.filter(s => liveStatus(s) === 'leaving');
-  if (stuFilter === 'departure') list = list.filter(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason));
+  if (stuFilter === 'departure') list = list.filter(s => s.check_out_date && DEPARTURE_REASONS.includes(s.checkout_reason));
   if (stuFilter === 'departure_expected') { list = list.filter(willDepartSoon).sort((a, b) => nextDepartureDate(a).localeCompare(nextDepartureDate(b))); }
-  if (stuFilter === 'resi_overdue') list = list.filter(s => isOccupying(s) && s.residency_status === 'unregistered' && stayDays(s) > 7);
+  if (stuFilter === 'resi_overdue') list = list.filter(s => isOccupying(s) && s.residency_status === 'unregistered' && stayDays(s) > overdueDays());
   if (stuFilter === 'resi_processing') list = list.filter(s => isOccupying(s) && s.residency_status === 'processing');
   if (stuFilter === 'resi_registered') list = list.filter(s => isOccupying(s) && s.residency_status === 'registered');
   if (stuFilter === 'checkin_today') list = list.filter(s => s.check_in_date && s.check_in_date.slice(0, 10) === today());
@@ -1078,7 +1149,7 @@ function viewStudents() {
   const cnt = f => ST.students.filter(f).length;
   if (stuSort.key) list = list.slice().sort((a, b) => { const x = stuSortVal(a), y = stuSortVal(b); return (x < y ? -1 : x > y ? 1 : 0) * stuSort.dir; });
   const sTh = (key, label, cls) => `<th class="sortable${cls ? ' ' + cls : ''}${stuSort.key === key ? (stuSort.dir === 1 ? ' asc' : ' desc') : ''}" data-sort="${key}">${label}<span class="sort-ar">${stuSort.key === key ? (stuSort.dir === 1 ? '▲' : '▼') : ''}</span></th>`;
-  const xcOf = s => s.expected_departure || (['departure', 'urgent_visa'].includes(s.checkout_reason) && s.check_out_date ? s.check_out_date : '');
+  const xcOf = s => s.expected_departure || (DEPARTURE_REASONS.includes(s.checkout_reason) && s.check_out_date ? s.check_out_date : '');
   const hasXC = list.some(xcOf); // không ai có ngày dự kiến xuất cảnh -> ẩn cột cho đỡ rỗng
   const nCols = hasXC ? 7 : 6;
   el('content').innerHTML = `
@@ -1088,20 +1159,20 @@ function viewStudents() {
       <button class="btn sm ${stuFilter === 'upcoming' ? 'pri' : ''}" onclick="stuFilter='upcoming';viewStudents()"><span class="dot-svg dot-blue">${IC.dot}</span> Sắp vào (${cnt(s => liveStatus(s) === 'upcoming')})</button>
       <button class="btn sm ${stuFilter === 'leaving' ? 'pri' : ''}" onclick="stuFilter='leaving';viewStudents()"><span class="dot-svg dot-amber">${IC.dot}</span> Sắp trả (${cnt(s => liveStatus(s) === 'leaving')})</button>
       <button class="btn sm ${stuFilter === 'out' ? 'pri' : ''}" onclick="stuFilter='out';viewStudents()"><span class="dot-svg dot-gray">${IC.dot}</span> Đã trả (${cnt(s => liveStatus(s) === 'left')})</button>
-      <button class="btn sm ${stuFilter === 'departure' ? 'pri' : ''}" onclick="stuFilter='departure';viewStudents()">${IC.planeTakeoff} Xuất cảnh (${cnt(s => s.check_out_date && ['departure', 'urgent_visa'].includes(s.checkout_reason))})</button>
+      <button class="btn sm ${stuFilter === 'departure' ? 'pri' : ''}" onclick="stuFilter='departure';viewStudents()">${IC.planeTakeoff} Xuất cảnh (${cnt(s => s.check_out_date && DEPARTURE_REASONS.includes(s.checkout_reason))})</button>
       <button class="btn sm ${stuFilter === 'departure_expected' ? 'pri' : ''}" onclick="stuFilter='departure_expected';viewStudents()">${IC.planeTakeoff} Dự kiến XC (${cnt(willDepartSoon)})</button>
       <button class="btn sm ${stuFilter === 'noresi' ? 'pri' : ''}" onclick="stuFilter='noresi';viewStudents()">${IC.flag} Chưa tạm trú (${cnt(s => isOccupying(s) && s.residency_status !== 'registered')})</button>
       <button class="btn sm ${stuFilter === 'nocontract' ? 'pri' : ''}" onclick="stuFilter='nocontract';viewStudents()">${IC.filePen} HĐ chưa ký (${cnt(s => contractRequired(s) && !contractSigned(s))})</button>
       <button class="btn sm ${stuFilter === 'washing' ? 'pri' : ''}" onclick="stuFilter='washing';viewStudents()">${IC.washer} Máy giặt (${cnt(s => isOccupying(s) && s.uses_washing)})</button>
       <button class="btn sm ${stuFilter === 'nodeposit' ? 'pri' : ''}" onclick="stuFilter='nodeposit';viewStudents()">${IC.lock} Chưa đóng cọc (${cnt(s => isOccupying(s) && s.deposit_status === 'none')})</button>
-      <button class="btn sm ${stuFilter === 'contract_overdue' ? 'pri' : ''}" onclick="stuFilter='contract_overdue';viewStudents()">${IC.alert} Ghép >7 ngày chưa ký HĐ (${cnt(contractOverdue)})</button>
+      <button class="btn sm ${stuFilter === 'contract_overdue' ? 'pri' : ''}" onclick="stuFilter='contract_overdue';viewStudents()">${IC.alert} Ghép >${overdueDays()} ngày chưa ký HĐ (${cnt(contractOverdue)})</button>
     </div>
     <div class="panel"><div class="hd"><h2>Học viên (<span id="stuCount">${list.length}</span>)</h2>
       <div class="search"><span class="i">${IC.search}</span><input id="ss" placeholder="Tìm tên, mã, lớp, SĐT, số phòng..." value="${esc(stuSearch)}"></div>
     </div><div class="table-wrap">
       ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}${hasXC ? '<th>Dự kiến XC</th>' : ''}${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
       ${list.map(s => {
-        const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.alert}</span>` : ''}${contractOverdue(s) ? `<span title="Thuê ghép >7 ngày chưa ký HĐ" style="color:var(--red-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
+        const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.alert}</span>` : ''}${contractOverdue(s) ? `<span title="Thuê ghép >${overdueDays()} ngày chưa ký HĐ" style="color:var(--red-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
         const ds = esc((s.name + ' ' + (s.code || '') + ' ' + (s.phone || '') + ' ' + (s.class_name || '') + ' ' + (s.room_name || '')).toLowerCase());
         return `<tr data-s="${ds}">
         <td><div class="flex"><span class="avatar">${esc(initials(s.name))}</span><div>
@@ -1147,7 +1218,7 @@ function roomOptions(sel, gender) {
 let _cccdData = null, _cccdChanged = false;
 function previewCccd(input) {
   const f = input.files[0]; if (!f) return;
-  if (f.size > 6 * 1024 * 1024) { input.value = ''; return toast('Ảnh quá lớn (tối đa 6MB)', 'err'); }
+  if (f.size > cccdMaxBytes()) { input.value = ''; return toast(`Ảnh CCCD quá lớn (tối đa ${cccdMaxBytes() / 1024 / 1024}MB)`, 'err'); }
   const r = new FileReader();
   r.onload = () => { _cccdData = r.result; _cccdChanged = true; el('cccdPrev').innerHTML = `<img src="${r.result}" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--line)">`; };
   r.readAsDataURL(f);
@@ -1204,7 +1275,7 @@ async function studentForm(id) {
         </div>
         <div class="field" style="margin:0 0 12px"><label>Tình trạng HĐ</label><select id="f_cstatus">
           ${['done', 'scanned', 'unsigned', 'none', 'handover'].map(k => opt(k, s.contract_status || 'unsigned', CONTRACT_LABEL[k])).join('')}</select></div>
-        <div class="hint" style="margin:0;font-size:11.5px">${IC.info} Thuê ghép <strong>dài hạn</strong> bắt buộc ký HĐ; quá 7 ngày chưa ký sẽ bị báo động. Thuê ghép <strong>ngắn hạn</strong> (dưới 2 tháng, có ngày trả) chỉ cần <strong>ký phiếu bàn giao</strong>.</div>
+        <div class="hint" style="margin:0;font-size:11.5px">${IC.info} Thuê ghép <strong>dài hạn</strong> bắt buộc ký HĐ; quá ${overdueDays()} ngày chưa ký sẽ bị báo động. Thuê ghép <strong>ngắn hạn</strong> (dưới 2 tháng, có ngày trả) chỉ cần <strong>ký phiếu bàn giao</strong>.</div>
         <div class="field" style="margin:0"><label>Ảnh CCCD <span class="opt">(chụp/chọn ảnh)</span></label>
           <input type="file" id="f_cccd" accept="image/*" onchange="previewCccd(this)">
           <div id="cccdPrev" style="margin-top:8px">${s.cccd_image ? `<img src="${s.cccd_image}" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--line)">` : ''}</div>
@@ -2278,7 +2349,9 @@ async function viewCheckin() {
     <div class="panel"><div class="hd"><h2>Lịch sử ra / vào (${logs.length})</h2></div><div class="table-wrap">${logsTable(logs)}</div></div>`;
 }
 function quickPick(type) {
-  const pool = type === 'in' ? ST.students.filter(s => s.status !== 'in') : ST.students.filter(s => s.status === 'in');
+  // Check-out nhanh: chỉ người ĐANG THỰC SỰ Ở (isOccupying — tính theo ngày). Trước đây dùng cột tĩnh
+  // status==='in' nên HV "sắp vào" (status='in' nhưng chưa tới ngày nhận phòng) lọt vào pool check-out.
+  const pool = type === 'in' ? ST.students.filter(s => s.status !== 'in') : ST.students.filter(isOccupying);
   if (!pool.length) return toast(type === 'in' ? 'Không có học viên nào đang ở ngoài' : 'Không có học viên nào đang ở', 'err');
   openModal(`
     <div class="mh"><h3>${type === 'in' ? IC.check+' Check-in nhanh' : IC.undo+' Check-out nhanh'}</h3><button class="x" onclick="closeModal()">×</button></div>
@@ -2665,6 +2738,32 @@ function viewSettings() {
       <div class="grid2">
         <div class="field"><label>Pháp nhân phòng Nữ</label><input id="set_legal_female" value="${esc(s.legal_female || 'E2')}"></div>
         <div class="field"><label>Pháp nhân phòng Nam</label><input id="set_legal_male" value="${esc(s.legal_male || 'S2')}"></div>
+      </div>
+      <button class="btn pri" onclick="saveSettings()">Lưu cài đặt</button>
+    </div></div>
+
+    <div class="panel"><div class="hd"><h2>${IC.alert} Ngưỡng nhắc / nghiệp vụ</h2></div><div class="pad">
+      <div class="hint">${IC.info} Các mốc nhắc việc & quy tắc — chỉnh ở đây, không cần sửa code. Lưu chung nút "Lưu cài đặt" ở trên.</div>
+      <div class="grid2">
+        <div class="field"><label>Nhắc khi ở quá <span class="opt">(ngày) chưa ký HĐ / chưa tạm trú / chưa lập phiếu</span></label><input id="set_overdue_remind_days" type="number" min="1" value="${esc(s.overdue_remind_days ?? 7)}"></div>
+        <div class="field"><label>Ngưỡng thuê ghép ngắn hạn <span class="opt">(ở dưới N ngày = ngắn hạn, chỉ ký phiếu)</span></label><input id="set_shortterm_max_days" type="number" min="1" value="${esc(s.shortterm_max_days ?? 60)}"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Hoàn cọc: báo trước tối thiểu <span class="opt">(ngày)</span></label><input id="set_deposit_notice_min_days" type="number" min="0" value="${esc(s.deposit_notice_min_days ?? 30)}"></div>
+        <div class="field"><label>Hệ số phí tháng lẻ mức "nửa" <span class="opt">(0–1, vd 0.5)</span></label><input id="set_partial_half_factor" type="number" min="0" max="1" step="0.05" value="${esc(s.partial_half_factor ?? 0.5)}"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>HV tự xin trả phòng: xa nhất <span class="opt">(ngày tới)</span></label><input id="set_checkout_max_future_days" type="number" min="1" value="${esc(s.checkout_max_future_days ?? 365)}"></div>
+        <div class="field"><label>Trần ảnh CCCD <span class="opt">(MB, ≤ 15)</span></label><input id="set_max_cccd_mb" type="number" min="1" max="15" value="${esc(s.max_cccd_mb ?? 12)}"></div>
+      </div>
+      <div style="font-weight:600;font-size:13px;margin:6px 0 8px">${IC.bed} Trần giường theo hạng phòng <span class="opt" style="font-weight:400">(sức chứa tối đa cho phép nhập)</span></div>
+      <div class="grid2">
+        <div class="field"><label>Hạng A</label><input id="set_room_cap_A" type="number" min="1" max="20" value="${esc(s.room_cap_A ?? 8)}"></div>
+        <div class="field"><label>Hạng B</label><input id="set_room_cap_B" type="number" min="1" max="20" value="${esc(s.room_cap_B ?? 8)}"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Hạng C</label><input id="set_room_cap_C" type="number" min="1" max="20" value="${esc(s.room_cap_C ?? 8)}"></div>
+        <div class="field"><label>Hạng D</label><input id="set_room_cap_D" type="number" min="1" max="20" value="${esc(s.room_cap_D ?? 8)}"></div>
       </div>
       <button class="btn pri" onclick="saveSettings()">Lưu cài đặt</button>
     </div></div>
@@ -3058,6 +3157,10 @@ async function saveSettings() {
   body.legal_female = el('set_legal_female').value.trim() || 'E2';
   body.legal_male = el('set_legal_male').value.trim() || 'S2';
   body.dorm_name = el('set_dorm_name').value.trim() || 'Ký túc xá';
+  // Ngưỡng nhắc / nghiệp vụ (Đợt 3) — gửi RAW (chuỗi) để backend validate khoảng + giữ số thập phân (0.5).
+  ['overdue_remind_days', 'shortterm_max_days', 'deposit_notice_min_days', 'partial_half_factor',
+    'room_cap_A', 'room_cap_B', 'room_cap_C', 'room_cap_D', 'checkout_max_future_days', 'max_cccd_mb']
+    .forEach(k => { const inp = el('set_' + k); if (inp) body[k] = inp.value; });
   // hotline giờ nằm ở mục "Trang giới thiệu" (lưu qua saveIntro)
   await guard(() => API.updateSettings(body));
   await refreshCache(); toast('Đã lưu cài đặt'); viewSettings();

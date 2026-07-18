@@ -157,5 +157,26 @@ module.exports = {
     });
     t.eq('TC-14 · phòng để giá 0 -> lấy đơn giá trong Cài đặt, KHÔNG tính 0đ', inv0.room_charge, 1200000,
       `tiền phòng = ${fmt(inv0.room_charge)} · phải ${fmt(1200000)}`);
+
+    // ===== Đợt 2.4: invoiceTotal — MỘT nguồn công thức, khớp mọi đường
+    t.eq('invoiceTotal · Σ7 phí − 2 giảm', b.invoiceTotal({
+      room_charge: 1200000, electric_charge: 350000, water_charge: 100000, service_charge: 50000,
+      washing_charge: 70000, parking_charge: 100000, other_charge: 30000, leader_discount: 150000, room_discount: 600000,
+    }), 1200000 + 350000 + 100000 + 50000 + 70000 + 100000 + 30000 - 150000 - 600000);
+    t.eq('invoiceTotal · thiếu other_charge & discount coi như 0', b.invoiceTotal({ room_charge: 1200000, water_charge: 100000 }), 1300000);
+    // Khớp với total của computeInvoice (không có other) — phiếu phòng trưởng
+    t.eq('invoiceTotal khớp computeInvoice (phòng trưởng)', b.invoiceTotal(full), full.total);
+
+    // ===== Đợt 3: partialFactor nhận hệ số "nửa" từ tham số (mặc định 0.5)
+    t.eq('partialFactor · ngày ở giữa half và full → hệ số mặc định 0.5', b.partialFactor(12, 31, 10, 15), 0.5);
+    t.eq('partialFactor · hệ số "nửa" tuỳ chỉnh 0.6 (từ Cài đặt)', b.partialFactor(12, 31, 10, 15, 0.6), 0.6);
+    t.eq('partialFactor · dưới ngưỡng half → 0 (không đổi)', b.partialFactor(8, 31, 10, 15, 0.6), 0);
+    t.eq('partialFactor · trên full → 1 (không đổi)', b.partialFactor(20, 31, 10, 15, 0.6), 1);
+
+    // ===== Đợt 3: depositRefundEligible nhận ngưỡng minDays từ tham số (mặc định 30)
+    t.ok('hoàn cọc · báo trước 30 ngày đủ (mặc định)', b.depositRefundEligible({ noticeDate: '2026-07-01', checkoutDate: '2026-07-31', reason: 'other' }).eligible);
+    t.ok('hoàn cọc · minDays=45: báo trước 30 ngày KHÔNG đủ', !b.depositRefundEligible({ noticeDate: '2026-07-01', checkoutDate: '2026-07-31', reason: 'other' }, 45).eligible);
+    t.ok('hoàn cọc · minDays=20: báo trước 25 ngày ĐỦ', b.depositRefundEligible({ noticeDate: '2026-07-01', checkoutDate: '2026-07-26', reason: 'other' }, 20).eligible);
+    t.ok('hoàn cọc · xuất cảnh (departure) luôn đủ, không cần báo trước', b.depositRefundEligible({ noticeDate: null, checkoutDate: '2026-07-10', reason: 'departure' }).eligible);
   },
 };

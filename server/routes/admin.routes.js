@@ -87,6 +87,9 @@ router.get('/audit', async (req, res, next) => {
 // KHÔNG ép thầm lặng vai lạ thành 'staff' như trước: gõ nhầm "admn" hay xin "student" mà ra
 // "staff" thì người tạo không hề biết mình vừa tạo sai loại tài khoản.
 const VALID_ROLES = ['admin', 'staff', 'maintenance'];
+// Fragment SQL cho IN (...) — dựng TỪ VALID_ROLES (hằng nội bộ, không phải input người dùng) để không
+// lặp chuỗi 'admin','staff','maintenance' nhiều nơi; thêm/bớt vai chỉ sửa một chỗ.
+const MANAGED_ROLES_SQL = VALID_ROLES.map(r => `'${r}'`).join(',');
 
 router.get('/users', async (req, res, next) => {
   try {
@@ -94,7 +97,7 @@ router.get('/users', async (req, res, next) => {
     const { rows } = await query(
       `SELECT u.id, u.username, u.role, u.full_name, u.facility_id, f.name AS facility_name, u.created_at
          FROM users u LEFT JOIN facilities f ON f.id = u.facility_id
-        WHERE u.role IN ('admin','staff','maintenance') AND u.deleted_at IS NULL
+        WHERE u.role IN (${MANAGED_ROLES_SQL}) AND u.deleted_at IS NULL
         ORDER BY u.role, u.username`);
     res.json(rows);
   } catch (e) { next(e); }
@@ -144,7 +147,7 @@ router.put('/users/:id', async (req, res, next) => {
     const hasRole = req.body.role != null && req.body.role !== '';
     if (hasRole && !VALID_ROLES.includes(req.body.role))
       return res.status(400).json({ error: `Vai trò không hợp lệ: "${req.body.role}".` });
-    const cur = (await query(`SELECT role FROM users WHERE id=$1 AND role IN ('admin','staff','maintenance') AND deleted_at IS NULL`, [id])).rows[0];
+    const cur = (await query(`SELECT role FROM users WHERE id=$1 AND role IN (${MANAGED_ROLES_SQL}) AND deleted_at IS NULL`, [id])).rows[0];
     if (!cur) return res.status(404).json({ error: 'Không tìm thấy tài khoản' });
     // Vai MỚI = vai gửi lên (nếu có) hoặc GIỮ NGUYÊN vai cũ. Trước đây thiếu trường role thì
     // ROLE(undefined) trả 'staff' -> admin sửa mỗi họ tên mà TỰ TỤT XUỐNG nhân viên, mất quyền
@@ -174,7 +177,7 @@ router.put('/users/:id', async (req, res, next) => {
     await query(
       `UPDATE users SET full_name = CASE WHEN $1 THEN $2 ELSE full_name END, role=$3,
          facility_id = CASE WHEN $5 THEN $6 ELSE facility_id END
-       WHERE id=$4 AND role IN ('admin','staff','maintenance') AND deleted_at IS NULL`,
+       WHERE id=$4 AND role IN (${MANAGED_ROLES_SQL}) AND deleted_at IS NULL`,
       [hasName, (req.body.full_name || '').trim(), newRole, id, hasFac, facVal]);
     // Đổi vai trò -> THU HỒI vé cũ ngay (người vừa bị giáng chức không giữ quyền admin 30 ngày).
     if (newRole !== cur.role) await revokeTokens(id);
@@ -209,7 +212,7 @@ router.delete('/users/:id', async (req, res, next) => {
     // Lịch sử thao tác trong audit_log lưu snapshot username riêng nên không mất dấu.
     await query(
       `UPDATE users SET deleted_at=now(), username = username || '#da-xoa-' || id
-       WHERE id=$1 AND role IN ('admin','staff','maintenance')`, [id]);
+       WHERE id=$1 AND role IN (${MANAGED_ROLES_SQL})`, [id]);
     await revokeTokens(id); // đá ngay mọi phiên đang mở của tài khoản vừa bị vô hiệu hoá
     res.json({ ok: true });
   } catch (e) { next(e); }

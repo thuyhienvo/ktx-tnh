@@ -53,6 +53,8 @@ router.put('/', requireAuth, requireRole('admin'), async (req, res, next) => {
     const allowed = ['dorm_name', 'hotline', 'room_fee', 'water_fee', 'electric_unit', 'service_fee',
       'washing_fee', 'parking_fee', 'deposit_fee', 'partial_half_min', 'partial_full_min',
       'legal_female', 'legal_male', 'due_day_from', 'due_day_to',
+      'overdue_remind_days', 'shortterm_max_days', 'deposit_notice_min_days', 'partial_half_factor',
+      'room_cap_A', 'room_cap_B', 'room_cap_C', 'room_cap_D', 'checkout_max_future_days', 'max_cccd_mb',
       'room_price_A', 'room_price_B', 'room_price_C', 'room_price_D',
       'bravo_fee_type', 'bravo_room', 'bravo_water', 'bravo_service', 'bravo_electric', 'bravo_parking', 'bravo_washing', 'bravo_other',
       'school_name', 'school_email', 'violation_mail_threshold',

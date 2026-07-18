@@ -53,9 +53,17 @@ router.post('/', async (req, res, next) => {
     if (!sid) return res.status(400).json({ error: 'Thiếu học viên' });
     // Học viên phải TỒN TẠI + chưa xoá. Trước đây student_id=99999 hoặc "abc" -> FK ném 23503 -> 500;
     // giờ báo 400 có nghĩa (V2-25).
-    const st = (await query('SELECT id, facility_id FROM students WHERE id=$1 AND deleted_at IS NULL', [sid])).rows[0];
+    const st = (await query(
+      `SELECT id, facility_id, status, check_in_date, check_out_date FROM students WHERE id=$1 AND deleted_at IS NULL`, [sid])).rows[0];
     if (!st) return res.status(400).json({ error: 'Học viên không tồn tại hoặc đã xoá' });
     const badF = assertFacility(req, st.facility_id); if (badF) return res.status(badF.status).json(badF); // đa cơ sở
+    // Không đăng ký xe cho HV đã TRẢ PHÒNG (đang ở = status 'in' + đã tới ngày nhận & chưa tới ngày trả).
+    // Khác /me/washing, /me/damage đã chặn — đường này trước đây chỉ kiểm deleted_at nên tạo được xe rác.
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
+    const occupying = st.status === 'in'
+      && (!st.check_in_date || String(st.check_in_date).slice(0, 10) <= today)
+      && (!st.check_out_date || String(st.check_out_date).slice(0, 10) > today);
+    if (!occupying) return res.status(400).json({ error: 'Học viên đã trả phòng (hoặc chưa tới ngày nhận phòng) — không đăng ký xe.' });
 
     // Biển số BẮT BUỘC — không cho biển rỗng (biển rỗng lọt qua unique index, nhân phí gửi xe
     // tuỳ ý: 10 xe biển rỗng = +1.000.000đ/tháng) (V2-21).

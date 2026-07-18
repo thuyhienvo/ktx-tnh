@@ -2,7 +2,7 @@ const express = require('express');
 const roomLeaders = require('../room-leaders');
 const { isValidYmd } = require('../valid');
 const { recalcInvoice } = require('../invoice-calc');
-const { query } = require('../db');
+const { query, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { applyFacilityFilter, isExecutive, assertFacility, resolveFacilityForCreate } = require('../scope');
 
@@ -11,14 +11,19 @@ router.use(requireAuth);
 
 // Sức chứa & giá phòng phải hợp lý. Trước đây lưu được capacity=-5 (làm mọi phép tính giường trống sai)
 // và monthly_fee=-9.000.000 (hoá đơn âm). "Hạng D = 3 giường" chỉ là quy ước trên giao diện.
-const CAP_MAX = { A: 8, B: 8, C: 8, D: 8 };
-function badRoom(b, cur = {}) {
+const CAP_MAX = { A: 8, B: 8, C: 8, D: 8 };  // fallback khi settings rỗng
+// Trần giường theo hạng LẤY TỪ Cài đặt (room_cap_A..D), không hard-code — chỉnh không cần sửa code.
+function capsFromSettings(s) {
+  const n = (k, d) => { const v = +((s && s[k])); return Number.isFinite(v) && v > 0 ? v : d; };
+  return { A: n('room_cap_A', 8), B: n('room_cap_B', 8), C: n('room_cap_C', 8), D: n('room_cap_D', 8) };
+}
+function badRoom(b, cur = {}, caps = CAP_MAX) {
   const g = (k) => (b[k] !== undefined ? b[k] : cur[k]);
   const cap = Number(g('capacity'));
   if (g('capacity') !== undefined && g('capacity') !== null && g('capacity') !== '') {
     if (!Number.isFinite(cap)) return `Sức chứa phải là số (đang nhận: "${g('capacity')}")`;
     if (cap < 0) return `Sức chứa không được âm (đang nhận: ${cap})`;
-    const max = CAP_MAX[String(g('hang') || 'B').toUpperCase()] || 8;
+    const max = caps[String(g('hang') || 'B').toUpperCase()] || 8;
     if (cap > max) return `Sức chứa ${cap} vượt mức hợp lý cho phòng hạng ${g('hang') || 'B'} (tối đa ${max} giường)`;
   }
   const fee = Number(g('monthly_fee'));
@@ -75,7 +80,7 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
     // Đa cơ sở: quản lý cơ sở LUÔN tạo phòng thuộc cơ sở mình (bỏ qua facility_id client gửi, chống lách).
     const facility_id = resolveFacilityForCreate(req, req.body.facility_id);
     if (!(await facilityOk(facility_id || null))) return res.status(400).json({ error: 'Cơ sở không tồn tại hoặc đã bị xoá' });
-    const badR = badRoom(req.body);
+    const badR = badRoom(req.body, {}, capsFromSettings(await getSettings()));
     if (badR) return res.status(400).json({ error: badR });
     // Trùng tên phòng trong cùng cơ sở -> nhân viên xếp nhầm người
     const dupR = await query(
@@ -104,7 +109,7 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Nhập tên phòng' });
     if (raw.facility_id !== undefined && !(await facilityOk(raw.facility_id || null)))
       return res.status(400).json({ error: 'Cơ sở không tồn tại hoặc đã bị xoá' });
-    const badR = badRoom(raw, cur);
+    const badR = badRoom(raw, cur, capsFromSettings(await getSettings()));
     if (badR) return res.status(400).json({ error: badR });
     const dupR = await query(
       `SELECT 1 FROM rooms WHERE lower(trim(name))=lower(trim($1)) AND COALESCE(facility_id,0)=COALESCE($2,0) AND id<>$3 AND deleted_at IS NULL`,

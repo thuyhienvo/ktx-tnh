@@ -44,6 +44,11 @@ const SETTING_NUM = {
   due_day_from: { min: 1, max: 31 }, due_day_to: { min: 1, max: 31 },
   violation_mail_threshold: { min: 1, max: 100 },
   smtp_port: { min: 1, max: 65535 },
+  // Ngưỡng nhắc / nghiệp vụ (Đợt 3 — dọn hard-code)
+  overdue_remind_days: { min: 1, max: 365 }, shortterm_max_days: { min: 1, max: 365 },
+  deposit_notice_min_days: { min: 0, max: 365 }, partial_half_factor: { min: 0, max: 1 },
+  room_cap_A: { min: 1, max: 20 }, room_cap_B: { min: 1, max: 20 }, room_cap_C: { min: 1, max: 20 }, room_cap_D: { min: 1, max: 20 },
+  checkout_max_future_days: { min: 1, max: 3650 }, max_cccd_mb: { min: 1, max: 15 }, // max_cccd_mb <= body parser 16MB
 };
 // Trả về chuỗi lỗi nếu sai, null nếu hợp lệ
 function checkSetting(key, raw) {
@@ -136,4 +141,9 @@ function tooLong(body, limits) {
   return null;
 }
 
-module.exports = { isValidYmd, ymdOrNull, isValidPhone, digits, isValidMonth, isValidGender, checkPassword, isValidEmail, isPrivateHost, isValidPort, normalizeBool, tooLong, checkSetting, rejectUnknown, SETTING_NUM };
+// Mật khẩu CẤP NHANH cho tài khoản học viên (thường là SĐT) — tối thiểu chung MỘT chỗ. Yếu hơn
+// checkPassword (>=8) là CỐ Ý, nhưng luôn kèm must_change_password=true để buộc đổi sang mật khẩu mạnh
+// (checkPassword) ở lần đăng nhập đầu. Trước đây rải rác 4/6 không nhất quán.
+const INITIAL_PASSWORD_MIN = 6;
+
+module.exports = { isValidYmd, ymdOrNull, isValidPhone, digits, isValidMonth, isValidGender, checkPassword, isValidEmail, isPrivateHost, isValidPort, normalizeBool, tooLong, checkSetting, rejectUnknown, SETTING_NUM, INITIAL_PASSWORD_MIN };

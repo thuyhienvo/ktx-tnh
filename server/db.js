@@ -105,6 +105,14 @@ async function seedDefaults() {
     room_fee: '1200000', water_fee: '100000', electric_unit: '3000', service_fee: '50000',
     washing_fee: '70000', parking_fee: '100000', deposit_fee: '1200000',
     partial_half_min: '10', partial_full_min: '15',
+    // ---- Ngưỡng nhắc / nghiệp vụ (chỉnh ở Cài đặt, không hard-code trong code) ----
+    overdue_remind_days: '7',          // quá N ngày ở mà chưa ký HĐ / chưa tạm trú / chưa lập phiếu -> nhắc
+    shortterm_max_days: '60',          // ở dưới N ngày = ngắn hạn (ghép ký phiếu bàn giao thay vì HĐ)
+    deposit_notice_min_days: '30',     // báo trả phòng trước >= N ngày mới đủ điều kiện hoàn cọc
+    partial_half_factor: '0.5',        // hệ số phí (nước/dịch vụ) tháng lẻ mức "nửa"
+    room_cap_A: '8', room_cap_B: '8', room_cap_C: '8', room_cap_D: '8',  // trần giường theo hạng phòng
+    checkout_max_future_days: '365',   // HV tự xin trả phòng: ngày mong muốn không quá N ngày tới
+    max_cccd_mb: '12',                 // trần dung lượng mỗi ảnh CCCD (MB) — phải <= giới hạn body parser
     legal_female: 'E2', legal_male: 'S2', due_day_from: '1', due_day_to: '5', hotline: '',
     room_price_A: '5500000', room_price_B: '4800000', room_price_C: '4200000', room_price_D: '3600000',
     bravo_fee_type: 'T0704',

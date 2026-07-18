@@ -40,9 +40,9 @@
 | # | Hạng mục | Ưu tiên | Trạng thái | Chủ |
 |---|---|---|---|---|
 | C | Đa cơ sở — nền (`users.facility_id` + `scope.js` + gán cơ sở tài khoản) | P0 | 🟢 Cơ bản xong | dev |
-| D | Đa cơ sở — lọc truy vấn backend theo cơ sở | P0 | 🟡 ~80% — sót `logs`, `violations/stats`, rà đủ handler | dev |
-| E | Đa cơ sở — frontend (bộ chọn cơ sở điều hành) + cách ly cổng HV | P0 | 🔴 Frontend chưa làm | dev |
-| J | Vá race duyệt/từ chối đơn trả phòng + guard bảo trì trả phòng lặp | P0 | 🔴 Mới phát hiện (review 18/07) | dev |
+| D | Đa cơ sở — lọc truy vấn backend theo cơ sở | P0 | ✅ Đã vá `logs` + `violations/stats` (nghiệm thu 18/07) | dev |
+| E | Đa cơ sở — frontend (bộ chọn cơ sở điều hành) + cách ly cổng HV | P0 | ✅ Có bộ chọn cơ sở (chỉ hiện cho điều hành) + badge + form đăng ký chọn cơ sở | dev |
+| J | Vá race duyệt/từ chối đơn trả phòng + guard bảo trì trả phòng lặp | P0 | ✅ Xong — claim nguyên tử `WHERE status='pending'` + guard `checkout_confirmed_at` (nghiệm thu 18/07) | dev |
 | K | Chính sách đa cơ sở (chị chốt 18/07): quản lý cơ sở = **staff gắn facility_id** (admin luôn = điều hành); cơ sở **chỉ xoá mềm**, chặn xoá khi còn tài khoản/phòng | P0 | ✅ Đã chốt → áp vào code | dev |
 | F | Hardening: bật CSP, escape XSS (N-10), kiểm enum biên | P1 | 🟠 Còn tồn | dev |
 | G | UI/UX 30 case còn lại | P2 | 🟠 Còn tồn | dev |
@@ -93,6 +93,7 @@ Ghi chú nghiệp vụ đã xác nhận: phí HV vào 15/7 (tháng 31 ngày) = *
 **Quyết định/phụ thuộc GĐ2 còn mở (PM theo dõi):** (1) phương án nhận báo cáo Bravo; (2) ngân hàng nào + có API đối soát tự động không; (3) quyền + ánh xạ trường dữ liệu Bitrix; (4) cổng/chuẩn QR (VietQR?).
 
 ## 7. Nhật ký cập nhật
+- **18/07/2026 (tối, muộn):** Nghiệm thu Đợt 1 — **ĐẠT toàn bộ**. Đọc code: 8/8 mục đúng (race trả phòng nguyên tử, guard bảo trì, lọc cơ sở logs + violations/stats, admin luôn điều hành ở POST/PUT, cơ sở chặn xoá khi còn tài khoản + FK RESTRICT migrate đúng trong khối DO, frontend bộ chọn cơ sở, /me trả facility_id) + người làm viết thêm 2 file test. **Chạy full test (PM tự bật server + set `ADMIN_P`): `node tests/run.js` → 280/280 PASS** (76 unit + e2e gồm Đợt-1 & đa-cơ-sở acceptance a–f). ⇒ **Đợt 1 HOÀN TẤT.**
 - **18/07/2026 (tối):** Ghi lộ trình GĐ1→GĐ2 (mục 8) + chốt 2 chính sách đa cơ sở (mục K). Chị chọn: quản lý cơ sở = staff gắn facility_id; cơ sở chỉ xoá mềm.
 - **18/07/2026 (tối):** Review toàn bộ code bằng 5 luồng → `docs/REVIEW-TONG-THE-2026-07-18.md`. Phát hiện lớn: **đa cơ sở backend đã ~80%** (không phải "chưa bắt đầu"); vá 1 lỗi boot do PM tự gây (index deleted_at); còn race checkout_requests + rò cơ sở (logs, violations/stats) + frontend đa cơ sở chưa làm + nợ hard-code. Cập nhật mục 1/3.
 - **18/07/2026 (chiều):** Chốt 4 điều chỉnh nghiệp vụ BR-1..4 (xem mục 6b) + xác nhận quy tắc phí tháng lẻ cho ca vào 15/7. Đưa vào prompt cho VS Code.

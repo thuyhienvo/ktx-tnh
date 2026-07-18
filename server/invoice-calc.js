@@ -98,8 +98,7 @@ async function recalcInvoice(studentId, month) {
 
   const c = billing.computeInvoice({ student: s, room, month, fees, roster, electricCharge, leaderDays, kwh, vehicleCount: veh });
   const other = Number(inv.other_charge) || 0;
-  const total = c.room_charge + c.electric_charge + c.water_charge + c.service_charge + c.washing_charge + c.parking_charge
-    + other - c.leader_discount - c.room_discount;
+  const total = billing.invoiceTotal({ ...c, other_charge: other });  // 1 nguồn công thức (billing.js)
 
   const { rows } = await query(
     `UPDATE invoices SET days_stayed=$1, room_charge=$2, electric_kwh=$3, electric_charge=$4, water_charge=$5,

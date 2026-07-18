@@ -1,5 +1,15 @@
 // ===== Bộ tính tiền phòng (thuần, dễ kiểm thử) =====
 
+// Tổng tiền một phiếu = Σ 7 khoản phí − các khoản GIẢM. MỘT nguồn duy nhất cho mọi nơi (billing,
+// invoice-calc, invoices.routes: generate/POST/PUT) để 3–5 đường không lệch nhau khi sửa công thức.
+// f: object chứa các cột phí + giảm; thiếu cột nào coi như 0 (vd phiếu tự tính không có other_charge;
+// đường POST/PUT không có discount trong body -> truyền kèm từ bản ghi hiện tại).
+const INVOICE_FEE_FIELDS = ['room_charge', 'electric_charge', 'water_charge', 'service_charge', 'washing_charge', 'parking_charge', 'other_charge'];
+function invoiceTotal(f) {
+  const fee = INVOICE_FEE_FIELDS.reduce((a, k) => a + (+f[k] || 0), 0);
+  return fee - (+f.leader_discount || 0) - (+f.room_discount || 0);
+}
+
 function daysInMonth(month) {
   const [y, m] = month.split('-').map(Number);
   return new Date(y, m, 0).getDate();
@@ -39,10 +49,10 @@ function daysStayedInMonth(student, month) {
 //  > half   -> 0.5
 //  > full   -> 1
 //  ở đủ tháng -> 1
-function partialFactor(days, dim, halfMin, fullMin) {
+function partialFactor(days, dim, halfMin, fullMin, halfFactor = 0.5) {
   if (days >= dim) return 1;
   if (days > fullMin) return 1;
-  if (days > halfMin) return 0.5;
+  if (days > halfMin) return Number.isFinite(halfFactor) ? halfFactor : 0.5;
   return 0;
 }
 
@@ -168,7 +178,8 @@ function computeInvoice({ student, room, month, fees, occupants, roster, electri
   const room_discount = r0((room_charge * pct) / 100);
 
   // Hệ số phí cố định (nước, dịch vụ, máy giặt, xe)
-  const f = partialFactor(days, dim, +fees.partial_half_min, +fees.partial_full_min);
+  const f = partialFactor(days, dim, +fees.partial_half_min, +fees.partial_full_min,
+    fees.partial_half_factor != null && fees.partial_half_factor !== '' ? Number(fees.partial_half_factor) : 0.5);
   const water_charge = r0(Number(fees.water_fee) * f);
   const service_charge = r0(Number(fees.service_fee) * f);
   const washing_charge = student.uses_washing ? r0(Number(fees.washing_fee) * f) : 0;
@@ -196,8 +207,7 @@ function computeInvoice({ student, room, month, fees, occupants, roster, electri
 
   // Mọi khoản giảm đều ghi RIÊNG một dòng, không âm thầm hạ tiền phòng/tiền nước xuống —
   // học viên thấy được ưu đãi, cấp trên thống kê được chế độ này tốn bao nhiêu.
-  const total = room_charge + electric_charge + water_charge + service_charge + washing_charge + parking_charge
-    - leader_discount - room_discount;
+  const total = invoiceTotal({ room_charge, electric_charge, water_charge, service_charge, washing_charge, parking_charge, leader_discount, room_discount });
 
   return {
     days_stayed: days,
@@ -234,14 +244,17 @@ function leaderDiscount({ leaderDays, days, water_charge, service_charge }) {
 }
 
 // Xét điều kiện hoàn cọc khi trả phòng
-// eligible nếu: xuất cảnh đột xuất, HOẶC báo trước >= 30 ngày
-function depositRefundEligible({ noticeDate, checkoutDate, reason }) {
+// eligible nếu: xuất cảnh (đi Nhật), HOẶC báo trước >= 30 ngày.
+// Xuất cảnh ĐỘT XUẤT (có visa gấp) = lý do 'departure' -> đã được miễn ở dòng dưới; nhánh 'urgent_visa'
+// cũ ĐÃ GỠ vì enum checkout_reason (me.routes/students.routes) không sinh giá trị đó (nhánh chết). Nếu
+// cần hoàn ngoại lệ cho trường hợp khác, admin dùng override_reason ở deposit-settle (có ghi nhật ký).
+function depositRefundEligible({ noticeDate, checkoutDate, reason }, minDays = 30) {
+  const minD = Number.isFinite(+minDays) && +minDays > 0 ? +minDays : 30;
   if (reason === 'departure') return { eligible: true, reason: 'Xuất cảnh đi Nhật — hoàn cọc' };
-  if (reason === 'urgent_visa') return { eligible: true, reason: 'Xuất cảnh đột xuất — hoàn cọc bình thường' };
   if (!noticeDate || !checkoutDate) return { eligible: false, reason: 'Chưa có ngày báo trả phòng' };
   const noticeDays = Math.round((new Date(checkoutDate) - new Date(noticeDate)) / 86400000);
-  if (noticeDays >= 30) return { eligible: true, reason: `Báo trước ${noticeDays} ngày (≥ 1 tháng)` };
-  return { eligible: false, reason: `Chỉ báo trước ${noticeDays} ngày (< 1 tháng)` };
+  if (noticeDays >= minD) return { eligible: true, reason: `Báo trước ${noticeDays} ngày (≥ ${minD} ngày)` };
+  return { eligible: false, reason: `Chỉ báo trước ${noticeDays} ngày (< ${minD} ngày)` };
 }
 
 // Trạng thái tự tính theo ngày: upcoming(Sắp vào) | staying(Đang ở) | leaving(Sắp trả) | left(Đã trả)
@@ -257,7 +270,7 @@ function isOccupying(s, today) { const st = liveStatus(s, today); return st === 
 
 module.exports = {
   daysInMonth, firstDay, lastDay, addDays, daysStayedInMonth, daysStayedInRange,
-  partialFactor, computeInvoice, depositRefundEligible,
+  partialFactor, computeInvoice, depositRefundEligible, invoiceTotal,
   roomPriceByHang, liveStatus, isOccupying,
   splitElectricByDays, splitElectricExact, buildSegments, leaderDiscount,
 };

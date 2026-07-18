@@ -6,7 +6,7 @@ const { depositRefundEligible } = require('../billing');
 const { recalcInvoice } = require('../invoice-calc');
 const storage = require('../storage');
 const { cccdUrls, SIDE_COL } = require('../cccd-url');
-const { isValidYmd, isValidPhone, rejectUnknown } = require('../valid');
+const { isValidYmd, isValidPhone, rejectUnknown, INITIAL_PASSWORD_MIN } = require('../valid');
 const { checkRoomAssignment, logOverload, blockOrConfirm } = require('../room-rules');
 const roomStays = require('../room-stays');
 const roomLeaders = require('../room-leaders');
@@ -83,6 +83,8 @@ const LIST_SELECT = `
     s.class_start_date, s.expected_departure, s.parent_phone, s.room_fee_discount_pct, s.facility_id,
     EXISTS (SELECT 1 FROM room_leaders rl WHERE rl.student_id=s.id AND rl.to_date IS NULL) AS is_leader,
     (s.cccd_front IS NOT NULL OR s.cccd_back IS NOT NULL OR s.cccd_image IS NOT NULL) AS has_cccd,
+    (s.cccd_front IS NOT NULL) AS has_cccd_front,
+    (s.cccd_back IS NOT NULL) AS has_cccd_back,
     r.name AS room_name, r.floor AS room_floor, r.gender AS room_gender, r.hang AS room_hang,
     u.username AS login_username,
     (SELECT COUNT(*) FROM vehicles v WHERE v.student_id=s.id AND v.deleted_at IS NULL)::int AS vehicle_count,
@@ -283,7 +285,7 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
       uname = (b.login_username || b.code || '').trim();
       pass = (b.login_password || '').trim();
       if (!uname) return res.status(400).json({ error: 'Cần tên đăng nhập (hoặc mã HV) để tạo tài khoản' });
-      if (pass.length < 4) return res.status(400).json({ error: 'Mật khẩu tài khoản tối thiểu 4 ký tự' });
+      if (pass.length < INITIAL_PASSWORD_MIN) return res.status(400).json({ error: `Mật khẩu tài khoản tối thiểu ${INITIAL_PASSWORD_MIN} ký tự` });
       const dup = await query('SELECT 1 FROM users WHERE lower(username)=lower($1)', [uname]);
       if (dup.rows.length) return res.status(400).json({ error: `Tên đăng nhập "${uname}" đã tồn tại` });
     }
@@ -498,7 +500,7 @@ router.post('/:id/checkout', requireRole('admin', 'staff'), async (req, res, nex
       if (err) return res.status(400).json({ error: err });
     }
 
-    const elig = depositRefundEligible({ noticeDate: notice_date || null, checkoutDate: d, reason: rs });
+    const elig = depositRefundEligible({ noticeDate: notice_date || null, checkoutDate: d, reason: rs }, +(await getSettings()).deposit_notice_min_days || 30);
     const { rows } = await query(
       `UPDATE students SET status='out', check_out_date=$1, checkout_notice_date=$2, checkout_reason=$3 WHERE id=$4 RETURNING *`,
       [d, notice_date || null, rs, req.params.id]
@@ -663,7 +665,7 @@ router.post('/:id/deposit-settle', requireRole('admin', 'staff'), async (req, re
     // Hoàn cọc: phải ĐỦ ĐIỀU KIỆN. Trước đây kết luận "không đủ điều kiện" chỉ là dòng chữ gợi ý,
     // khâu tất toán không hỏi lại -> bấm hoàn là hoàn.
     if (action === 'refunded') {
-      const elig = depositRefundEligible({ noticeDate: stu.checkout_notice_date || null, checkoutDate: stu.check_out_date || null, reason: stu.checkout_reason || 'other' });
+      const elig = depositRefundEligible({ noticeDate: stu.checkout_notice_date || null, checkoutDate: stu.check_out_date || null, reason: stu.checkout_reason || 'other' }, +settings.deposit_notice_min_days || 30);
       if (!elig.eligible) {
         const ov = String(req.body.override_reason || '').trim();
         if (ov.length < 10) {
@@ -690,7 +692,7 @@ router.post('/:id/deposit-settle', requireRole('admin', 'staff'), async (req, re
 router.post('/:id/account', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
     const { username, password } = req.body;
-    if (!password || password.length < 4) return res.status(400).json({ error: 'Mật khẩu tối thiểu 4 ký tự' });
+    if (!password || password.length < INITIAL_PASSWORD_MIN) return res.status(400).json({ error: `Mật khẩu tối thiểu ${INITIAL_PASSWORD_MIN} ký tự` });
     const st = await query('SELECT * FROM students WHERE id=$1', [req.params.id]);
     if (!st.rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
     const existing = await query('SELECT * FROM users WHERE student_id=$1', [req.params.id]);

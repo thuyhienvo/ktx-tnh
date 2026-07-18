@@ -176,12 +176,13 @@ router.post('/checkout-request', async (req, res, next) => {
     if (note && note.length > 2000) return res.status(400).json({ error: 'Ghi chú quá dài (tối đa 2000 ký tự)' });
     if (desired_date && !isValidYmd(desired_date)) return res.status(400).json({ error: 'Ngày trả phòng không hợp lệ' });
     if (desired_date && desired_date < new Date().toISOString().slice(0, 10)) return res.status(400).json({ error: 'Ngày trả phòng phải từ hôm nay trở đi' });
-    // Chặn trên: ngày trả xa quá 1 năm là gõ nhầm (vd 2199). Nếu nhận, HV tự khoá mình —
-    // đơn "đang chờ" đó chặn mọi đơn thật sau này, mà HV không tự gỡ được.
+    // Chặn trên: ngày trả xa quá N ngày là gõ nhầm (vd 2199). Nếu nhận, HV tự khoá mình —
+    // đơn "đang chờ" đó chặn mọi đơn thật sau này, mà HV không tự gỡ được. N = Cài đặt (mặc định 365).
     if (desired_date) {
-      const max = new Date(); max.setFullYear(max.getFullYear() + 1);
+      const maxDays = +(await getSettings()).checkout_max_future_days || 365;
+      const max = new Date(); max.setDate(max.getDate() + maxDays);
       if (desired_date > max.toISOString().slice(0, 10))
-        return res.status(400).json({ error: 'Ngày trả phòng quá xa (chỉ nhận trong vòng 1 năm tới). Vui lòng kiểm tra lại.' });
+        return res.status(400).json({ error: `Ngày trả phòng quá xa (chỉ nhận trong vòng ${maxDays} ngày tới). Vui lòng kiểm tra lại.` });
     }
     // Chặn HV chưa nhận phòng (ngày vào ở tương lai) — chưa ở thì không thể "trả phòng"
     const st = (await query('SELECT check_in_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.user.student_id])).rows[0];

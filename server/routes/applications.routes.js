@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const { query, withTransaction, getSettings } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { checkRoomAssignment, logOverload, blockOrConfirm } = require('../room-rules');
-const { isValidYmd, checkPassword } = require('../valid');
+const { isValidYmd, checkPassword, INITIAL_PASSWORD_MIN } = require('../valid');
 const roomStays = require('../room-stays');
 const { applyFacilityFilter, isExecutive, assertFacility, canAccessFacility } = require('../scope');
 
@@ -127,7 +127,7 @@ router.post('/:id/approve', async (req, res, next) => {
       // Mật khẩu tối thiểu 6 (trước là 4). Mật khẩu ban đầu thường là SĐT (toàn số) nên chưa ép
       // checkPassword mạnh ở đây, NHƯNG buộc đổi ngay lần đăng nhập đầu (V2-58) -> khi đổi thì
       // checkPassword (>=8, có chữ+số) mới áp. Không còn mật khẩu 4 số sống vĩnh viễn.
-      if (pass.length < 6) return res.status(400).json({ error: 'Mật khẩu tối thiểu 6 ký tự' });
+      if (pass.length < INITIAL_PASSWORD_MIN) return res.status(400).json({ error: `Mật khẩu tối thiểu ${INITIAL_PASSWORD_MIN} ký tự` });
       const dup = await query('SELECT 1 FROM users WHERE lower(username)=lower($1) AND deleted_at IS NULL', [uname]);
       if (dup.rows.length) return res.status(400).json({ error: `Tên đăng nhập "${uname}" đã tồn tại` });
     }
