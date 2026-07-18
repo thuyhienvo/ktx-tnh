@@ -3,6 +3,7 @@ const { query } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { recalcInvoice } = require('../invoice-calc');
 const { isValidYmd } = require('../valid');
+const { badCheckoutDate, finalizeCheckout } = require('../checkout');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('maintenance', 'admin'));
@@ -72,11 +73,11 @@ router.post('/handovers/:id/checkout', async (req, res, next) => {
     // nên tiền không tính lại, dữ liệu một đằng tiền một nẻo.
     if (actual > today)
       return res.status(400).json({ error: 'Ngày trả phòng thực tế không thể ở tương lai.' });
-    // Ngày trả không thể TRƯỚC ngày nhận phòng (tránh phiếu tính sai / âm ngày)
+    // Ngày trả không thể TRƯỚC ngày nhận phòng / trước ngày bắt đầu lượt ở hiện tại (BLK-3)
     const cur = (await query('SELECT check_in_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!cur) return res.status(404).json({ error: 'Không tìm thấy học viên' });
-    if (cur.check_in_date && actual < String(cur.check_in_date).slice(0, 10))
-      return res.status(400).json({ error: 'Ngày trả không thể trước ngày nhận phòng' });
+    const badDate = await badCheckoutDate(null, +req.params.id, actual, cur.check_in_date);
+    if (badDate) return res.status(400).json({ error: badDate });
     const { rows } = await query(
       `UPDATE students SET checkout_confirmed_at=now(), checkout_actual_date=$1, checkout_confirm_note=$2,
          check_out_date=$1, status='out'
@@ -86,8 +87,10 @@ router.post('/handovers/:id/checkout', async (req, res, next) => {
     const src = req.user && req.user.role === 'maintenance' ? 'maintenance' : 'admin';
     try { await query(`INSERT INTO logs (student_id, type, date, room_id, note, source) VALUES ($1,'out',$2,$3,$4,$5)`,
       [req.params.id, actual, rows[0].room_id || null, 'Bảo trì xác nhận trả phòng thực tế', src]); } catch (e) {}
-    try { await recalcInvoice(req.params.id, actual.slice(0, 7)); } catch (e) {}
-    res.json({ ok: true, actual_date: actual });
+    // BLK-1: trước đây đường bảo trì CHỈ recalc — bỏ đóng lượt ở (room_stays), bỏ đóng phòng trưởng,
+    // bỏ dọn phiếu kỳ sau. Giờ gọi phần CHUNG như 2 đường kia.
+    const fin = await finalizeCheckout(null, { studentId: +req.params.id, date: actual });
+    res.json({ ok: true, actual_date: actual, dropped_future_invoices: fin.dropped });
   } catch (e) { next(e); }
 });
 

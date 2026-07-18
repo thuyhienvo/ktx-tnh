@@ -148,13 +148,18 @@ router.post('/:id/approve', async (req, res, next) => {
 
 router.post('/:id/reject', async (req, res, next) => {
   try {
-    // Không cho từ chối đơn ĐÃ DUYỆT: người ta đã vào ở rồi, đơn ghi "từ chối" là hồ sơ nói một đằng thực tế một nẻo
-    const app = (await query('SELECT status, student_id FROM applications WHERE id=$1', [req.params.id])).rows[0];
+    // Không cho từ chối đơn ĐÃ DUYỆT: người ta đã vào ở rồi, đơn ghi "từ chối" là hồ sơ nói một đằng thực tế một nẻo.
+    // deleted_at IS NULL: không từ chối đơn đã xoá mềm.
+    const app = (await query('SELECT status FROM applications WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!app) return res.status(404).json({ error: 'Không tìm thấy đơn' });
     if (app.status === 'approved')
       return res.status(400).json({ error: 'Đơn đã được duyệt và học viên đã vào ở — không thể từ chối. Nếu người này không ở nữa, dùng chức năng Check-out / Xoá học viên.' });
     if (app.status === 'rejected') return res.json({ ok: true, already: true });
-    await query(`UPDATE applications SET status='rejected', reviewed_at=now() WHERE id=$1`, [req.params.id]);
+    // BLK-4: cập nhật NGUYÊN TỬ — chỉ đổi khi VẪN 'pending'. Chống đua với /approve chạy song song:
+    // trước đây reject đọc thấy 'pending' rồi vẫn ghi đè status SAU khi approve đã tạo học viên → HV đã
+    // vào ở nhưng đơn ghi "rejected" (mâu thuẫn vĩnh viễn). WHERE status='pending' + kiểm rowCount chặn.
+    const r = await query(`UPDATE applications SET status='rejected', reviewed_at=now() WHERE id=$1 AND status='pending' AND deleted_at IS NULL RETURNING id`, [req.params.id]);
+    if (!r.rows[0]) return res.status(409).json({ error: 'Đơn vừa được xử lý bởi thao tác khác (duyệt/từ chối) — tải lại để xem trạng thái mới nhất.' });
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
@@ -168,7 +173,10 @@ router.delete('/:id', async (req, res, next) => {
     if (!app) return res.status(404).json({ error: 'Không tìm thấy đơn' });
     if (app.status === 'approved')
       return res.status(400).json({ error: 'Đơn đã duyệt và học viên đã vào ở — không xoá đơn (hồ sơ gốc cần giữ). Nếu người này không ở nữa, dùng Check-out / Xoá học viên.' });
-    await query('UPDATE applications SET deleted_at=now() WHERE id=$1', [req.params.id]);
+    // BLK-4: xoá mềm NGUYÊN TỬ — chỉ khi CHƯA duyệt. Chống đua với /approve: nếu approve vừa set 'approved'
+    // sau khi ta đọc 'pending', WHERE status<>'approved' không khớp → không xoá nhầm hồ sơ HV đang ở.
+    const r = await query(`UPDATE applications SET deleted_at=now() WHERE id=$1 AND status<>'approved' AND deleted_at IS NULL RETURNING id`, [req.params.id]);
+    if (!r.rows[0]) return res.status(409).json({ error: 'Đơn vừa được duyệt bởi thao tác khác — không xoá được (hồ sơ học viên đang ở cần giữ). Tải lại để xem.' });
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

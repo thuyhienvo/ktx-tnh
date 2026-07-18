@@ -99,6 +99,17 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
       `SELECT 1 FROM rooms WHERE lower(trim(name))=lower(trim($1)) AND COALESCE(facility_id,0)=COALESCE($2,0) AND id<>$3 AND deleted_at IS NULL`,
       [name, g('facility_id', cur.facility_id) || null, req.params.id]);
     if (dupR.rows[0]) return res.status(400).json({ error: `Phòng "${String(name).trim()}" đã tồn tại trong cơ sở này` });
+    // BLK-2: đổi giới tính phòng KHÔNG được để lại người khác giới đang ở. checkRoomAssignment chỉ gác
+    // chiều "xếp người vào phòng", không gác chiều "đổi phòng dưới chân người đang ở" — nếu không kiểm,
+    // đổi phòng nam (đang có 3 nam) thành "nữ" sẽ tạo phòng nữ chứa nam, rồi hệ thống cho xếp thêm nữ
+    // vào ở chung với nam, phá bất biến "nam không ở phòng nữ".
+    const newGender = g('gender', cur.gender) === 'female' ? 'female' : 'male';
+    if (newGender !== cur.gender) {
+      const conflict = (await query(
+        `SELECT COUNT(*)::int c FROM students WHERE room_id=$1 AND deleted_at IS NULL AND status='in' AND gender<>$2`,
+        [req.params.id, newGender])).rows[0].c;
+      if (conflict > 0) return res.status(400).json({ error: `Phòng đang có ${conflict} người ${newGender === 'female' ? 'nam' : 'nữ'} đang ở — chuyển họ sang phòng khác trước khi đổi thành phòng ${newGender === 'female' ? 'nữ' : 'nam'}.` });
+    }
     const { rows } = await query(
       `UPDATE rooms SET facility_id=$1, name=$2, floor=$3, gender=$4, hang=$5, capacity=$6, monthly_fee=$7, note=$8, room_type=$9
        WHERE id=$10 RETURNING *`,

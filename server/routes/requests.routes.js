@@ -5,6 +5,7 @@ const { recalcInvoice } = require('../invoice-calc');
 const { isValidYmd } = require('../valid');
 const roomStays = require('../room-stays');
 const meter = require('../meter');
+const { badCheckoutDate, finalizeCheckout } = require('../checkout');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
@@ -84,11 +85,11 @@ router.post('/checkout/:id/confirm', async (req, res, next) => {
     const st = await query('SELECT room_id, check_in_date FROM students WHERE id=$1 AND deleted_at IS NULL', [cr.student_id]);
     if (!st.rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên của đơn này' });
     const roomId = st.rows[0].room_id || null;
-    // Ngày trả KHÔNG được trước ngày nhận phòng. Nếu lọt, roomStays.checkOut cắt chặng ở một mốc
-    // trước cả lúc vào -> XOÁ SẠCH lịch sử ở phòng -> tiền điện cả phòng chia lại sai cho mọi người.
-    const checkIn = st.rows[0].check_in_date ? String(st.rows[0].check_in_date).slice(0, 10) : null;
-    if (checkIn && date < checkIn)
-      return res.status(400).json({ error: `Ngày trả phòng (${date}) không thể trước ngày nhận phòng (${checkIn}).` });
+    // Ngày trả KHÔNG được trước ngày nhận phòng / trước ngày bắt đầu lượt ở hiện tại (BLK-3). Nếu lọt,
+    // roomStays.checkOut cắt chặng ở mốc trước cả lúc vào (hoặc trước ngày chuyển phòng) -> XOÁ lịch sử
+    // ở phòng -> tiền điện cả phòng chia lại sai cho mọi người.
+    const badDate = await badCheckoutDate(null, cr.student_id, date, st.rows[0].check_in_date);
+    if (badDate) return res.status(400).json({ error: badDate });
 
     // Chốt chỉ số điện ngày trả phòng (nếu người duyệt có nhập) — kiểm tra trước khi ghi
     const mr = req.body.meter_reading;
@@ -101,7 +102,6 @@ router.post('/checkout/:id/confirm', async (req, res, next) => {
 
     await query(`UPDATE students SET status='out', check_out_date=$1, checkout_notice_date=$2, checkout_reason=$3 WHERE id=$4`,
       [date, noticeDate, cr.reason, cr.student_id]);
-    await roomStays.checkOut(null, cr.student_id, date);
     if (hasMeter) {
       await meter.recordRead(null, {
         roomId, date, reading: mr, reason: 'checkout', studentId: cr.student_id,
@@ -114,15 +114,17 @@ router.post('/checkout/:id/confirm', async (req, res, next) => {
       [cr.student_id, date, roomId, `Trả phòng (duyệt đơn HV, bởi ${req.user && req.user.username || 'cán bộ'})`]);
     await query(`UPDATE checkout_requests SET status='done', handled_at=now() WHERE id=$1`, [req.params.id]);
 
-    // Chốt giữa kỳ đổi phần chia của cả phòng -> tính lại cho mọi người liên quan
-    try { await recalcInvoice(cr.student_id, date.slice(0, 7)); } catch (e) {}
+    // BLK-1: đóng lượt ở + đóng phòng trưởng + dọn phiếu kỳ sau + tính lại (trước đây đường này ĐÓNG
+    // room_stays nhưng QUÊN đóng phòng trưởng và QUÊN dọn phiếu kỳ sau).
+    const fin = await finalizeCheckout(null, { studentId: cr.student_id, date });
+    // Chốt giữa kỳ đổi phần chia của cả phòng -> tính lại cho bạn cùng phòng khi có chốt công-tơ
     if (hasMeter) {
       for (const sid of await meter.affectedStudents(null, roomId, date)) {
         if (sid === cr.student_id) continue;
         try { await recalcInvoice(sid, date.slice(0, 7)); } catch (e) {}
       }
     }
-    res.json({ ok: true });
+    res.json({ ok: true, dropped_future_invoices: fin.dropped });
   } catch (e) { next(e); }
 });
 

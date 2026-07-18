@@ -12,6 +12,8 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
+      - key: TZ                      # BLK-5: giờ Việt Nam (Render/Docker mặc định UTC → lệch ngày)
+        value: Asia/Ho_Chi_Minh
       - key: COOKIE_SECURE           # Render phục vụ HTTPS -> cookie Secure
         value: "true"
       - key: DATABASE_URL            # Supabase session pooler (port 5432) — điền trong Dashboard

@@ -376,6 +376,39 @@ CREATE TABLE IF NOT EXISTS schema_guard (
   checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- ===== Phòng trưởng + các cột giảm giá — ĐẶT TRƯỚC khối DO $ktx$ =====
+-- BẮT BUỘC đứng trước khối DO: ràng buộc ck_invoices_no_negative tham chiếu leader_discount/
+-- room_discount, và ck_room_leaders_dates cần bảng room_leaders. Nếu để SAU (lỗi cũ BLK-7), DB MỚI
+-- boot lần đầu áp thiếu 2 chốt này (cột/bảng chưa có) -> hoá đơn không có chốt chặn total âm suốt
+-- vòng đời boot đầu, chỉ tự lành ở boot #2. Đưa lên trước = luôn đủ ngay boot #1.
+-- Mỗi phòng có 1 phòng trưởng giúp BQL quản lý trong phòng. Đổi lại: MIỄN tiền nước + phí dịch vụ.
+-- Có ngày bắt đầu/kết thúc (không phải 1 ô đánh dấu) vì đổi phòng trưởng giữa tháng thì mỗi người
+-- chỉ được giảm theo SỐ NGÀY MÌNH LÀM — y như cách chia tiền điện.
+CREATE TABLE IF NOT EXISTS room_leaders (
+  id         SERIAL PRIMARY KEY,
+  room_id    INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  from_date  DATE NOT NULL,
+  to_date    DATE,                              -- NULL = đang làm phòng trưởng
+  note       TEXT DEFAULT '',
+  created_by TEXT DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_room_leaders_room    ON room_leaders(room_id, from_date);
+CREATE INDEX IF NOT EXISTS idx_room_leaders_student ON room_leaders(student_id);
+-- Một phòng CHỈ có 1 phòng trưởng tại một thời điểm. Ràng buộc ở CSDL, không chỉ ở code —
+-- 2 người bấm cùng lúc thì code kiểm tra rồi mới ghi vẫn lọt, CSDL thì không.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_room_leader_current ON room_leaders(room_id) WHERE to_date IS NULL;
+
+-- Khoản giảm cho phòng trưởng, ghi RIÊNG một dòng trên phiếu (không âm thầm hạ tiền nước xuống 0)
+-- để học viên thấy được ưu đãi và cấp trên thống kê được chế độ này tốn bao nhiêu.
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS leader_discount NUMERIC(12,0) NOT NULL DEFAULT 0;
+-- Giảm tiền phòng theo % riêng của từng người (vd quản lý KTX ở phòng 104 được giảm 50%).
+-- Để ở HỒ SƠ chứ không viết cứng số phòng vào code: đổi phòng/đổi người thì tự sửa được.
+ALTER TABLE students ADD COLUMN IF NOT EXISTS room_fee_discount_pct SMALLINT NOT NULL DEFAULT 0
+  CHECK (room_fee_discount_pct >= 0 AND room_fee_discount_pct <= 100);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS room_discount NUMERIC(12,0) NOT NULL DEFAULT 0;
+
 DO $ktx$
 DECLARE r RECORD;
 BEGIN
@@ -450,32 +483,6 @@ END
 $ktx$;
 
 -- ===== Phòng trưởng =====
--- Mỗi phòng có 1 phòng trưởng giúp BQL quản lý trong phòng. Đổi lại: MIỄN tiền nước + phí dịch vụ.
--- Có ngày bắt đầu/kết thúc (không phải 1 ô đánh dấu) vì đổi phòng trưởng giữa tháng thì mỗi người
--- chỉ được giảm theo SỐ NGÀY MÌNH LÀM — y như cách chia tiền điện. Dùng ô đánh dấu thì tính lại
--- hoá đơn tháng cũ sẽ lấy phòng trưởng HÔM NAY, trả nhầm ưu đãi cho người khác (đúng lỗi TC-10).
-CREATE TABLE IF NOT EXISTS room_leaders (
-  id         SERIAL PRIMARY KEY,
-  room_id    INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-  from_date  DATE NOT NULL,
-  to_date    DATE,                              -- NULL = đang làm phòng trưởng
-  note       TEXT DEFAULT '',
-  created_by TEXT DEFAULT '',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_room_leaders_room    ON room_leaders(room_id, from_date);
-CREATE INDEX IF NOT EXISTS idx_room_leaders_student ON room_leaders(student_id);
--- Một phòng CHỈ có 1 phòng trưởng tại một thời điểm. Ràng buộc ở CSDL, không chỉ ở code —
--- 2 người bấm cùng lúc thì code kiểm tra rồi mới ghi vẫn lọt, CSDL thì không.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_room_leader_current ON room_leaders(room_id) WHERE to_date IS NULL;
-
--- Khoản giảm cho phòng trưởng, ghi RIÊNG một dòng trên phiếu (không âm thầm hạ tiền nước xuống 0)
--- để học viên thấy được ưu đãi và cấp trên thống kê được chế độ này tốn bao nhiêu.
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS leader_discount NUMERIC(12,0) NOT NULL DEFAULT 0;
-
--- Giảm tiền phòng theo % riêng của từng người (vd quản lý KTX ở phòng 104 được giảm 50%).
--- Để ở HỒ SƠ chứ không viết cứng số phòng vào code: đổi phòng/đổi người thì tự sửa được.
-ALTER TABLE students ADD COLUMN IF NOT EXISTS room_fee_discount_pct SMALLINT NOT NULL DEFAULT 0
-  CHECK (room_fee_discount_pct >= 0 AND room_fee_discount_pct <= 100);
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS room_discount NUMERIC(12,0) NOT NULL DEFAULT 0;
+-- (Định nghĩa bảng room_leaders + các cột leader_discount/room_discount/room_fee_discount_pct đã được
+--  ĐƯA LÊN TRƯỚC khối DO $ktx$ ở trên — xem BLK-7 — để DB mới boot lần đầu áp đủ các ràng buộc
+--  tham chiếu chúng. Giữ chú thích ở đây để ai đọc tới phần "Phòng trưởng" vẫn tìm được.)

@@ -360,6 +360,10 @@ router.put('/:id', async (req, res, next) => {
     const giam = (+cur.leader_discount || 0) + (+cur.room_discount || 0);
     const total = ['room_charge', 'electric_charge', 'water_charge', 'service_charge', 'washing_charge', 'parking_charge', 'other_charge']
       .reduce((a, k) => a + (+b[k] || 0), 0) - giam;
+    // BLK-7: total = Σphí − giảm có thể ÂM nếu giảm > tổng phí (vd sửa phí nhỏ trên phiếu phòng trưởng).
+    // badMoney chỉ chặn từng cột phí <0, KHÔNG kiểm total. Chốt DB ck_invoices_no_negative có thể VẮNG
+    // ở boot đầu của DB mới → chặn thẳng ở tầng API, không phụ thuộc DB.
+    if (total < 0) return res.status(400).json({ error: `Tổng tiền âm (${total}đ): tổng 7 khoản phí (${total + giam}đ) nhỏ hơn khoản giảm (${giam}đ). Kiểm lại các khoản.` });
     const { rows } = await query(
       `UPDATE invoices SET days_stayed=$1, room_charge=$2, electric_kwh=$3, electric_charge=$4,
          water_charge=$5, service_charge=$6, washing_charge=$7, parking_charge=$8, other_charge=$9,

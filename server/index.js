@@ -1,4 +1,9 @@
 require('./load-env'); // nạp .env khi chạy local (phải trước khi đọc process.env)
+// BLK-5: ghim múi giờ tiến trình = giờ Việt Nam TRƯỚC mọi lần dùng Date. Render/Docker (node-alpine)
+// mặc định UTC nên new Date().toISOString().slice(0,10) trả NGÀY HÔM QUA khung 00:00–07:00 giờ VN →
+// lệch ngày nhận/trả phòng, cọc, vi phạm... Node đọc lại process.env.TZ khi tính Date nên đặt ở đây là
+// đủ; cho phép biến môi trường có sẵn ghi đè (|| ). Tầng Postgres đặt riêng ở db.js.
+process.env.TZ = process.env.TZ || 'Asia/Ho_Chi_Minh';
 const path = require('path');
 const express = require('express');
 const helmet = require('helmet');

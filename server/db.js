@@ -24,6 +24,11 @@ const pool = new Pool({
   statement_timeout: 15000,        // hủy query chạy quá 15s (chống treo connection)
   query_timeout: 15000,
 });
+// BLK-5: đặt múi giờ cho MỖI phiên kết nối = giờ Việt Nam. Nếu không, Supabase/Postgres mặc định UTC
+// nên CURRENT_DATE / now()::date (vd vehicles.from_date, so occupancy check_in_date <= CURRENT_DATE)
+// trả NGÀY HÔM QUA trong khung 00:00–07:00 giờ VN. Set ở phiên DB là chốt cuối, không phụ thuộc TZ của
+// tiến trình Node. Chạy nền, lỗi thì bỏ qua (không chặn được connection vì lý do này).
+pool.on('connect', (client) => { client.query("SET TIME ZONE 'Asia/Ho_Chi_Minh'").catch(() => {}); });
 // Bắt lỗi client rảnh bị rớt (pooler đóng, mạng chập) — KHÔNG để văng 'error' làm sập process
 pool.on('error', (err) => console.error('❌ Lỗi pool PostgreSQL (client rảnh):', err.message));
 
