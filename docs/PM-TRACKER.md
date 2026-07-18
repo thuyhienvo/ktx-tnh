@@ -70,5 +70,16 @@
 3. (dev + chị) Ai nghiệm thu UAT đa cơ sở, ngày nào?
 4. (BA) Cập nhật `BA-DOCUMENT.md` phần trạng thái cho trung thực (còn tồn đọng), khớp tracker này.
 
+## 6b. Điều chỉnh nghiệp vụ chờ áp (chị Hiền chốt 18/07 — làm ở VS Code)
+| # | Nội dung | Trạng thái |
+|---|---|---|
+| BR-1 | Ô KPI "HV chưa lập phiếu tháng này" phải drill-through ra đúng danh sách HV (đang rơi về màn tổng) | ⬜ Chờ áp |
+| BR-2 | Gộp modal "Hợp đồng chưa hoàn thiện" còn 2 nhóm: "HĐ dài hạn chưa ký" (gộp 36+34, cùng loại) + "HĐ ngắn hạn chưa ký (phiếu bàn giao)" | ⬜ Chờ áp |
+| BR-3 | Nhắc TÁCH RIÊNG "Nhận phòng >7 ngày chưa lập phiếu" (mốc 7 ngày từ ngày nhận phòng). KHÔNG quản đã thu/chưa thu — app chỉ quản TẠO phiếu | ⬜ Chờ áp |
+| BR-4 | Báo động "Đã ký HĐ dài hạn nhưng chưa có cọc" (bất biến: ký HĐ dài hạn → bắt buộc có cọc) | ⬜ Chờ áp |
+
+Ghi chú nghiệp vụ đã xác nhận: phí HV vào 15/7 (tháng 31 ngày) = **17 ngày ở, thu phí cố định 100%** (>15 ngày). Mốc nhắc ký HĐ + lập phiếu = **7 ngày kể từ ngày nhận phòng**.
+
 ## 7. Nhật ký cập nhật
+- **18/07/2026 (chiều):** Chốt 4 điều chỉnh nghiệp vụ BR-1..4 (xem mục 6b) + xác nhận quy tắc phí tháng lẻ cho ca vào 15/7. Đưa vào prompt cho VS Code.
 - **18/07/2026:** Lập tracker toàn dự án. Rà v80: nghiệp vụ đã vá (#76/#77, 256 PASS); mọi phân hệ chức năng đã có; **rủi ro số 1 = đa cơ sở chưa bắt đầu** (bằng chứng: `users` chưa có `facility_id` — schema.sql:98; vai trò chỉ admin/staff/maintenance — admin.routes.js:89; lọc cơ sở là dropdown thủ công — students.routes.js:125). Thiết lập tác vụ tự rà mỗi 2 ngày.

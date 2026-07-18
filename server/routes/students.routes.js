@@ -13,10 +13,26 @@ const roomLeaders = require('../room-leaders');
 const { badCheckoutDate, finalizeCheckout } = require('../checkout');
 const billing = require('../billing');
 const meter = require('../meter');
+const { applyFacilityFilter, isExecutive, assertFacility, resolveFacilityForCreate, userFacility } = require('../scope');
 const DATE_FIELDS = ['birth_date', 'check_in_date', 'check_out_date', 'contract_date', 'deposit_date', 'class_start_date', 'expected_departure', 'checkout_notice_date'];
 
 const router = express.Router();
 router.use(requireAuth);
+
+// Đa cơ sở: MỌI thao tác trên /:id của một học viên phải thuộc cơ sở người dùng được phép. Gom về đây
+// (router.param) để không sót endpoint nào — đọc chi tiết, sửa, check-in/out, chuyển phòng, cọc, xoá...
+// Điều hành (facility_id null): qua hết. Quản lý cơ sở: chỉ HV cơ sở mình, khác cơ sở -> 403.
+router.param('id', async (req, res, next, id) => {
+  try {
+    if (isExecutive(req)) return next();
+    if (!/^\d+$/.test(String(id))) return next();          // id không phải số -> để handler xử
+    const row = (await query('SELECT facility_id FROM students WHERE id=$1', [id])).rows[0];
+    if (!row) return next();                                // không tồn tại -> để handler trả 404 đúng ngữ cảnh
+    const bad = assertFacility(req, row.facility_id);
+    if (bad) return res.status(bad.status).json(bad);
+    next();
+  } catch (e) { next(e); }
+});
 
 const CCCD_FIELDS = ['cccd_front', 'cccd_back', 'cccd_image'];
 const signCccd = row => cccdUrls(row); // trả URL proxy cho các cột CCCD
@@ -64,7 +80,7 @@ const LIST_SELECT = `
     s.status, s.note, s.uses_washing, s.deposit_amount, s.deposit_status, s.deposit_date, s.deposit_refund_date,
     s.checkout_notice_date, s.checkout_reason, s.birth_date, s.class_name, s.rental_type, s.residency_status,
     s.contract_no, s.contract_date, s.contract_status, s.deposit_bank, s.deposit_account,
-    s.class_start_date, s.expected_departure, s.parent_phone, s.room_fee_discount_pct,
+    s.class_start_date, s.expected_departure, s.parent_phone, s.room_fee_discount_pct, s.facility_id,
     EXISTS (SELECT 1 FROM room_leaders rl WHERE rl.student_id=s.id AND rl.to_date IS NULL) AS is_leader,
     (s.cccd_front IS NOT NULL OR s.cccd_back IS NOT NULL OR s.cccd_image IS NOT NULL) AS has_cccd,
     r.name AS room_name, r.floor AS room_floor, r.gender AS room_gender, r.hang AS room_hang,
@@ -122,7 +138,13 @@ router.get('/', requireRole('admin', 'staff'), async (req, res, next) => {
     // Có page/limit -> trả { rows, total, page, limit } — nền cho frontend đa cơ sở sau này.
     const cond = [req.query.deleted === '1' ? 's.deleted_at IS NOT NULL' : 's.deleted_at IS NULL'];
     const params = [];
-    if (req.query.facility) { params.push(+req.query.facility); cond.push(`r.facility_id = $${params.length}`); }
+    // Đa cơ sở: ĐIỀU HÀNH được lọc tuỳ chọn theo ?facility; QUẢN LÝ CƠ SỞ bị ÉP theo cơ sở của mình
+    // (bỏ qua ?facility client gửi, chống lách). Lọc theo s.facility_id (giữ đồng bộ theo phòng).
+    if (isExecutive(req)) {
+      if (req.query.facility) { params.push(+req.query.facility); cond.push(`s.facility_id = $${params.length}`); }
+    } else {
+      applyFacilityFilter(req, 's.facility_id', cond, params);
+    }
     if (req.query.q && req.query.q.trim()) {
       params.push('%' + req.query.q.trim() + '%');
       cond.push(`(s.name ILIKE $${params.length} OR s.code ILIKE $${params.length} OR s.phone ILIKE $${params.length} OR r.name ILIKE $${params.length})`);
@@ -502,10 +524,17 @@ router.post('/:id/transfer', requireRole('admin', 'staff'), async (req, res, nex
     if (!room_id) return res.status(400).json({ error: 'Chọn phòng mới' });
     if (date != null && !isValidYmd(date)) return res.status(400).json({ error: 'Ngày chuyển phòng không hợp lệ' });
     const d = date || new Date().toISOString().slice(0, 10);
-    const cur = await query('SELECT room_id, gender, rental_type, name FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id]);
+    const cur = await query('SELECT room_id, gender, rental_type, name, facility_id FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id]);
     if (!cur.rows[0]) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    // Đa cơ sở: quản lý cơ sở chỉ chuyển HV của cơ sở mình, và chỉ vào phòng cơ sở mình.
+    const badS = assertFacility(req, cur.rows[0].facility_id);
+    if (badS) return res.status(badS.status).json(badS);
     const oldRoom = cur.rows[0].room_id;
     if (String(oldRoom) === String(room_id)) return res.status(400).json({ error: 'Học viên đang ở chính phòng này' });
+    const newRoomRow = (await query('SELECT facility_id FROM rooms WHERE id=$1 AND deleted_at IS NULL', [room_id])).rows[0];
+    if (!newRoomRow) return res.status(400).json({ error: 'Phòng mới không tồn tại' });
+    const badR = assertFacility(req, newRoomRow.facility_id);
+    if (badR) return res.status(badR.status).json(badR);
     // LUẬT XẾP PHÒNG — áp cả ở đường CHUYỂN PHÒNG
     const chkT = await checkRoomAssignment({ studentId: +req.params.id, gender: cur.rows[0].gender, rentalType: cur.rows[0].rental_type, roomId: room_id });
     if (blockOrConfirm(res, chkT, req.body.confirm_overload === true)) return;
@@ -520,7 +549,10 @@ router.post('/:id/transfer', requireRole('admin', 'staff'), async (req, res, nex
     }
 
     for (const w of chkT.warnings) await logOverload(req, { studentId: +req.params.id, studentName: cur.rows[0].name, warning: w });
-    const { rows } = await query(`UPDATE students SET room_id=$1 WHERE id=$2 RETURNING *`, [room_id, req.params.id]);
+    // Đa cơ sở: giữ students.facility_id ĐỒNG BỘ theo cơ sở của phòng MỚI (điều hành có thể chuyển
+    // HV sang cơ sở khác; quản lý cơ sở đã bị chặn ở trên nên newRoom cùng cơ sở).
+    const { rows } = await query(`UPDATE students SET room_id=$1, facility_id=$3 WHERE id=$2 RETURNING *`,
+      [room_id, req.params.id, newRoomRow.facility_id != null ? newRoomRow.facility_id : null]);
     await roomStays.transfer(null, +req.params.id, room_id, d); // lượt cũ hết ngày D-1, lượt mới từ ngày D
     // Chuyển đi thì thôi làm phòng trưởng phòng cũ (phòng mới muốn thì phải cử lại)
     await roomLeaders.closeStudent(null, +req.params.id, billing.addDays(d, -1));

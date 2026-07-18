@@ -4,6 +4,7 @@ const { isValidYmd } = require('../valid');
 const { recalcInvoice } = require('../invoice-calc');
 const { query } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
+const { applyFacilityFilter, isExecutive, assertFacility, resolveFacilityForCreate } = require('../scope');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -31,7 +32,14 @@ function badRoom(b, cur = {}) {
 // Danh sách phòng kèm số người đang ở + tên cơ sở. ?deleted=1 -> chỉ phòng đã xóa
 router.get('/', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
-    const cond = req.query.deleted === '1' ? 'r.deleted_at IS NOT NULL' : 'r.deleted_at IS NULL';
+    const cond = [req.query.deleted === '1' ? 'r.deleted_at IS NOT NULL' : 'r.deleted_at IS NULL'];
+    const params = [];
+    // Đa cơ sở: điều hành lọc tuỳ chọn ?facility; quản lý cơ sở bị ÉP theo cơ sở của mình.
+    if (isExecutive(req)) {
+      if (req.query.facility) { params.push(+req.query.facility); cond.push(`r.facility_id = $${params.length}`); }
+    } else {
+      applyFacilityFilter(req, 'r.facility_id', cond, params);
+    }
     const { rows } = await query(`
       SELECT r.*, f.name AS facility_name,
         (SELECT COUNT(*) FROM students s WHERE s.room_id = r.id AND s.deleted_at IS NULL
@@ -41,8 +49,8 @@ router.get('/', requireRole('admin', 'staff'), async (req, res, next) => {
            AND s.check_out_date IS NOT NULL AND s.check_out_date > CURRENT_DATE)::int AS leaving
       FROM rooms r
       LEFT JOIN facilities f ON f.id = r.facility_id
-      WHERE ${cond}
-      ORDER BY r.floor, r.name`);
+      WHERE ${cond.join(' AND ')}
+      ORDER BY r.floor, r.name`, params);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -62,8 +70,10 @@ async function facilityOk(facilityId) {
 
 router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
-    const { facility_id, name, gender, hang, capacity, monthly_fee, note, room_type } = req.body;
+    const { name, gender, hang, capacity, monthly_fee, note, room_type } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Nhập tên phòng' });
+    // Đa cơ sở: quản lý cơ sở LUÔN tạo phòng thuộc cơ sở mình (bỏ qua facility_id client gửi, chống lách).
+    const facility_id = resolveFacilityForCreate(req, req.body.facility_id);
     if (!(await facilityOk(facility_id || null))) return res.status(400).json({ error: 'Cơ sở không tồn tại hoặc đã bị xoá' });
     const badR = badRoom(req.body);
     if (badR) return res.status(400).json({ error: badR });
@@ -87,6 +97,7 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
     // MERGE với bản ghi hiện tại — field không gửi thì giữ nguyên (chống mất dữ liệu / reset room_type, capacity)
     const cur = (await query('SELECT * FROM rooms WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!cur) return res.status(404).json({ error: 'Không tìm thấy phòng' });
+    const badF = assertFacility(req, cur.facility_id); if (badF) return res.status(badF.status).json(badF); // đa cơ sở
     const raw = req.body || {};
     const g = (k, def) => (raw[k] !== undefined ? raw[k] : def);
     const name = g('name', cur.name);
@@ -113,7 +124,7 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
     const { rows } = await query(
       `UPDATE rooms SET facility_id=$1, name=$2, floor=$3, gender=$4, hang=$5, capacity=$6, monthly_fee=$7, note=$8, room_type=$9
        WHERE id=$10 RETURNING *`,
-      [g('facility_id', cur.facility_id) || null, String(name).trim(), floorOf(name),
+      [resolveFacilityForCreate(req, g('facility_id', cur.facility_id)) || null, String(name).trim(), floorOf(name),
        g('gender', cur.gender) === 'female' ? 'female' : 'male', HANG(g('hang', cur.hang)),
        +g('capacity', cur.capacity) || 0, +g('monthly_fee', cur.monthly_fee) || 0,
        g('note', cur.note) || '', RTYPE(g('room_type', cur.room_type)), req.params.id]
@@ -125,6 +136,10 @@ router.put('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
 // Xóa mềm: đánh dấu deleted_at (khôi phục được), không xóa hẳn
 router.delete('/:id', requireRole('admin', 'staff'), async (req, res, next) => {
   try {
+    // Đa cơ sở: quản lý cơ sở chỉ xoá phòng của cơ sở mình.
+    const rm = (await query('SELECT facility_id FROM rooms WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    if (!rm) return res.status(404).json({ error: 'Không tìm thấy phòng' });
+    const badF = assertFacility(req, rm.facility_id); if (badF) return res.status(badF.status).json(badF);
     // CHỈ đếm học viên CHƯA BỊ XOÁ. Trước đây đếm cả HV đã xoá -> xoá hết người rồi mà phòng vẫn
     // báo "đang có học viên ở" -> phòng kẹt vĩnh viễn không xoá được.
     const { rows } = await query(

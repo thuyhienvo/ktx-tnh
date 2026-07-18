@@ -1,9 +1,21 @@
 const express = require('express');
 const { query } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
+const { applyFacilityFilter, isExecutive } = require('../scope');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin'));
+
+// Đa cơ sở cho báo cáo doanh thu: điều hành (facility_id null) thấy TỔNG mọi cơ sở (lọc tuỳ chọn
+// ?facility); admin phụ trách một cơ sở chỉ thấy số liệu cơ sở mình. Trả điều kiện AND (qua HV).
+function revenueFacility(req, params) {
+  if (isExecutive(req)) {
+    if (req.query.facility) { params.push(+req.query.facility); return ` AND s.facility_id = $${params.length}`; }
+    return '';
+  }
+  const cond = []; applyFacilityFilter(req, 's.facility_id', cond, params);
+  return cond.length ? ' AND ' + cond.join(' AND ') : '';
+}
 
 // Doanh thu theo tháng, tách từng dịch vụ. ?year=YYYY (mặc định: tất cả)
 router.get('/revenue', async (req, res, next) => {
@@ -20,6 +32,7 @@ router.get('/revenue', async (req, res, next) => {
       if (!/^\d{4}$/.test(year)) return res.status(400).json({ error: 'Năm không hợp lệ (cần 4 chữ số).' });
       params.push(year); where += ` AND substr(i.month,1,4) = $${params.length}`;
     }
+    where += revenueFacility(req, params);
     const { rows } = await query(`
       SELECT i.month,
         COALESCE(SUM(i.room_charge),0) AS room,
@@ -42,11 +55,13 @@ router.get('/revenue', async (req, res, next) => {
 // báo cáo trắng không lời giải thích (V2-69b). Hai đường phải cho cùng một câu trả lời.
 router.get('/years', async (req, res, next) => {
   try {
+    const params = [];
+    const facWhere = revenueFacility(req, params);
     const { rows } = await query(
       `SELECT DISTINCT substr(i.month,1,4) AS y
          FROM invoices i JOIN students s ON s.id = i.student_id
-        WHERE i.deleted_at IS NULL AND s.deleted_at IS NULL
-        ORDER BY y DESC`);
+        WHERE i.deleted_at IS NULL AND s.deleted_at IS NULL${facWhere}
+        ORDER BY y DESC`, params);
     res.json(rows.map(r => r.y));
   } catch (e) { next(e); }
 });

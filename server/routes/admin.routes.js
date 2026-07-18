@@ -157,10 +157,20 @@ router.put('/users/:id', async (req, res, next) => {
     }
     // full_name: chỉ đổi khi CÓ gửi (COALESCE), đừng xoá trắng khi caller chỉ đổi vai.
     const hasName = req.body.full_name != null;
+    // Đa cơ sở: chỉ đổi facility_id khi CÓ gửi field (giống full_name). '' / null -> NULL (điều hành).
+    // requireAuth đọc lại facility_id từ DB mỗi request nên đổi xong có hiệu lực ngay, không cần thu hồi vé.
+    const hasFac = req.body.facility_id !== undefined;
+    let facVal = null;
+    if (hasFac) {
+      const fac = await parseFacilityId(req.body.facility_id);
+      if (!fac.ok) return res.status(400).json({ error: fac.error });
+      facVal = fac.value;
+    }
     await query(
-      `UPDATE users SET full_name = CASE WHEN $1 THEN $2 ELSE full_name END, role=$3
+      `UPDATE users SET full_name = CASE WHEN $1 THEN $2 ELSE full_name END, role=$3,
+         facility_id = CASE WHEN $5 THEN $6 ELSE facility_id END
        WHERE id=$4 AND role IN ('admin','staff','maintenance') AND deleted_at IS NULL`,
-      [hasName, (req.body.full_name || '').trim(), newRole, id]);
+      [hasName, (req.body.full_name || '').trim(), newRole, id, hasFac, facVal]);
     // Đổi vai trò -> THU HỒI vé cũ ngay (người vừa bị giáng chức không giữ quyền admin 30 ngày).
     if (newRole !== cur.role) await revokeTokens(id);
     res.json({ ok: true });

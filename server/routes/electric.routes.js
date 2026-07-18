@@ -2,6 +2,7 @@ const express = require('express');
 const { query, withTransaction } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { isValidMonth } = require('../valid');
+const { applyFacilityFilter, isExecutive } = require('../scope');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
@@ -19,6 +20,14 @@ router.get('/', async (req, res, next) => {
     const month = req.query.month;
     if (!isValidMonth(month)) return res.status(400).json({ error: 'Thiếu hoặc sai kỳ (tháng) — dạng YYYY-MM.' }); // TP-19: trước đây thiếu month -> 500 thô
     const pm = prevMonth(month);
+    const cond = ['r.deleted_at IS NULL'];
+    const params = [month, pm];
+    // Đa cơ sở: điều hành lọc tuỳ chọn ?facility; quản lý cơ sở bị ÉP theo cơ sở của mình.
+    if (isExecutive(req)) {
+      if (req.query.facility) { params.push(+req.query.facility); cond.push(`r.facility_id = $${params.length}`); }
+    } else {
+      applyFacilityFilter(req, 'r.facility_id', cond, params);
+    }
     const { rows } = await query(`
       SELECT r.id AS room_id, r.name AS room_name, r.floor, r.gender,
         COALESCE(e.reading_end, 0) AS reading_end,
@@ -29,8 +38,8 @@ router.get('/', async (req, res, next) => {
       FROM rooms r
       LEFT JOIN electric_readings e ON e.room_id=r.id AND e.month=$1
       LEFT JOIN electric_readings prev ON prev.room_id=r.id AND prev.month=$2
-      WHERE r.deleted_at IS NULL
-      ORDER BY r.floor, r.name`, [month, pm]);
+      WHERE ${cond.join(' AND ')}
+      ORDER BY r.floor, r.name`, params);
     res.json(rows);
   } catch (e) { next(e); }
 });

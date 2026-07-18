@@ -12,6 +12,9 @@ const router = express.Router();
 const publicUser = u => ({
   id: u.id, username: u.username, role: u.role, full_name: u.full_name,
   student_id: u.student_id, must_change_password: !!u.must_change_password,
+  // Đa cơ sở: null = điều hành (thấy tất cả); có id = quản lý/bảo trì cơ sở đó. Frontend dùng để
+  // ẩn/hiện bộ chọn cơ sở + cột "Cơ sở".
+  facility_id: u.facility_id != null ? u.facility_id : null,
 });
 
 // Cổng đăng nhập nào nhận vai nào.
@@ -90,7 +93,7 @@ router.post('/logout', async (req, res) => {
 // Thông tin người đang đăng nhập (dùng khi tải lại trang — nguồn xác thực là cookie)
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
-    const { rows } = await query('SELECT id, username, role, full_name, student_id, must_change_password FROM users WHERE id = $1', [req.user.id]);
+    const { rows } = await query('SELECT id, username, role, full_name, student_id, facility_id, must_change_password FROM users WHERE id = $1', [req.user.id]);
     if (!rows[0]) return res.status(401).json({ error: 'Tài khoản không tồn tại' });
     res.json(publicUser(rows[0]));
   } catch (e) { next(e); }

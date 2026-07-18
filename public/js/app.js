@@ -1016,7 +1016,11 @@ async function restoreRoom(id) { await guard(() => API.restoreRoom(id)); await r
 const roomFloorOf = n => { const m = String(n || '').match(/\d/); return m ? m[0] : '—'; };
 
 /* ---------- HỌC VIÊN ---------- */
-let stuSearch = '', stuFilter = 'all', stuSort = { key: '', dir: 1 };
+let stuSearch = '', stuFilter = 'all', stuSort = { key: '', dir: 1 }, stuFacilityFilter = 0;
+// Đa cơ sở: điều hành (Auth.user.facility_id null) thấy nhiều cơ sở -> hiện bộ chọn + nhãn cơ sở.
+// Quản lý/bảo trì đã bị backend ép theo cơ sở mình nên KHÔNG cần bộ chọn.
+const isExecutiveUser = () => !Auth.user || Auth.user.facility_id == null;
+const showFacilityUI = () => isExecutiveUser() && (ST.facilities || []).length > 1;
 function stuSortVal(s) {
   switch (stuSort.key) {
     case 'name': return (s.name || '').toLowerCase();
@@ -1047,6 +1051,8 @@ function viewStudents() {
   if (stuFilter === 'resi_registered') list = list.filter(s => isOccupying(s) && s.residency_status === 'registered');
   if (stuFilter === 'checkin_today') list = list.filter(s => s.check_in_date && s.check_in_date.slice(0, 10) === today());
   if (stuFilter === 'checkout_today') list = list.filter(s => s.check_out_date && s.check_out_date.slice(0, 10) === today());
+  // Đa cơ sở: điều hành lọc theo cơ sở (0 = tất cả). Quản lý cơ sở đã bị backend giới hạn nên list vốn 1 cơ sở.
+  if (stuFacilityFilter) list = list.filter(s => s.facility_id === stuFacilityFilter);
   // Tìm kiếm áp dụng bằng ẩn/hiện hàng (attachRowSearch) — không lọc dựng lại ở đây
   const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
   const cnt = f => ST.students.filter(f).length;
@@ -1071,6 +1077,10 @@ function viewStudents() {
       <button class="btn sm ${stuFilter === 'contract_overdue' ? 'pri' : ''}" onclick="stuFilter='contract_overdue';viewStudents()">${IC.alert} Ghép >7 ngày chưa ký HĐ (${cnt(contractOverdue)})</button>
     </div>
     <div class="panel"><div class="hd"><h2>Học viên (<span id="stuCount">${list.length}</span>)</h2>
+      ${showFacilityUI() ? `<select id="stuFacSel" onchange="stuFacilityFilter=+this.value||0;viewStudents()" style="font-size:13px;padding:6px 8px">
+        <option value="0">${IC.building} Tất cả cơ sở</option>
+        ${(ST.facilities || []).map(f => `<option value="${f.id}" ${stuFacilityFilter === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}
+      </select>` : ''}
       <div class="search"><span class="i">${IC.search}</span><input id="ss" placeholder="Tìm tên, mã, lớp, SĐT, số phòng..." value="${esc(stuSearch)}"></div>
     </div><div class="table-wrap">
       ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}${hasXC ? '<th>Dự kiến XC</th>' : ''}${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
@@ -1080,7 +1090,7 @@ function viewStudents() {
         return `<tr data-s="${ds}">
         <td><div class="flex"><span class="avatar">${esc(initials(s.name))}</span><div>
           <strong>${esc(s.name)}</strong> <span class="badge ${s.gender === 'female' ? 'red' : 'blue'}" style="font-size:10px">${genderLabel(s.gender)}</span>${s.login_username ? ` <span title="Có tài khoản">${IC.key}</span>` : ''}
-          <div class="sub2">${esc(s.code || '—')}${s.class_name ? ' · ' + esc(s.class_name) : ''}${flags}</div>
+          <div class="sub2">${esc(s.code || '—')}${s.class_name ? ' · ' + esc(s.class_name) : ''}${showFacilityUI() && s.facility_id ? ` · <span class="badge gray" style="font-size:10px">${esc(facilityName(s.facility_id))}</span>` : ''}${flags}</div>
         </div></div></td>
         <td>${s.room_name ? `<strong>${esc(s.room_name)}</strong>` : '<span class="muted">Chưa xếp</span>'}<div class="sub2">${RENTAL_LABEL[s.rental_type] || 'Thuê ghép'}</div></td>
         <td><span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span>${s.contract_no ? `<div class="sub2">${esc(s.contract_no)}</div>` : ''}</td>
@@ -2743,8 +2753,8 @@ function viewSettings() {
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.shield} Người dùng & phân quyền</h2><button class="btn sm" onclick="userForm()">${IC.plus} Thêm nhân viên</button></div>
-      <div class="table-wrap"><table><thead><tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Vai trò</th><th></th></tr></thead>
-        <tbody id="usrRows"><tr><td colspan="4"><div class="spinner"></div></td></tr></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Vai trò</th><th>Cơ sở</th><th></th></tr></thead>
+        <tbody id="usrRows"><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody></table></div>
       <div class="pad muted" style="font-size:12.5px">${IC.bulb} <strong>Quản trị viên</strong> có toàn quyền (kể cả Điều hành, Doanh thu, Nhật ký, Cài đặt). <strong>Nhân viên</strong> chỉ thao tác nghiệp vụ (Học viên, Phòng, Xe, Check-in/out, Tiền phòng, Tiếp nhận & Hỗ trợ) và đều được ghi vào Nhật ký.</div>
     </div>
 
@@ -2760,7 +2770,7 @@ const ROLE_LABEL = { admin: ['Quản trị viên', 'gray'], staff: ['Nhân viên
 async function loadAdminUsers() {
   const box = el('usrRows'); if (!box) return;
   let users = [];
-  try { users = await API.adminUsers(); } catch (e) { box.innerHTML = `<tr><td colspan="4" class="muted">${esc(e.message)}</td></tr>`; return; }
+  try { users = await API.adminUsers(); } catch (e) { box.innerHTML = `<tr><td colspan="5" class="muted">${esc(e.message)}</td></tr>`; return; }
   const me = Auth.user.id;
   box.innerHTML = users.map(u => {
     const [rl, rc] = ROLE_LABEL[u.role] || [u.role, 'gray'];
@@ -2768,13 +2778,14 @@ async function loadAdminUsers() {
       <td><strong>${esc(u.username)}</strong>${u.id === me ? ' <span class="badge amber" style="font-size:10px">Bạn</span>' : ''}</td>
       <td>${esc(u.full_name || '—')}</td>
       <td><span class="badge ${rc}">${rl}</span></td>
+      <td>${u.facility_id ? esc(u.facility_name || facilityName(u.facility_id)) : '<span class="badge gray" title="Điều hành — thấy tất cả cơ sở">Tất cả</span>'}</td>
       <td class="num"><div class="rowbtns" style="justify-content:flex-end">
         <button class="btn sm" onclick="userForm(${u.id})">Sửa</button>
         <button class="btn sm" onclick="resetUserPwForm(${u.id})">${IC.key} MK</button>
         ${u.id === me ? '' : `<button class="btn sm ghost" title="Xóa" onclick="delUser(${u.id}, '${esc(u.username).replace(/'/g, "\\'")}')">${IC.trash}</button>`}
       </div></td>
     </tr>`;
-  }).join('') || '<tr><td colspan="4" class="muted">Chưa có tài khoản.</td></tr>';
+  }).join('') || '<tr><td colspan="5" class="muted">Chưa có tài khoản.</td></tr>';
   window._usrCache = users;
 }
 function userForm(id) {
@@ -2786,14 +2797,18 @@ function userForm(id) {
     <div class="mb">
       <div class="field"><label>Tên đăng nhập *</label><input id="u_username" value="${esc(u.username)}" ${id ? 'disabled' : ''} placeholder="vd: nhanvien01"></div>
       <div class="field"><label>Họ tên</label><input id="u_full" value="${esc(u.full_name || '')}" placeholder="Nguyễn Văn A"></div>
-      <div class="field"><label>Vai trò</label><select id="u_role">${roleOpt('staff', 'Nhân viên — thao tác nghiệp vụ')}${roleOpt('maintenance', 'Bảo trì — xử lý báo hư hỏng')}${roleOpt('admin', 'Quản trị viên — toàn quyền')}</select></div>
+      <div class="field"><label>Vai trò</label><select id="u_role">${roleOpt('staff', 'Nhân viên — thao tác nghiệp vụ')}${roleOpt('maintenance', 'Bảo trì / An ninh — xử lý báo hư hỏng')}${roleOpt('admin', 'Quản trị viên — toàn quyền')}</select></div>
+      <div class="field"><label>Cơ sở phụ trách</label><select id="u_facility">
+        <option value="">Tất cả cơ sở (điều hành)</option>
+        ${(ST.facilities || []).map(f => `<option value="${f.id}" ${u.facility_id === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}
+      </select><div class="sub2" style="margin-top:4px">Để "Tất cả cơ sở" = điều hành, thấy &amp; quản lý mọi cơ sở. Chọn một cơ sở = chỉ thấy dữ liệu cơ sở đó.</div></div>
       ${id ? '' : `<div class="field"><label>Mật khẩu *</label><input id="u_pass" type="text" placeholder="Tối thiểu 4 ký tự"></div>`}
       ${id === Auth.user.id ? `<div class="hint">${IC.info} Bạn không thể tự hạ quyền chính mình.</div>` : ''}
     </div>
     <div class="mf"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" onclick="saveUser(${id || 0})">Lưu</button></div>`);
 }
 async function saveUser(id) {
-  const body = { full_name: el('u_full').value.trim(), role: el('u_role').value };
+  const body = { full_name: el('u_full').value.trim(), role: el('u_role').value, facility_id: el('u_facility').value };
   if (!id) { body.username = el('u_username').value.trim(); body.password = el('u_pass').value.trim(); }
   await guard(() => id ? API.updateUser(id, body) : API.createUser(body));
   closeModal(); toast(id ? 'Đã cập nhật tài khoản' : 'Đã tạo tài khoản'); loadAdminUsers();

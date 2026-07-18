@@ -1,9 +1,23 @@
 const express = require('express');
 const { query } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
+const { applyFacilityFilter, isExecutive, assertFacility } = require('../scope');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
+
+// Đa cơ sở: thao tác trên /:id của một xe phải thuộc cơ sở người dùng (qua HV chủ xe).
+router.param('id', async (req, res, next, id) => {
+  try {
+    if (isExecutive(req)) return next();
+    if (!/^\d+$/.test(String(id))) return next();
+    const row = (await query('SELECT s.facility_id FROM vehicles v JOIN students s ON s.id=v.student_id WHERE v.id=$1', [id])).rows[0];
+    if (!row) return next();
+    const bad = assertFacility(req, row.facility_id);
+    if (bad) return res.status(bad.status).json(bad);
+    next();
+  } catch (e) { next(e); }
+});
 
 // Chuẩn hoá biển số để so trùng: bỏ mọi ký tự không phải chữ/số, viết hoa.
 // "63-B4 508.58" và "63B450858" là CÙNG một xe -> phải nhận ra là trùng (V2-22).
@@ -12,14 +26,22 @@ const chuanBien = p => String(p || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
 // Danh sách xe (kèm thông tin học viên + phòng + trạng thái ở)
 router.get('/', async (req, res, next) => {
   try {
+    // Đa cơ sở: điều hành lọc tuỳ chọn ?facility; quản lý cơ sở bị ÉP theo cơ sở của mình (qua HV).
+    const cond = ['v.deleted_at IS NULL', 's.deleted_at IS NULL'];
+    const params = [];
+    if (isExecutive(req)) {
+      if (req.query.facility) { params.push(+req.query.facility); cond.push(`s.facility_id = $${params.length}`); }
+    } else {
+      applyFacilityFilter(req, 's.facility_id', cond, params);
+    }
     const { rows } = await query(`
       SELECT v.*, s.name AS student_name, s.status AS student_status, s.check_out_date,
         r.name AS room_name, r.gender AS room_gender
       FROM vehicles v
       JOIN students s ON s.id = v.student_id
       LEFT JOIN rooms r ON r.id = s.room_id
-      WHERE v.deleted_at IS NULL AND s.deleted_at IS NULL
-      ORDER BY r.name, s.name`);
+      WHERE ${cond.join(' AND ')}
+      ORDER BY r.name, s.name`, params);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -31,8 +53,10 @@ router.post('/', async (req, res, next) => {
     if (!sid) return res.status(400).json({ error: 'Thiếu học viên' });
     // Học viên phải TỒN TẠI + chưa xoá. Trước đây student_id=99999 hoặc "abc" -> FK ném 23503 -> 500;
     // giờ báo 400 có nghĩa (V2-25).
-    const st = (await query('SELECT id FROM students WHERE id=$1 AND deleted_at IS NULL', [sid])).rows[0];
+    const st = (await query('SELECT id, facility_id FROM students WHERE id=$1 AND deleted_at IS NULL', [sid])).rows[0];
     if (!st) return res.status(400).json({ error: 'Học viên không tồn tại hoặc đã xoá' });
+    const badF = assertFacility(req, st.facility_id); if (badF) return res.status(badF.status).json(badF); // đa cơ sở
+
     // Biển số BẮT BUỘC — không cho biển rỗng (biển rỗng lọt qua unique index, nhân phí gửi xe
     // tuỳ ý: 10 xe biển rỗng = +1.000.000đ/tháng) (V2-21).
     if (!plate || !plate.trim()) return res.status(400).json({ error: 'Biển số xe là bắt buộc' });

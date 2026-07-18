@@ -6,19 +6,50 @@ const { isValidYmd } = require('../valid');
 const roomStays = require('../room-stays');
 const meter = require('../meter');
 const { badCheckoutDate, finalizeCheckout } = require('../checkout');
+const { applyFacilityFilter, isExecutive, assertFacility } = require('../scope');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
 
+// Đa cơ sở: WHERE lọc theo cơ sở (qua HV s.facility_id). Điều hành: tuỳ chọn ?facility. Quản lý: ép.
+function facilityWhere(req) {
+  const cond = [], params = [];
+  if (isExecutive(req)) {
+    if (req.query.facility) { params.push(+req.query.facility); cond.push(`s.facility_id = $${params.length}`); }
+  } else {
+    applyFacilityFilter(req, 's.facility_id', cond, params);
+  }
+  return { where: cond.length ? `WHERE ${cond.join(' AND ')}` : '', params };
+}
+// Đa cơ sở: chặn thao tác lên đơn trả phòng / báo hư hỏng NGOÀI cơ sở người dùng (trả true nếu đã chặn).
+async function blockByCheckoutReq(req, res, id) {
+  if (isExecutive(req)) return false;
+  const row = (await query('SELECT s.facility_id FROM checkout_requests c LEFT JOIN students s ON s.id=c.student_id WHERE c.id=$1', [id])).rows[0];
+  if (!row) return false;
+  const bad = assertFacility(req, row.facility_id);
+  if (bad) { res.status(bad.status).json(bad); return true; }
+  return false;
+}
+async function blockByDamage(req, res, id) {
+  if (isExecutive(req)) return false;
+  const row = (await query('SELECT COALESCE(s.facility_id, r.facility_id) AS fid FROM damage_reports d LEFT JOIN students s ON s.id=d.student_id LEFT JOIN rooms r ON r.id=d.room_id WHERE d.id=$1', [id])).rows[0];
+  if (!row) return false;
+  const bad = assertFacility(req, row.fid);
+  if (bad) { res.status(bad.status).json(bad); return true; }
+  return false;
+}
+
 /* ---- Báo cáo hư hỏng ---- */
 router.get('/damage', async (req, res, next) => {
   try {
+    const { where, params } = facilityWhere(req);
     const { rows } = await query(`
       SELECT d.*, s.name AS student_name, r.name AS room_name
       FROM damage_reports d
       LEFT JOIN students s ON s.id = d.student_id
       LEFT JOIN rooms r ON r.id = d.room_id
-      ORDER BY (d.status<>'done') DESC, d.created_at DESC`);
+      ${where}
+      ORDER BY (d.status<>'done') DESC, d.created_at DESC`, params);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -26,6 +57,7 @@ router.get('/damage', async (req, res, next) => {
 const TASK_STATUS = ['new', 'processing', 'blocked', 'done'];
 router.put('/damage/:id', async (req, res, next) => {
   try {
+    if (await blockByDamage(req, res, req.params.id)) return; // đa cơ sở
     // Trạng thái: chỉ đổi khi CÓ gửi và HỢP LỆ. Không gửi -> GIỮ nguyên (trước đây thiếu status là
     // reset về 'new', nên admin chỉ sửa ghi chú cho việc đang 'blocked' cũng làm mất trạng thái + lý do).
     const hasStatus = req.body.status != null && req.body.status !== '';
@@ -48,6 +80,7 @@ router.put('/damage/:id', async (req, res, next) => {
 // Duyệt & chuyển bộ phận bảo trì (chỉ áp dụng báo hư hỏng phòng)
 router.post('/damage/:id/assign', async (req, res, next) => {
   try {
+    if (await blockByDamage(req, res, req.params.id)) return; // đa cơ sở
     const { rows } = await query(
       `UPDATE damage_reports SET assigned_at=now(), status=CASE WHEN status='done' THEN status ELSE 'processing' END
        WHERE id=$1 AND category='damage' RETURNING *`, [req.params.id]);
@@ -59,12 +92,14 @@ router.post('/damage/:id/assign', async (req, res, next) => {
 /* ---- Đơn đăng ký trả phòng ---- */
 router.get('/checkout', async (req, res, next) => {
   try {
+    const { where, params } = facilityWhere(req);
     const { rows } = await query(`
       SELECT c.*, s.name AS student_name, s.deposit_status, r.name AS room_name
       FROM checkout_requests c
       LEFT JOIN students s ON s.id = c.student_id
       LEFT JOIN rooms r ON r.id = s.room_id
-      ORDER BY (c.status='pending') DESC, c.created_at DESC`);
+      ${where}
+      ORDER BY (c.status='pending') DESC, c.created_at DESC`, params);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -72,6 +107,7 @@ router.get('/checkout', async (req, res, next) => {
 // Xác nhận trả phòng: thực hiện check-out thật cho học viên
 router.post('/checkout/:id/confirm', async (req, res, next) => {
   try {
+    if (await blockByCheckoutReq(req, res, req.params.id)) return; // đa cơ sở
     const cr = (await query('SELECT * FROM checkout_requests WHERE id=$1', [req.params.id])).rows[0];
     if (!cr) return res.status(404).json({ error: 'Không tìm thấy đơn' });
     // CHỈ duyệt đơn ĐANG CHỜ. Đơn đã xử lý mà bấm lại -> check-out chạy lần nữa, ghi thêm
@@ -130,6 +166,7 @@ router.post('/checkout/:id/confirm', async (req, res, next) => {
 
 router.put('/checkout/:id/note', async (req, res, next) => {
   try {
+    if (await blockByCheckoutReq(req, res, req.params.id)) return; // đa cơ sở
     const { rows } = await query('UPDATE checkout_requests SET admin_note=$1 WHERE id=$2 RETURNING id', [req.body.note || '', req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy đơn' });
     res.json({ ok: true });
@@ -138,6 +175,7 @@ router.put('/checkout/:id/note', async (req, res, next) => {
 
 router.post('/checkout/:id/reject', async (req, res, next) => {
   try {
+    if (await blockByCheckoutReq(req, res, req.params.id)) return; // đa cơ sở
     const cr = (await query('SELECT status FROM checkout_requests WHERE id=$1', [req.params.id])).rows[0];
     if (!cr) return res.status(404).json({ error: 'Không tìm thấy đơn' });     // đừng trả {ok:true} cho đơn không có thật
     // Chỉ từ chối được đơn ĐANG CHỜ. Từ chối một đơn ĐÃ DUYỆT thì đơn ghi "đã từ chối" nhưng

@@ -6,9 +6,23 @@ const { recalcInvoice, roomRoster, studentElectric } = require('../invoice-calc'
 const roomLeaders = require('../room-leaders');
 const { isValidMonth } = require('../valid');
 const vehCount = require('../vehicle-count');
+const { applyFacilityFilter, isExecutive, assertFacility } = require('../scope');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
+
+// Đa cơ sở: mọi thao tác trên /:id của một hoá đơn phải thuộc cơ sở người dùng được phép (qua HV).
+router.param('id', async (req, res, next, id) => {
+  try {
+    if (isExecutive(req)) return next();
+    if (!/^\d+$/.test(String(id))) return next();
+    const row = (await query('SELECT s.facility_id FROM invoices i JOIN students s ON s.id=i.student_id WHERE i.id=$1', [id])).rows[0];
+    if (!row) return next();
+    const bad = assertFacility(req, row.facility_id);
+    if (bad) return res.status(bad.status).json(bad);
+    next();
+  } catch (e) { next(e); }
+});
 
 // Mọi khoản tiền phải là số KHÔNG ÂM. Ô nhập có min=0 nhưng đó chỉ là thuộc tính HTML —
 // gọi thẳng API thì room_charge=-99999999 vẫn lọt, kéo tụt doanh thu năm.
@@ -54,9 +68,17 @@ const SELECT = `
 router.get('/', async (req, res, next) => {
   try {
     const { month } = req.query;
-    const rows = month
-      ? (await query(`${SELECT} WHERE i.month=$1 AND i.deleted_at IS NULL ORDER BY s.name`, [month])).rows
-      : (await query(`${SELECT} WHERE i.deleted_at IS NULL ORDER BY i.month DESC, s.name`)).rows;
+    const cond = ['i.deleted_at IS NULL'];
+    const params = [];
+    if (month) { params.push(month); cond.push(`i.month=$${params.length}`); }
+    // Đa cơ sở: điều hành lọc tuỳ chọn ?facility; quản lý cơ sở bị ÉP theo cơ sở của mình (theo HV).
+    if (isExecutive(req)) {
+      if (req.query.facility) { params.push(+req.query.facility); cond.push(`s.facility_id = $${params.length}`); }
+    } else {
+      applyFacilityFilter(req, 's.facility_id', cond, params);
+    }
+    const order = month ? 'ORDER BY s.name' : 'ORDER BY i.month DESC, s.name';
+    const { rows } = await query(`${SELECT} WHERE ${cond.join(' AND ')} ${order}`, params);
     res.json(rows);
   } catch (e) { next(e); }
 });

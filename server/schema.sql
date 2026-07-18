@@ -88,7 +88,7 @@ ALTER TABLE students ADD COLUMN IF NOT EXISTS checkout_confirm_note TEXT DEFAULT
 ALTER TABLE students ADD COLUMN IF NOT EXISTS facility_id INTEGER;
 UPDATE students s SET facility_id = r.facility_id
   FROM rooms r WHERE s.room_id = r.id AND s.facility_id IS NULL AND r.facility_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS ix_students_facility ON students (facility_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_students_facility ON students (facility_id);
 
 -- Xe của học viên
 CREATE TABLE IF NOT EXISTS vehicles (
@@ -120,7 +120,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS token_epoch INTEGER NOT NULL DEFAULT 
 --   có id = QUẢN LÝ CƠ SỞ — chỉ thấy & thao tác dữ liệu đúng cơ sở đó.
 -- Vai (role) quyết định LÀM ĐƯỢC GÌ; facility_id quyết định THẤY DỮ LIỆU NÀO. Hai trục độc lập.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS facility_id INTEGER REFERENCES facilities(id) ON DELETE SET NULL;
-CREATE INDEX IF NOT EXISTS ix_users_facility ON users (facility_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_users_facility ON users (facility_id);
 
 CREATE TABLE IF NOT EXISTS logs (
   id          SERIAL PRIMARY KEY,

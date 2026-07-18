@@ -137,6 +137,13 @@ router.post('/apply', async (req, res, next) => {
     // không cứu được vì nó chỉ so đơn với phòng, không biết đơn đã sai từ đầu.
     if (!isValidGender(b.gender))
       return res.status(400).json({ error: 'Vui lòng chọn giới tính (nam hoặc nữ)' });
+    // Đa cơ sở: BẮT BUỘC chọn cơ sở — đơn về đúng quản lý cơ sở đó. Phải là cơ sở có thật, chưa xoá.
+    const facId = Number(b.facility_id);
+    if (!Number.isInteger(facId) || facId <= 0)
+      return res.status(400).json({ error: 'Vui lòng chọn cơ sở ký túc xá bạn muốn đăng ký' });
+    const facOk = await query('SELECT 1 FROM facilities WHERE id=$1 AND deleted_at IS NULL', [facId]);
+    if (!facOk.rows.length)
+      return res.status(400).json({ error: 'Cơ sở đã chọn không hợp lệ (có thể vừa bị gỡ) — vui lòng chọn lại' });
     const qua = tooLong(b, { name: 120, phone: 20, code: 40, class_name: 80, pref: 500, note: 2000, plate: 20 });
     if (qua) return res.status(400).json({ error: qua });
     // Ngày sinh: phải là ngày CÓ THẬT và không ở tương lai; sai -> bỏ qua (null) thay vì lỗi 500
@@ -177,7 +184,7 @@ router.post('/apply', async (req, res, next) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
       [b.name.trim(), b.phone.trim(), b.gender, birthDate,
        b.code || '', b.class_name || '', b.rental_type === 'phong' ? 'phong' : 'ghep', b.pref || '', b.note || '',
-       !!b.wants_washing, !!b.wants_parking, b.plate || '', +b.facility_id || null]
+       !!b.wants_washing, !!b.wants_parking, b.plate || '', facId]
     );
     const appId = rows[0].id;
 

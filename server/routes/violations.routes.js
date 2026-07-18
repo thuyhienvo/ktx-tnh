@@ -4,6 +4,36 @@ const { query, getSettings, withTransaction } = db;
 const { requireAuth, requireRole } = require('../auth');
 const { sendViolationMail, mailStatus } = require('../mailer');
 const { isValidYmd, rejectUnknown } = require('../valid');
+const { applyFacilityFilter, isExecutive, assertFacility } = require('../scope');
+
+// Đa cơ sở: chặn thao tác lên HV / vi phạm NGOÀI cơ sở người dùng. Trả true (đã gửi response) nếu chặn.
+async function blockByStudent(req, res, studentId) {
+  if (isExecutive(req)) return false;
+  const row = (await query('SELECT facility_id FROM students WHERE id=$1', [studentId])).rows[0];
+  const bad = assertFacility(req, row ? row.facility_id : null);
+  if (bad) { res.status(bad.status).json(bad); return true; }
+  return false;
+}
+async function blockByViolation(req, res, vioId) {
+  if (isExecutive(req)) return false;
+  const row = (await query('SELECT s.facility_id FROM violations v JOIN students s ON s.id=v.student_id WHERE v.id=$1', [vioId])).rows[0];
+  if (!row) return false; // không có -> để handler trả 404
+  const bad = assertFacility(req, row.facility_id);
+  if (bad) { res.status(bad.status).json(bad); return true; }
+  return false;
+}
+
+// Đa cơ sở: điều kiện lọc theo cơ sở (qua HV). Trả { facWhere, params } để nối vào truy vấn có JOIN students s.
+// Điều hành: lọc tuỳ chọn ?facility. Quản lý cơ sở: ÉP theo cơ sở của mình.
+function facilityScope(req) {
+  const cond = [], params = [];
+  if (isExecutive(req)) {
+    if (req.query.facility) { params.push(+req.query.facility); cond.push(`s.facility_id = $${params.length}`); }
+  } else {
+    applyFacilityFilter(req, 's.facility_id', cond, params);
+  }
+  return { facWhere: cond.length ? ' AND ' + cond.join(' AND ') : '', params };
+}
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
@@ -105,6 +135,7 @@ router.get('/stats', async (req, res, next) => {
 /* ---------- Vi phạm theo học viên ---------- */
 router.get('/student/:id', async (req, res, next) => {
   try {
+    if (await blockByStudent(req, res, req.params.id)) return; // đa cơ sở
     const { rows } = await query('SELECT * FROM violations WHERE student_id=$1 AND deleted_at IS NULL ORDER BY date DESC, id DESC', [req.params.id]);
     res.json(rows);
   } catch (e) { next(e); }
@@ -115,24 +146,24 @@ router.get('/', async (req, res, next) => {
   try {
     // Phân trang tuỳ chọn (như /students): có page/limit -> { rows, total, page, limit }, không thì cả list.
     const paged = req.query.page != null || req.query.limit != null;
+    const { facWhere, params } = facilityScope(req);
     const baseFrom = `FROM violations v JOIN students s ON s.id=v.student_id
       LEFT JOIN rooms r ON r.id=s.room_id
-      WHERE v.deleted_at IS NULL AND s.deleted_at IS NULL`;
+      WHERE v.deleted_at IS NULL AND s.deleted_at IS NULL${facWhere}`;
     if (paged) {
       const limit = Math.min(200, Math.max(1, +req.query.limit || 50));
       const page = Math.max(1, +req.query.page || 1);
-      const total = (await query(`SELECT COUNT(*)::int c ${baseFrom}`)).rows[0].c;
+      const total = (await query(`SELECT COUNT(*)::int c ${baseFrom}`, params)).rows[0].c;
+      params.push(limit); const pL = params.length;
+      params.push((page - 1) * limit); const pO = params.length;
       const { rows } = await query(
         `SELECT v.*, s.name AS student_name, s.code AS student_code, r.name AS room_name ${baseFrom}
-         ORDER BY v.date DESC, v.id DESC LIMIT $1 OFFSET $2`, [limit, (page - 1) * limit]);
+         ORDER BY v.date DESC, v.id DESC LIMIT $${pL} OFFSET $${pO}`, params);
       return res.json({ rows, total, page, limit });
     }
-    const { rows } = await query(`
-      SELECT v.*, s.name AS student_name, s.code AS student_code, r.name AS room_name
-      FROM violations v JOIN students s ON s.id=v.student_id
-      LEFT JOIN rooms r ON r.id=s.room_id
-      WHERE v.deleted_at IS NULL AND s.deleted_at IS NULL
-      ORDER BY v.date DESC, v.id DESC`);
+    const { rows } = await query(
+      `SELECT v.*, s.name AS student_name, s.code AS student_code, r.name AS room_name ${baseFrom}
+       ORDER BY v.date DESC, v.id DESC`, params);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -147,6 +178,7 @@ router.post('/', async (req, res, next) => {
     // V2-04: HV phải TỒN TẠI + chưa xoá (trước thiếu deleted_at -> ghi vi phạm cho HV đã xoá, mail vẫn bay).
     const student = (await query('SELECT id, name FROM students WHERE id=$1 AND deleted_at IS NULL', [b.student_id])).rows[0];
     if (!student) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    if (await blockByStudent(req, res, b.student_id)) return; // đa cơ sở: không ghi vi phạm cho HV cơ sở khác
     // V2-06: loại vi phạm BẮT BUỘC chọn từ danh mục (type_id), phải tồn tại + đang active. Không cho
     // gõ tay type_name/severity (V2-07: severity lấy từ loại, không nhận chuỗi tự do rồi âm thầm hạ 'minor').
     if (!b.type_id) return res.status(400).json({ error: 'Chọn loại vi phạm từ danh mục' });
@@ -206,6 +238,7 @@ router.post('/', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
   try {
+    if (await blockByViolation(req, res, req.params.id)) return; // đa cơ sở
     const b = req.body;
     const bad = rejectUnknown(b, ['note', 'admin_note', 'status']);
     if (bad) return res.status(400).json({ error: bad });
@@ -228,6 +261,7 @@ router.put('/:id', async (req, res, next) => {
 // Xóa mềm
 router.delete('/:id', async (req, res, next) => {
   try {
+    if (await blockByViolation(req, res, req.params.id)) return; // đa cơ sở
     const row = (await query('SELECT student_id FROM violations WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!row) return res.status(404).json({ error: 'Không tìm thấy vi phạm' });
     await query('UPDATE violations SET deleted_at=now() WHERE id=$1', [req.params.id]);
@@ -242,6 +276,7 @@ router.delete('/:id', async (req, res, next) => {
 // Gửi (lại) mail nhà trường thủ công cho 1 học viên
 router.post('/student/:id/notify', async (req, res, next) => {
   try {
+    if (await blockByStudent(req, res, req.params.id)) return; // đa cơ sở
     // V2-03: kiểm NGƯỠNG trước — bấm "Gửi mail" khi HV mới vi phạm 1 lần thì KHÔNG gửi.
     // force=true: đây là hành động thủ công của staff -> cho gửi lại kể cả đã báo (vd lần auto bị lỗi),
     // nhưng vẫn phải đủ ngưỡng.

@@ -5,16 +5,39 @@ const { requireAuth, requireRole } = require('../auth');
 const { checkRoomAssignment, logOverload, blockOrConfirm } = require('../room-rules');
 const { isValidYmd, checkPassword } = require('../valid');
 const roomStays = require('../room-stays');
+const { applyFacilityFilter, isExecutive, assertFacility, canAccessFacility } = require('../scope');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('admin', 'staff'));
 
+// Đa cơ sở: mọi thao tác trên /:id của một đơn (duyệt/từ chối/xoá/ghi chú) phải thuộc cơ sở người dùng.
+router.param('id', async (req, res, next, id) => {
+  try {
+    if (isExecutive(req)) return next();
+    if (!/^\d+$/.test(String(id))) return next();
+    const row = (await query('SELECT facility_id FROM applications WHERE id=$1', [id])).rows[0];
+    if (!row) return next();
+    const bad = assertFacility(req, row.facility_id);
+    if (bad) return res.status(bad.status).json(bad);
+    next();
+  } catch (e) { next(e); }
+});
+
 router.get('/', async (req, res, next) => {
   try {
+    // Đa cơ sở: đơn đăng ký chỉ hiện cho quản lý ĐÚNG cơ sở đó (a.facility_id); điều hành thấy hết
+    // (lọc tuỳ chọn ?facility). Quản lý cơ sở bị ÉP theo cơ sở của mình.
+    const cond = ['a.deleted_at IS NULL'];
+    const params = [];
+    if (isExecutive(req)) {
+      if (req.query.facility) { params.push(+req.query.facility); cond.push(`a.facility_id = $${params.length}`); }
+    } else {
+      applyFacilityFilter(req, 'a.facility_id', cond, params);
+    }
     const { rows } = await query(`SELECT a.*, f.name AS facility_name FROM applications a
       LEFT JOIN facilities f ON f.id = a.facility_id
-      WHERE a.deleted_at IS NULL
-      ORDER BY (a.status='pending') DESC, a.created_at DESC`);
+      WHERE ${cond.join(' AND ')}
+      ORDER BY (a.status='pending') DESC, a.created_at DESC`, params);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -39,8 +62,18 @@ router.post('/:id/approve', async (req, res, next) => {
     // chối (reviewed_at bị ghi đè) (V2-57b).
     if (app.status !== 'pending')
       return res.status(400).json({ error: app.status === 'approved' ? 'Đơn đã được duyệt' : 'Đơn đã bị từ chối — không thể duyệt. Nếu muốn nhận, hãy để học viên nộp đơn mới.' });
+    // Đa cơ sở: quản lý cơ sở chỉ duyệt đơn THUỘC cơ sở mình (đơn cơ sở khác -> 403).
+    const badFac = assertFacility(req, app.facility_id);
+    if (badFac) return res.status(badFac.status).json(badFac);
 
     const b = req.body; // room_id, check_in_date, create_login, deposit_paid, deposit_amount, contract_no/date/status, rental_type
+    // Chỉ xếp phòng THUỘC cơ sở của đơn (không xếp HV cơ sở A vào phòng cơ sở B).
+    if (b.room_id) {
+      const rm = (await query('SELECT facility_id FROM rooms WHERE id=$1 AND deleted_at IS NULL', [b.room_id])).rows[0];
+      if (!rm) return res.status(400).json({ error: 'Phòng không tồn tại' });
+      if (app.facility_id != null && rm.facility_id !== app.facility_id)
+        return res.status(400).json({ error: 'Phòng được chọn không thuộc cơ sở của đơn đăng ký — chọn phòng đúng cơ sở.' });
+    }
     // V2-56: duyệt đơn KHÔNG được đi vòng qua validate của hồ sơ học viên (đường /students có kiểm,
     // đường này trước đây không import valid.js dòng nào).
     if (b.check_in_date != null && !isValidYmd(b.check_in_date))
@@ -129,13 +162,14 @@ router.post('/:id/approve', async (req, res, next) => {
       const { rows } = await client.query(
         `INSERT INTO students (code, name, gender, phone, birth_date, class_name, room_id, check_in_date, status, note,
            rental_type, residency_status, contract_no, contract_date, contract_status, uses_washing, deposit_amount, deposit_status, deposit_date,
-           cccd_front, cccd_back)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'in',$9,$10,'unregistered',$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+           cccd_front, cccd_back, facility_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'in',$9,$10,'unregistered',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
         [app.code || '', app.name, app.gender, app.phone, app.birth_date, app.class_name,
          b.room_id || null, checkIn, app.note || '', b.rental_type || app.rental_type || 'ghep',
          b.contract_no || '', b.contract_date || null, cStatus,
          !!app.wants_washing, takeDeposit ? depositAmt : 0, takeDeposit ? 'held' : 'none', takeDeposit ? checkIn : null,
-         app.cccd_front || null, app.cccd_back || null]
+         app.cccd_front || null, app.cccd_back || null,
+         app.facility_id != null ? app.facility_id : null]  // đa cơ sở: HV thuộc cơ sở của đơn
       );
       const st = rows[0];
       // Mở lượt ở phòng ngay từ đầu -> về sau chuyển/trả phòng mới cắt chặng tính điện được

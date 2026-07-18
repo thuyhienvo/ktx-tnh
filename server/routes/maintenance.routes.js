@@ -4,9 +4,21 @@ const { requireAuth, requireRole } = require('../auth');
 const { recalcInvoice } = require('../invoice-calc');
 const { isValidYmd } = require('../valid');
 const { badCheckoutDate, finalizeCheckout } = require('../checkout');
+const { isExecutive, userFacility, assertFacility } = require('../scope');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('maintenance', 'admin'));
+
+// Đa cơ sở: bảo trì/an ninh CHỈ thấy việc thuộc cơ sở mình. Trả thêm mệnh đề AND (append params).
+//   col: cột facility_id trong truy vấn (vd 's.facility_id' hoặc 'facility_id' khi không join).
+// Điều hành (admin, facility_id null): thấy tất cả (lọc tuỳ chọn ?facility). Bảo trì/quản lý: ÉP.
+function facClause(req, params, col) {
+  if (isExecutive(req)) {
+    if (req.query.facility) { params.push(+req.query.facility); return ` AND ${col} = $${params.length}`; }
+    return '';
+  }
+  params.push(userFacility(req)); return ` AND ${col} = $${params.length}`;
+}
 
 const curMonth = () => new Date().toISOString().slice(0, 7);
 const isMonth = m => /^\d{4}-\d{2}$/.test(m || '');
@@ -19,18 +31,20 @@ const TASK_STATUS = ['new', 'processing', 'blocked', 'done'];
 router.get('/handovers', async (req, res, next) => {
   try {
     const month = isMonth(req.query.month) ? req.query.month : curMonth();
+    const pIn = [month]; const facIn = facClause(req, pIn, 's.facility_id');
     const checkins = (await query(`
       SELECT s.id, s.name, r.name AS room_name, s.check_in_date AS date,
              s.checkin_confirmed_at, s.checkin_confirm_note
       FROM students s LEFT JOIN rooms r ON r.id = s.room_id
-      WHERE s.deleted_at IS NULL AND to_char(s.check_in_date,'YYYY-MM')=$1
-      ORDER BY s.check_in_date, s.name`, [month])).rows;
+      WHERE s.deleted_at IS NULL AND to_char(s.check_in_date,'YYYY-MM')=$1${facIn}
+      ORDER BY s.check_in_date, s.name`, pIn)).rows;
+    const pOut = [month]; const facOut = facClause(req, pOut, 's.facility_id');
     const checkouts = (await query(`
       SELECT s.id, s.name, r.name AS room_name, s.check_out_date AS date,
              s.checkout_confirmed_at, s.checkout_actual_date, s.checkout_confirm_note
       FROM students s LEFT JOIN rooms r ON r.id = s.room_id
-      WHERE s.deleted_at IS NULL AND to_char(s.check_out_date,'YYYY-MM')=$1
-      ORDER BY s.check_out_date, s.name`, [month])).rows;
+      WHERE s.deleted_at IS NULL AND to_char(s.check_out_date,'YYYY-MM')=$1${facOut}
+      ORDER BY s.check_out_date, s.name`, pOut)).rows;
     res.json({ month, checkins, checkouts });
   } catch (e) { next(e); }
 });
@@ -39,8 +53,10 @@ router.get('/handovers', async (req, res, next) => {
 router.get('/handovers/summary', async (req, res, next) => {
   try {
     const m = curMonth();
-    const ci = (await query(`SELECT COUNT(*)::int c FROM students WHERE deleted_at IS NULL AND to_char(check_in_date,'YYYY-MM')=$1 AND checkin_confirmed_at IS NULL`, [m])).rows[0].c;
-    const co = (await query(`SELECT COUNT(*)::int c FROM students WHERE deleted_at IS NULL AND to_char(check_out_date,'YYYY-MM')=$1 AND checkout_confirmed_at IS NULL`, [m])).rows[0].c;
+    const pCi = [m]; const fCi = facClause(req, pCi, 'facility_id');
+    const ci = (await query(`SELECT COUNT(*)::int c FROM students WHERE deleted_at IS NULL AND to_char(check_in_date,'YYYY-MM')=$1 AND checkin_confirmed_at IS NULL${fCi}`, pCi)).rows[0].c;
+    const pCo = [m]; const fCo = facClause(req, pCo, 'facility_id');
+    const co = (await query(`SELECT COUNT(*)::int c FROM students WHERE deleted_at IS NULL AND to_char(check_out_date,'YYYY-MM')=$1 AND checkout_confirmed_at IS NULL${fCo}`, pCo)).rows[0].c;
     res.json({ month: m, pendingCheckin: ci, pendingCheckout: co, pending: ci + co });
   } catch (e) { next(e); }
 });
@@ -49,8 +65,9 @@ router.get('/handovers/summary', async (req, res, next) => {
 router.post('/handovers/:id/checkin', async (req, res, next) => {
   try {
     const note = (req.body.note || '').trim();
-    const cur = (await query('SELECT checkin_confirmed_at FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    const cur = (await query('SELECT checkin_confirmed_at, facility_id FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!cur) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    const badF = assertFacility(req, cur.facility_id); if (badF) return res.status(badF.status).json(badF); // đa cơ sở
     // Xác nhận MỘT LẦN. Xác nhận lại sẽ ghi đè mốc bàn giao thật và (nếu note rỗng) xoá trắng ghi chú.
     if (cur.checkin_confirmed_at)
       return res.status(409).json({ error: 'Đã xác nhận nhận phòng trước đó — không xác nhận lại (tránh mất dấu lần bàn giao thật).' });
@@ -74,8 +91,9 @@ router.post('/handovers/:id/checkout', async (req, res, next) => {
     if (actual > today)
       return res.status(400).json({ error: 'Ngày trả phòng thực tế không thể ở tương lai.' });
     // Ngày trả không thể TRƯỚC ngày nhận phòng / trước ngày bắt đầu lượt ở hiện tại (BLK-3)
-    const cur = (await query('SELECT check_in_date FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
+    const cur = (await query('SELECT check_in_date, facility_id FROM students WHERE id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0];
     if (!cur) return res.status(404).json({ error: 'Không tìm thấy học viên' });
+    const badF = assertFacility(req, cur.facility_id); if (badF) return res.status(badF.status).json(badF); // đa cơ sở
     const badDate = await badCheckoutDate(null, +req.params.id, actual, cur.check_in_date);
     if (badDate) return res.status(400).json({ error: badDate });
     const { rows } = await query(
@@ -97,13 +115,14 @@ router.post('/handovers/:id/checkout', async (req, res, next) => {
 // Danh sách công việc bảo trì (báo hư hỏng đã được admin chuyển)
 router.get('/tasks', async (req, res, next) => {
   try {
+    const params = []; const fac = facClause(req, params, 'COALESCE(s.facility_id, r.facility_id)');
     const { rows } = await query(`
       SELECT d.*, s.name AS student_name, s.phone AS student_phone, r.name AS room_name
       FROM damage_reports d
       LEFT JOIN students s ON s.id = d.student_id
       LEFT JOIN rooms r ON r.id = d.room_id
-      WHERE d.category='damage' AND d.assigned_at IS NOT NULL
-      ORDER BY (d.status<>'done') DESC, d.assigned_at DESC`);
+      WHERE d.category='damage' AND d.assigned_at IS NOT NULL${fac}
+      ORDER BY (d.status<>'done') DESC, d.assigned_at DESC`, params);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -111,8 +130,11 @@ router.get('/tasks', async (req, res, next) => {
 // Số việc cần xử lý (cho thông báo)
 router.get('/summary', async (req, res, next) => {
   try {
+    const params = []; const fac = facClause(req, params, 'COALESCE(s.facility_id, r.facility_id)');
     const n = (await query(
-      `SELECT COUNT(*)::int c FROM damage_reports WHERE category='damage' AND assigned_at IS NOT NULL AND status<>'done'`)).rows[0].c;
+      `SELECT COUNT(*)::int c FROM damage_reports d
+         LEFT JOIN students s ON s.id=d.student_id LEFT JOIN rooms r ON r.id=d.room_id
+        WHERE d.category='damage' AND d.assigned_at IS NOT NULL AND d.status<>'done'${fac}`, params)).rows[0].c;
     res.json({ pending: n });
   } catch (e) { next(e); }
 });
@@ -127,6 +149,12 @@ router.post('/tasks/:id/status', async (req, res, next) => {
     const status = req.body.status;
     const note = (req.body.note || '').trim();
     if (status === 'blocked' && !note) return res.status(400).json({ error: 'Nhập lý do chưa xử lý được' });
+    // Đa cơ sở: bảo trì chỉ cập nhật việc thuộc cơ sở mình.
+    const tf = (await query(`SELECT COALESCE(s.facility_id, r.facility_id) AS fid FROM damage_reports d
+      LEFT JOIN students s ON s.id=d.student_id LEFT JOIN rooms r ON r.id=d.room_id
+      WHERE d.id=$1 AND d.category='damage' AND d.assigned_at IS NOT NULL`, [req.params.id])).rows[0];
+    if (!tf) return res.status(404).json({ error: 'Không tìm thấy công việc' });
+    const badF = assertFacility(req, tf.fid); if (badF) return res.status(badF.status).json(badF);
     // Ghi chú: chỉ ĐÈ khi có nhập; note rỗng -> GIỮ ghi chú cũ (trước đây luôn ghi đè -> xoá trắng).
     // resolved_at: chỉ đặt khi 'done'; rời khỏi 'done' thì xoá (đúng), nhưng vì đã chặn trạng thái lạ
     // ở trên nên việc done không bị vô cớ lùi nữa.
