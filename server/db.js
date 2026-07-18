@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const { Pool, types } = require('pg');
+const { Pool, Client, types } = require('pg');
 
 // Một kiến trúc CSDL duy nhất cho MỌI môi trường: PostgreSQL qua node-postgres.
 // (local dev: Postgres container; staging/UAT/prod: Postgres quản lý — chỉ khác DATABASE_URL.)
@@ -67,8 +67,82 @@ async function init() {
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   await pool.query(schema);
   await reportSchemaGuard();
+  await runMigrations();   // thay đổi schema có ĐÁNH SỐ (sau baseline, trước khi seed vào schema mới)
   await seedDefaults();
   console.log('✅ CSDL sẵn sàng');
+}
+
+// Hệ migration đánh số cho thay đổi schema TƯƠNG LAI. schema.sql vẫn là baseline idempotent cho DB mới;
+// mỗi file server/migrations/NNNN_*.sql chạy ĐÚNG MỘT LẦN theo thứ tự tên, ghi nhận ở bảng schema_migrations.
+// Lỗi 1 file -> ROLLBACK file đó, log RÕ, DỪNG (không áp file sau lên trạng thái lỗi) + fail-fast boot.
+// Phát hiện lệnh ĐIỀU KHIỂN TRANSACTION cấp cao trong file migration (BEGIN/COMMIT/ROLLBACK/END/SAVEPOINT/
+// START TRANSACTION). Wrapper đã bọc BEGIN..COMMIT; file tự COMMIT/END sẽ đóng SỚM transaction của wrapper
+// -> phá vỡ "rollback cả file" + có thể half-apply gây boot-loop. Bỏ comment + khối dollar-quote ($$..$$,
+// $tag$..$tag$) + chuỗi '..' để KHÔNG báo nhầm BEGIN/END trong khối DO/plpgsql (schema_guard cũng dùng DO).
+function hasTxnControl(sql) {
+  const s = String(sql)
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')                   // block comment
+    .replace(/--[^\n]*/g, ' ')                            // line comment
+    .replace(/\$([A-Za-z_]\w*)?\$[\s\S]*?\$\1\$/g, ' ')   // thân dollar-quote (DO $$..$$ / $tag$..$tag$)
+    .replace(/'(?:[^']|'')*'/g, "''");                    // chuỗi 'literal'
+  return /\b(?:commit|rollback|savepoint|start\s+transaction)\b/i.test(s)
+    || /(?:^|;)\s*begin\b/i.test(s)          // BEGIN như một câu lệnh (không phải BEGIN trong DO đã bị lược)
+    || /(?:^|;)\s*end\b\s*(?:;|$)/i.test(s); // END; đứng riêng = kết transaction
+}
+
+async function runMigrations() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
+    version    TEXT PRIMARY KEY,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`);
+  const dir = path.join(__dirname, 'migrations');
+  let entries;
+  try { entries = fs.readdirSync(dir); }
+  catch (e) { return; } // thư mục chưa có -> chưa có migration nào
+  const NAME_OK = /^\d+_.*\.sql$/i;                       // NNNN_ten.sql (số học, không chết cứng ở 4 chữ số)
+  const sqlFiles = entries.filter(f => /\.sql$/i.test(f));
+  // KHÔNG NUỐT IM LẶNG: file .sql đặt tên sai quy ước bị bỏ qua -> deploy XANH mà schema-change KHÔNG chạy.
+  const misnamed = sqlFiles.filter(f => !NAME_OK.test(f));
+  if (misnamed.length) console.warn(`⚠️  BỎ QUA ${misnamed.length} file trong migrations/ SAI QUY ƯỚC tên (cần dạng NNNN_ten.sql): ${misnamed.join(', ')} — đổi tên rồi khởi động lại, nếu không thay đổi schema đó KHÔNG chạy.`);
+  const files = sqlFiles.filter(f => NAME_OK.test(f)).sort((a, b) => (parseInt(a, 10) - parseInt(b, 10)) || a.localeCompare(b));
+  if (!files.length) return;
+  const applied = new Set((await pool.query('SELECT version FROM schema_migrations')).rows.map(r => r.version));
+  const pending = files.filter(f => !applied.has(f)).map(f => ({ file: f, sql: fs.readFileSync(path.join(dir, f), 'utf8') }));
+  if (!pending.length) return;
+  // Chặn TRƯỚC khi chạy: file chứa transaction-control -> fail-fast (nếu không sẽ half-apply thầm lặng).
+  for (const { file, sql } of pending) {
+    if (hasTxnControl(sql)) {
+      throw new Error(`Migration ${file} chứa lệnh điều khiển transaction (BEGIN/COMMIT/ROLLBACK/END/SAVEPOINT/START TRANSACTION). Bỏ chúng — hệ migration đã tự bọc transaction. (Lệnh cần chạy NGOÀI transaction như CREATE INDEX CONCURRENTLY: tách ra chạy tay, đừng đưa vào migration.)`);
+    }
+  }
+  // Client RIÊNG KHÔNG giới hạn thời gian: migration lớn (backfill vạn dòng trên prod) không bị
+  // statement_timeout/query_timeout 15s của pool giết giữa chừng -> tránh ROLLBACK + crash-loop boot.
+  const mc = new Client({ connectionString: process.env.DATABASE_URL, ssl, statement_timeout: 0, query_timeout: 0 });
+  await mc.connect();
+  try {
+    await mc.query("SET TIME ZONE 'Asia/Ho_Chi_Minh'").catch(() => {}); // nhất quán với pool (backfill CURRENT_DATE)
+    let ran = 0;
+    for (const { file, sql } of pending) {
+      try {
+        await mc.query('BEGIN');
+        await mc.query(sql);
+        await mc.query('INSERT INTO schema_migrations (version) VALUES ($1)', [file]);
+        await mc.query('COMMIT');
+        console.log(`🗃️  Migration đã áp: ${file}`);
+        ran++;
+      } catch (e) {
+        await mc.query('ROLLBACK').catch(() => {});
+        // KHÔNG nuốt im lặng: báo lỗi rõ + DỪNG (các migration sau chưa chạy) + throw để boot fail-fast.
+        console.error(`\n❌ MIGRATION THẤT BẠI: ${file}\n   ${e.message}\n   → Đã ROLLBACK file này; các migration sau CHƯA chạy. Sửa file rồi khởi động lại.\n`);
+        const err = new Error(`Migration thất bại: ${file} — ${e.message}`);
+        err.migration = file;
+        throw err;
+      }
+    }
+    if (ran) console.log(`✅ Đã áp ${ran} migration mới`);
+  } finally {
+    await mc.end().catch(() => {});
+  }
 }
 
 // In TO ra màn hình những ràng buộc CHƯA áp được vì dữ liệu đang vi phạm.
