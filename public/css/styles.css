@@ -415,6 +415,10 @@ a.ci-row:hover{border-color:var(--brand)}
 .ci-row .ic-svg{width:22px;height:22px;color:var(--brand-d);flex-shrink:0;margin-top:1px}
 .ci-row b{display:block;font-size:14px;margin-bottom:2px}
 .ci-row span{font-size:13px;color:var(--ink2)}
+/* Số hotline nằm chung trong card KTX — dòng bấm-gọi được, nổi bằng màu thương hiệu */
+.ci-tel{display:flex;width:fit-content;align-items:center;gap:6px;margin-top:9px;font-size:15px;font-weight:700;color:var(--brand-d);text-decoration:none;letter-spacing:.01em}
+.ci-tel:hover{text-decoration:underline}
+.ci-tel .ic-svg{width:16px;height:16px;color:var(--brand-d);flex-shrink:0;margin-top:0}
 .contact-map{border-radius:16px;overflow:hidden;border:1px solid var(--line);min-height:290px;box-shadow:var(--shadow)}
 .contact-map iframe{width:100%;height:100%;min-height:290px;border:0;display:block}
 @media(max-width:620px){ .intro-contact{grid-template-columns:1fr} }

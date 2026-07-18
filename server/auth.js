@@ -65,7 +65,7 @@ async function requireAuth(req, res, next) {
   try {
     const { query } = require('./db');
     const { rows } = await query(
-      `SELECT id, username, role, full_name, student_id, must_change_password, token_epoch
+      `SELECT id, username, role, full_name, student_id, facility_id, must_change_password, token_epoch
        FROM users WHERE id = $1 AND deleted_at IS NULL`, [p.id]);
     const u = rows[0];
     if (!u) return res.status(401).json({ error: 'Tài khoản không còn hiệu lực' });
@@ -77,7 +77,7 @@ async function requireAuth(req, res, next) {
       const s = await query('SELECT 1 FROM students WHERE id=$1 AND deleted_at IS NULL', [u.student_id]);
       if (!s.rows[0]) return res.status(401).json({ error: 'Tài khoản không còn hiệu lực' });
     }
-    req.user = { id: u.id, username: u.username, role: u.role, full_name: u.full_name, student_id: u.student_id };
+    req.user = { id: u.id, username: u.username, role: u.role, full_name: u.full_name, student_id: u.student_id, facility_id: u.facility_id };
     // Bắt buộc đổi mật khẩu: chặn ở SERVER, không chỉ ở giao diện
     if (u.must_change_password && !MUST_CHANGE_ALLOW.includes((req.originalUrl || '').split('?')[0])) {
       return res.status(403).json({ error: 'Bạn phải đổi mật khẩu trước khi sử dụng hệ thống.' });

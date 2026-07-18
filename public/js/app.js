@@ -106,8 +106,7 @@ async function renderPublicRegister() {
       <div class="intro-contact">
         <div class="contact-info">
           ${info.address ? `<div class="ci-row">${IC.mapPin}<div><b>Địa chỉ</b><span>${esc(info.address)}</span></div></div>` : ''}
-          ${info.hotline ? `<a class="ci-row" href="tel:${esc(String(info.hotline).replace(/\s/g, ''))}">${IC.phone}<div><b>Hotline</b><span>${esc(info.hotline)}</span></div></a>` : ''}
-          <div class="ci-row">${IC.home}<div><b>${dorm}</b><span>Ban quản lý khu nội trú</span></div></div>
+          <div class="ci-row">${IC.home}<div><b>${dorm}</b><span>Ban quản lý khu nội trú</span>${info.hotline ? `<a class="ci-tel" href="tel:${esc(String(info.hotline).replace(/\s/g, ''))}">${IC.phone}${esc(info.hotline)}</a>` : ''}</div></div>
         </div>
         ${info.address ? `<div class="contact-map"><iframe title="Bản đồ" src="https://www.google.com/maps?q=${encodeURIComponent(info.address)}&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>` : ''}
       </div>

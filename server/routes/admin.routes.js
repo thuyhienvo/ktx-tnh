@@ -90,12 +90,26 @@ const VALID_ROLES = ['admin', 'staff', 'maintenance'];
 
 router.get('/users', async (req, res, next) => {
   try {
+    // facility_id NULL = ĐIỀU HÀNH (thấy mọi cơ sở); có giá trị = quản lý đúng cơ sở đó.
     const { rows } = await query(
-      `SELECT id, username, role, full_name, created_at FROM users
-       WHERE role IN ('admin','staff','maintenance') AND deleted_at IS NULL ORDER BY role, username`);
+      `SELECT u.id, u.username, u.role, u.full_name, u.facility_id, f.name AS facility_name, u.created_at
+         FROM users u LEFT JOIN facilities f ON f.id = u.facility_id
+        WHERE u.role IN ('admin','staff','maintenance') AND u.deleted_at IS NULL
+        ORDER BY u.role, u.username`);
     res.json(rows);
   } catch (e) { next(e); }
 });
+
+// Chuẩn hoá + kiểm tra facility_id gửi lên. Trả { ok, value } hoặc { ok:false, error }.
+//   '' / null / bỏ trống -> NULL (điều hành). Có giá trị -> phải là cơ sở tồn tại, chưa xoá.
+async function parseFacilityId(raw) {
+  if (raw == null || raw === '') return { ok: true, value: null };
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: 'Cơ sở không hợp lệ' };
+  const f = await query('SELECT 1 FROM facilities WHERE id=$1 AND deleted_at IS NULL', [id]);
+  if (!f.rows.length) return { ok: false, error: 'Cơ sở không tồn tại (hoặc đã bị xoá)' };
+  return { ok: true, value: id };
+}
 
 router.post('/users', async (req, res, next) => {
   try {
@@ -106,15 +120,18 @@ router.post('/users', async (req, res, next) => {
     if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: `Vai trò không hợp lệ: "${req.body.role}". Chỉ nhận: nhân viên, bảo trì, quản trị.` });
     const loiMk = checkPassword(password, [username, req.body.full_name]);
     if (loiMk) return res.status(400).json({ error: loiMk });
+    // Đa cơ sở: NULL = điều hành (thấy tất cả); có id = quản lý đúng cơ sở đó.
+    const fac = await parseFacilityId(req.body.facility_id);
+    if (!fac.ok) return res.status(400).json({ error: fac.error });
     // Trùng tên: chỉ tính tài khoản CÒN HIỆU LỰC (chưa xoá). Tài khoản đã xoá được đổi tên để nhả
     // tên gốc ra (xem route DELETE) nên đường này chủ yếu chặn trùng với tài khoản đang dùng.
     const dup = await query('SELECT 1 FROM users WHERE lower(username)=lower($1) AND deleted_at IS NULL', [username]);
     if (dup.rows.length) return res.status(400).json({ error: `Tên đăng nhập "${username}" đã tồn tại` });
     // Tài khoản do quản trị tạo -> buộc nhân viên đổi mật khẩu ở lần đăng nhập đầu
     const { rows } = await query(
-      `INSERT INTO users (username, password_hash, role, full_name, must_change_password)
-       VALUES ($1,$2,$3,$4,true) RETURNING id, username, role, full_name`,
-      [username, bcrypt.hashSync(password, 10), role, (req.body.full_name || '').trim()]);
+      `INSERT INTO users (username, password_hash, role, full_name, facility_id, must_change_password)
+       VALUES ($1,$2,$3,$4,$5,true) RETURNING id, username, role, full_name, facility_id`,
+      [username, bcrypt.hashSync(password, 10), role, (req.body.full_name || '').trim(), fac.value]);
     res.status(201).json(rows[0]);
   } catch (e) { next(e); }
 });

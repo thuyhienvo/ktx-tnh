@@ -83,6 +83,12 @@ ALTER TABLE students ADD COLUMN IF NOT EXISTS checkin_confirm_note TEXT DEFAULT 
 ALTER TABLE students ADD COLUMN IF NOT EXISTS checkout_confirmed_at TIMESTAMPTZ;  -- đã xác nhận trả phòng
 ALTER TABLE students ADD COLUMN IF NOT EXISTS checkout_actual_date DATE;          -- ngày trả phòng THỰC TẾ
 ALTER TABLE students ADD COLUMN IF NOT EXISTS checkout_confirm_note TEXT DEFAULT '';
+-- ĐA CƠ SỞ: cơ sở học viên thuộc về. Nguồn chuẩn để lọc/cách ly dữ liệu theo cơ sở người đăng nhập.
+-- Gắn khi duyệt đơn/tạo HV và giữ đồng bộ theo phòng khi chuyển phòng. Backfill từ phòng cho HV cũ.
+ALTER TABLE students ADD COLUMN IF NOT EXISTS facility_id INTEGER;
+UPDATE students s SET facility_id = r.facility_id
+  FROM rooms r WHERE s.room_id = r.id AND s.facility_id IS NULL AND r.facility_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_students_facility ON students (facility_id) WHERE deleted_at IS NULL;
 
 -- Xe của học viên
 CREATE TABLE IF NOT EXISTS vehicles (
@@ -109,6 +115,12 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL
 -- Số hiệu phiên đăng nhập. Token mang theo số này; tăng số = MỌI token cũ của tài khoản đó hết hiệu lực ngay.
 -- Dùng để THU HỒI quyền: đăng xuất, đổi vai trò, xoá tài khoản, đặt lại mật khẩu.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS token_epoch INTEGER NOT NULL DEFAULT 0;
+-- ĐA CƠ SỞ: cơ sở mà tài khoản quản lý/bảo trì phụ trách.
+--   NULL  = ĐIỀU HÀNH — thấy & thao tác dữ liệu MỌI cơ sở (mặc định của admin khởi tạo).
+--   có id = QUẢN LÝ CƠ SỞ — chỉ thấy & thao tác dữ liệu đúng cơ sở đó.
+-- Vai (role) quyết định LÀM ĐƯỢC GÌ; facility_id quyết định THẤY DỮ LIỆU NÀO. Hai trục độc lập.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS facility_id INTEGER REFERENCES facilities(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS ix_users_facility ON users (facility_id) WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS logs (
   id          SERIAL PRIMARY KEY,
