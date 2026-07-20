@@ -75,11 +75,13 @@ const REV_SERVICES = [
   ['parking', 'Phí gửi xe máy', 'bravo_parking'],
   ['other', 'Khoản khác', 'bravo_other'],
 ];
+let _revData = [];   // doanh thu nam hien hanh — de exportRevenue() tu lay lai (khong nhoi vao data-args)
 async function viewRevenue() {
   el('content').innerHTML = '<div class="spinner"></div>';
   const years = await guard(() => API.revenueYears());
   if (years.length && !years.includes(revYear)) revYear = years[0];
   const data = await guard(() => API.revenue(revYear));
+  _revData = data;
   const sum = k => data.reduce((a, m) => a + (+m[k] || 0), 0);
   const grand = sum('total'), paid = sum('paid');
 
@@ -97,7 +99,7 @@ async function viewRevenue() {
     </div>
 
     <div class="panel"><div class="hd"><h2>${IC.trendingUp} Dự báo doanh thu theo tháng — năm ${revYear}</h2>
-      <button class="btn sm" data-act="exportRevenue" data-args='[${JSON.stringify(data).replace(/'/g, "&#39;")}]'>${IC.download} Xuất Excel (CSV)</button></div>
+      <button class="btn sm" data-act="exportRevenue">${IC.download} Xuất Excel (CSV)</button></div>
       <div class="table-wrap">
       ${data.length ? `<table><thead><tr><th>Tháng</th>
         ${REV_SERVICES.filter(x => x[0] !== 'other' || sum('other')).map(([, l]) => `<th class="num">${l.replace('Phí ', '').replace(' sinh hoạt', '').replace(' (tiền phòng)', '')}</th>`).join('')}
@@ -122,7 +124,8 @@ async function viewRevenue() {
     </div>`;
   const ry = el('ry'); if (ry) ry.onchange = e => { revYear = e.target.value; viewRevenue(); };
 }
-function exportRevenue(data) {
+function exportRevenue() {
+  const data = _revData;
   const cols = REV_SERVICES.map(x => x[1]);
   const head = ['Thang', ...cols, 'Tong'];
   const rows = data.map(m => [m.month, ...REV_SERVICES.map(([k]) => +m[k] || 0), +m.total || 0]);

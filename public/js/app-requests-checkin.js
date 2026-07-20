@@ -25,7 +25,7 @@ async function viewRequests() {
         <td class="muted" style="font-size:12px">${esc(a.pref || '')}${a.wants_washing ? `<div>${IC.washer} Máy giặt</div>` : ''}${a.wants_parking || a.plate ? `<div>${IC.bike} Gửi xe${a.plate ? ' · ' + esc(a.plate) : ''}</div>` : ''}${a.note ? `<div>${esc(a.note)}</div>` : ''}${noteLine(a.admin_note)}</td>
         <td>${a.status === 'pending' ? '<span class="badge amber">Chờ duyệt</span>' : a.status === 'approved' ? '<span class="badge green">Đã thêm</span>' : '<span class="badge gray">Từ chối</span>'}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
-          ${a.status === 'pending' ? `<button class="btn sm green" data-act="approveForm" data-args='[${JSON.stringify(a).replace(/'/g, "&#39;")}]'>${IC.plus} Thêm vào phòng</button><button class="btn sm" data-act="rejectApp" data-args='[${a.id}]'>Từ chối</button>` : ''}
+          ${a.status === 'pending' ? `<button class="btn sm green" data-act="approveForm" data-args='[${a.id}]'>${IC.plus} Thêm vào phòng</button><button class="btn sm" data-act="rejectApp" data-args='[${a.id}]'>Từ chối</button>` : ''}
           <button class="btn sm ghost" title="Ghi chú" data-act="noteForm" data-args='["app", ${a.id}]'>${IC.filePen}</button>
           <button class="btn sm ghost" data-act="delApp" data-args='[${a.id}]'>${IC.trash}</button>
         </div></td></tr>`).join('')}
@@ -190,7 +190,9 @@ async function violationStatsModal() {
     <div class="mf"><button class="btn" data-act="closeModal">Đóng</button></div>`, true);
 }
 
-function approveForm(a) {
+function approveForm(id) {
+  const a = (ST.applications || []).find(x => x.id === id);   // viewRequests da dong bo ST.applications
+  if (!a) return toast('Không tìm thấy đơn', 'err');
   openModal(`
     <div class="mh"><h3>${IC.plus} Thêm vào phòng: ${esc(a.name)}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">

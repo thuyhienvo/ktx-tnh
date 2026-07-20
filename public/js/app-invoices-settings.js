@@ -23,12 +23,14 @@ function deltaTag(cur, prev) {
   const up = d > 0;
   return `<span style="color:${up ? 'var(--red-ink)' : 'var(--green-ink)'};font-weight:600">${up ? '▲' : '▼'} ${Math.abs(d)} kWh</span>`;
 }
+let _invAll = [];   // hoa don thang hien hanh — de phieuBao/invoiceForm/exportCSV tu lay lai theo id (khong nhoi object vao data-args)
 async function viewInvoices() {
   el('topActions').innerHTML = `<button class="btn" data-act="electricForm">${IC.zap} Chỉ số điện</button><button class="btn" data-act="oneInvoiceForm">${IC.plus} HĐ cho 1 HV</button><button class="btn pri" data-act="generateForm">${IC.receipt} Tạo hóa đơn theo tháng</button>`;
   el('content').innerHTML = '<div class="spinner"></div>';
   const months = await guard(() => API.invoiceMonths());
   if (months.length && !months.includes(invMonth)) invMonth = months[0];
   const all = await guard(() => API.invoices(invMonth));
+  _invAll = all;
   let ehist = { months: [], rooms: [] };
   try { ehist = await API.electricHistory(invMonth, 6); } catch {}
   const elecPanel = ehist.rooms.length ? `<div class="panel"><div class="hd"><h2>${IC.zap} Tiêu thụ điện theo phòng — so với tháng trước</h2><span class="muted" style="font-size:12px">${ehist.months.length} tháng gần nhất · cột cam = tháng này</span></div>
@@ -58,7 +60,7 @@ async function viewInvoices() {
       <span class="muted" style="font-size:12px">Đơn vị: đồng</span>
       <div class="toolbar">
         <div class="search"><span class="i">${IC.search}</span><input id="invs" placeholder="Tìm tên HV / số phòng..." value="${esc(invSearch)}"></div>
-        ${all.length ? `<button class="btn sm" data-act="exportCSV" data-args='[${JSON.stringify(list).replace(/'/g, "&#39;")}]'>${IC.download} Xuất Excel (CSV)</button>` : ''}</div></div>
+        ${all.length ? `<button class="btn sm" data-act="exportCSV">${IC.download} Xuất Excel (CSV)</button>` : ''}</div></div>
       <div class="table-wrap">
       ${all.length === 0 ? `<div class="empty">Chưa có hóa đơn nào cho kỳ này.<br><br><button class="btn pri" data-act="generateForm">${IC.receipt} Tạo hóa đơn</button></div>` :
       list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Giảm</th><th class="num">Tổng</th><th></th></tr></thead><tbody>
@@ -77,9 +79,9 @@ async function viewInvoices() {
             : '—'}</td>
           <td class="num"><strong>${moneyN(i.total)}</strong></td>
           <td class="num"><div class="rowbtns" style="justify-content:flex-end">
-            <button class="btn sm pri" data-act="phieuBao" data-args='[${JSON.stringify(i).replace(/'/g, "&#39;")}]'>${IC.fileText} Phiếu báo</button>
+            <button class="btn sm pri" data-act="phieuBao" data-args='[${i.id}]'>${IC.fileText} Phiếu báo</button>
             <button class="btn sm ghost" title="Tính lại theo số ngày ở hiện tại" data-act="recalcInv" data-args='[${i.id}]'>${IC.refresh}</button>
-            <button class="btn sm ghost" data-act="invoiceForm" data-args='[${i.id}, ${JSON.stringify(i).replace(/'/g, "&#39;")}]'>${IC.pencil}</button>
+            <button class="btn sm ghost" data-act="invoiceForm" data-args='[${i.id}]'>${IC.pencil}</button>
             <button class="btn sm ghost" data-act="delInvoice" data-args='[${i.id}]'>${IC.trash}</button>
           </div></td></tr>`).join('')}
         <tr class="no-result" style="display:none"><td colspan="12"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
@@ -208,8 +210,8 @@ async function runGenerate() {
   toast(`Đã tạo ${r.created} · cập nhật ${r.updated || 0}${r.skipped ? ` · bỏ qua ${r.skipped} (đã đóng)` : ''} hóa đơn`);
   viewInvoices();
 }
-function invoiceForm(id, i) {
-  i = i || { student_id: '', month: invMonth, days_stayed: 0, room_charge: 0, electric_kwh: 0, electric_charge: 0, water_charge: 0, service_charge: 0, washing_charge: 0, parking_charge: 0, other_charge: 0, other_note: '' };
+function invoiceForm(id) {
+  let i = _invAll.find(x => x.id === id) || { student_id: '', month: invMonth, days_stayed: 0, room_charge: 0, electric_kwh: 0, electric_charge: 0, water_charge: 0, service_charge: 0, washing_charge: 0, parking_charge: 0, other_charge: 0, other_note: '' };
   const opts = ST.students.map(s => `<option value="${s.id}" ${i.student_id === s.id ? 'selected' : ''}>${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}</option>`).join('');
   const f = (lbl, key, extra = '') => `<div class="field"><label>${lbl}</label><input id="i_${key}" type="number" min="0" value="${esc(i[key] || 0)}" ${extra}></div>`;
   openModal(`
@@ -238,6 +240,8 @@ async function saveInvoice(id) {
   await refreshCache(); closeModal(); invMonth = body.month; toast('Đã lưu hóa đơn'); viewInvoices();
 }
 async function phieuBao(inv) {
+  if (typeof inv !== 'object') inv = _invAll.find(x => x.id === +inv);  // nut truyen id; noi khac (sau khi sinh HD) truyen thang object
+  if (!inv) return toast('Không tìm thấy hóa đơn', 'err');
   const s = studentById(inv.student_id) || {};
   const room = roomById(s.room_id) || {};
   const fac = ST.facilities.find(f => f.id === room.facility_id) || {};
@@ -323,7 +327,8 @@ function csvCell(c) {
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return '"' + s.replace(/"/g, '""') + '"';
 }
-function exportCSV(rows) {
+function exportCSV() {
+  const rows = _invAll.filter(i => invFilter === 'paid' ? i.status === 'paid' : invFilter === 'unpaid' ? i.status !== 'paid' : true); // dung danh sach dang loc (nhu luc render)
   const head = ['Ho ten', 'Ma HV', 'Phong', 'Ky', 'So ngay o', 'Tien phong', 'Dien (kWh)', 'Tien dien', 'Nuoc', 'Dich vu', 'May giat', 'Gui xe', 'Khac', 'Giam tien phong', 'Giam phong truong', 'Tong'];
   const data = rows.map(i => [i.student_name, i.student_code || '', i.room_name || '', i.month, i.days_stayed, i.room_charge, i.electric_kwh, i.electric_charge, i.water_charge, i.service_charge, i.washing_charge, i.parking_charge, i.other_charge, i.room_discount || 0, i.leader_discount || 0, i.total]);
   const csv = '﻿' + [head, ...data].map(r => r.map(csvCell).join(',')).join('\r\n');
