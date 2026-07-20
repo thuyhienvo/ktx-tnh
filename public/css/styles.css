@@ -72,6 +72,13 @@ a:hover{text-decoration:underline;text-underline-offset:2px}
 .auth-tab.active .ic-svg{color:var(--brand-d)}
 .auth-chip{display:inline-flex;align-items:center;gap:8px;background:var(--brand-soft);color:var(--brand-d);border:1px solid var(--gold-line);padding:7px 14px;border-radius:10px;font-weight:600;font-size:13px;margin:20px 0 8px;letter-spacing:.01em}
 .auth-btn{box-shadow:0 12px 26px rgba(34,37,46,.24)}
+/* Đăng nhập Microsoft: nút phụ (viền) để không tranh vai trò với nút "Đăng nhập" chính */
+.auth-sso{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;border:1px solid var(--line);background:var(--card);color:var(--ink);box-shadow:none;font-weight:600;text-decoration:none}
+.auth-sso:hover{border-color:var(--brand);background:var(--bg2)}
+.auth-sso .ic-svg{width:17px;height:17px;color:var(--brand-d)}
+/* Thông báo sau khi quay về từ Microsoft (chờ duyệt / lỗi) */
+.auth-note{border:1px solid var(--line);background:var(--bg2);border-radius:11px;padding:11px 13px;font-size:13px;line-height:1.55;margin-bottom:16px}
+.auth-note.err{border-color:var(--red-ink,#b4432b)}
 .auth-or{text-align:center;color:var(--muted);margin:22px 0;position:relative}
 .auth-or span{background:var(--card);padding:0 14px;position:relative;z-index:1;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase}
 .auth-or::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line)}

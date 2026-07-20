@@ -510,6 +510,32 @@ function viewSettings() {
       </div>
     </div></div>
 
+    <div class="panel"><div class="hd"><h2>${IC.shield} Đăng nhập bằng tài khoản Microsoft (SSO)</h2>
+      <span class="muted" style="font-size:12px">${s.sso_enabled === 'true' && s.sso_tenant_id && s.sso_client_id && s.sso_client_secret_set ? '<span class="badge green">Đang bật</span>' : '<span class="badge gray">Đang tắt</span>'}</span></div><div class="pad">
+      <div class="hint">${IC.info} Lấy 3 thông số ở <strong>Azure Portal → Microsoft Entra ID → App registrations</strong>.
+        Khi đăng ký ứng dụng phải khai đúng <strong>Redirect URI</strong>:
+        <code>${esc(location.origin)}/api/auth/sso/callback</code> và cấp quyền <code>openid profile email</code>.
+        Đủ 3 thông số + bật lên thì nút "Đăng nhập bằng Microsoft" mới hiện ở màn đăng nhập.</div>
+      <div class="hint" style="font-size:12px">${IC.lock} Nếu máy chủ có biến môi trường <code>AZURE_TENANT_ID</code> / <code>AZURE_CLIENT_ID</code> / <code>AZURE_CLIENT_SECRET</code> thì
+        <strong>ENV được ưu tiên</strong> hơn giá trị điền ở đây (môi trường thật nên giữ bí mật ở ENV, không nằm trong CSDL).</div>
+      <div class="grid2">
+        <div class="field"><label>Bật đăng nhập Microsoft</label><select id="set_sso_enabled">
+          <option value="false" ${s.sso_enabled !== 'true' ? 'selected' : ''}>Tắt</option>
+          <option value="true" ${s.sso_enabled === 'true' ? 'selected' : ''}>Bật</option>
+        </select></div>
+        <div class="field"><label>Chỉ nhận email thuộc tên miền <span class="opt">(cách nhau dấu phẩy — để trống = mọi email trong tenant)</span></label>
+          <input id="set_sso_allowed_domains" value="${esc(s.sso_allowed_domains || '')}" placeholder="esuhai.com, esuhai.vn"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Tenant ID (Directory ID)</label><input id="set_sso_tenant_id" value="${esc(s.sso_tenant_id || '')}" placeholder="vd 72f988bf-86f1-41af-91ab-..."></div>
+        <div class="field"><label>Client ID (Application ID)</label><input id="set_sso_client_id" value="${esc(s.sso_client_id || '')}" placeholder="vd 11111111-2222-3333-..."></div>
+      </div>
+      <div class="field"><label>Client Secret ${s.sso_client_secret_set ? '<span class="badge green" style="font-size:10px">Đã lưu</span>' : ''}</label>
+        <input id="set_sso_client_secret" type="password" value="" placeholder="${s.sso_client_secret_set ? '•••••• (để trống nếu giữ nguyên)' : 'Dán Client Secret từ Azure'}"></div>
+      <div class="hint" style="font-size:12px">${IC.lock} Client Secret <strong>không bao giờ được trả về</strong> giao diện. Để trống khi lưu nếu muốn giữ nguyên.</div>
+      <div class="rowbtns" style="margin-top:6px"><button class="btn pri" data-act="saveSsoSettings">Lưu cấu hình Microsoft</button></div>
+    </div></div>
+
     <div class="panel"><div class="hd"><h2>${IC.shield} Người dùng & phân quyền</h2><button class="btn sm" data-act="userForm">${IC.plus} Thêm nhân viên</button></div>
       <div class="table-wrap"><table><thead><tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Vai trò</th><th>Cơ sở</th><th></th></tr></thead>
         <tbody id="usrRows"><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody></table></div>
@@ -532,10 +558,15 @@ async function loadAdminUsers() {
   const me = Auth.user.id;
   box.innerHTML = users.map(u => {
     const [rl, rc] = ROLE_LABEL[u.role] || [u.role, 'gray'];
-    return `<tr>
-      <td><strong>${esc(u.username)}</strong>${u.id === me ? ' <span class="badge amber" style="font-size:10px">Bạn</span>' : ''}</td>
+    // Tài khoản do đăng nhập Microsoft tự tạo, chưa duyệt: phải ĐẬP VÀO MẮT admin, kèm email để
+    // đối chiếu người thật. Duyệt = bấm "Sửa" rồi gán vai + cơ sở (server tự bật approved).
+    const cho = u.approved === false;
+    return `<tr${cho ? ' style="background:var(--bg2)"' : ''}>
+      <td><strong>${esc(u.username)}</strong>${u.id === me ? ' <span class="badge amber" style="font-size:10px">Bạn</span>' : ''}
+        ${u.auth_provider && u.auth_provider !== 'local' ? `<span class="badge blue" style="font-size:10px" title="Đăng nhập bằng Microsoft">${esc(u.auth_provider === 'sso' ? 'Microsoft' : 'MK + Microsoft')}</span>` : ''}
+        ${u.email ? `<div class="muted" style="font-size:11px">${esc(u.email)}</div>` : ''}</td>
       <td>${esc(u.full_name || '—')}</td>
-      <td><span class="badge ${rc}">${rl}</span></td>
+      <td>${cho ? '<span class="badge amber" title="Tự tạo qua Microsoft — bấm Sửa để gán vai + cơ sở, gán xong là duyệt">⏳ Chờ duyệt</span>' : `<span class="badge ${rc}">${rl}</span>`}</td>
       <td>${u.facility_id ? esc(u.facility_name || facilityName(u.facility_id)) : '<span class="badge gray" title="Điều hành — thấy tất cả cơ sở">Tất cả</span>'}</td>
       <td class="num"><div class="rowbtns" style="justify-content:flex-end">
         <button class="btn sm" data-act="userForm" data-args='[${u.id}]'>Sửa</button>
@@ -726,6 +757,22 @@ async function saveVtype(id) {
   await refreshCache(); closeModal(); toast('Đã lưu loại vi phạm'); viewSettings();
 }
 async function delVtype(id) { if (!confirm('Xóa loại vi phạm này?')) return; await guard(() => API.deleteVType(id)); await refreshCache(); toast('Đã xóa'); viewSettings(); }
+async function saveSsoSettings() {
+  const body = {
+    sso_enabled: el('set_sso_enabled').value,
+    sso_tenant_id: el('set_sso_tenant_id').value.trim(),
+    sso_client_id: el('set_sso_client_id').value.trim(),
+    sso_allowed_domains: el('set_sso_allowed_domains').value.trim(),
+  };
+  // Chỉ gửi secret khi người dùng THỰC SỰ nhập — để trống nghĩa là giữ nguyên cái đã lưu.
+  const sec = el('set_sso_client_secret').value;
+  if (sec.trim()) body.sso_client_secret = sec;
+  if (body.sso_enabled === 'true' && !(body.sso_tenant_id && body.sso_client_id && (sec.trim() || (ST.settings || {}).sso_client_secret_set))) {
+    return toast('Bật SSO cần đủ Tenant ID + Client ID + Client Secret', 'err');
+  }
+  await guard(() => API.updateSettings(body));
+  await refreshCache(); toast('Đã lưu cấu hình đăng nhập Microsoft'); viewSettings();
+}
 async function saveMailSettings() {
   const body = {
     school_name: el('set_school_name').value.trim(),

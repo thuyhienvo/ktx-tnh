@@ -572,7 +572,7 @@ function chongBam2Lan(fn) {
 [
   'saveStudent', 'saveRoom', 'saveVehicle', 'saveAsset', 'saveFacility', 'saveUser', 'saveApp',
   'saveViolation', 'saveVtype', 'saveInvoice', 'saveOneInvoice', 'saveElectric', 'saveDeposit',
-  'saveAccount', 'saveSettings', 'saveIntro', 'saveBravo', 'saveMailSettings', 'saveNote',
+  'saveAccount', 'saveSettings', 'saveIntro', 'saveBravo', 'saveMailSettings', 'saveSsoSettings', 'saveNote',
   'doApprove', 'doTransfer', 'doCheckOut', 'doCheckIn', 'doSetLeader', 'unsetLeader',
   'doChangePwd', 'doResetUserPw', 'delStudent', 'runGenerate', 'applyRenumber',
   'settleDepositAndClose', 'submitCheckoutReq', 'submitDamage', 'submitHandoverCheckin',

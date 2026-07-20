@@ -52,6 +52,8 @@ function clearAuthCookie(res) {
 
 // Khi tài khoản đang bị BẮT BUỘC đổi mật khẩu, chỉ cho phép đúng 3 đường này.
 const MUST_CHANGE_ALLOW = ['/api/auth/change-password', '/api/auth/logout', '/api/auth/me'];
+// Tài khoản do SSO tự tạo còn CHỜ DUYỆT: chỉ đủ để giao diện biết mình đang chờ và thoát ra.
+const PENDING_ALLOW = ['/api/auth/logout', '/api/auth/me'];
 
 // Middleware: yêu cầu đã đăng nhập.
 // Vé (token) CHỈ dùng để biết "ai" — còn "còn quyền không / vai trò gì" thì HỎI LẠI DB MỖI REQUEST.
@@ -65,7 +67,7 @@ async function requireAuth(req, res, next) {
   try {
     const { query } = require('./db');
     const { rows } = await query(
-      `SELECT id, username, role, full_name, student_id, facility_id, must_change_password, token_epoch
+      `SELECT id, username, role, full_name, student_id, facility_id, must_change_password, token_epoch, approved
        FROM users WHERE id = $1 AND deleted_at IS NULL`, [p.id]);
     const u = rows[0];
     if (!u) return res.status(401).json({ error: 'Tài khoản không còn hiệu lực' });
@@ -78,6 +80,11 @@ async function requireAuth(req, res, next) {
       if (!s.rows[0]) return res.status(401).json({ error: 'Tài khoản không còn hiệu lực' });
     }
     req.user = { id: u.id, username: u.username, role: u.role, full_name: u.full_name, student_id: u.student_id, facility_id: u.facility_id };
+    // Tài khoản SSO tự tạo, admin chưa duyệt -> chưa chạm được dữ liệu nào. Chặn ở SERVER: dù ai
+    // gọi thẳng API cũng không qua, không phụ thuộc giao diện.
+    if (u.approved === false && !PENDING_ALLOW.includes((req.originalUrl || '').split('?')[0])) {
+      return res.status(403).json({ error: 'Tài khoản đang chờ quản trị viên duyệt.' });
+    }
     // Bắt buộc đổi mật khẩu: chặn ở SERVER, không chỉ ở giao diện
     if (u.must_change_password && !MUST_CHANGE_ALLOW.includes((req.originalUrl || '').split('?')[0])) {
       return res.status(403).json({ error: 'Bạn phải đổi mật khẩu trước khi sử dụng hệ thống.' });

@@ -8,11 +8,12 @@ const { checkSetting, isValidEmail, normalizeBool } = require('../valid');
 const router = express.Router();
 
 // Các khóa bí mật KHÔNG bao giờ trả về client (chỉ trả cờ "đã cấu hình")
-const SECRET_KEYS = ['smtp_pass'];
+const SECRET_KEYS = ['smtp_pass', 'sso_client_secret'];
 // Khoá chỉ ADMIN được xem (staff không cần biết cấu hình máy chủ mail / email nhà trường).
 // sanitize dùng ALLOW-LIST cho staff thay vì deny-list: thêm secret mới mà quên bổ sung thì
 // mặc định KHÔNG lộ, an toàn hơn (V2-19).
-const ADMIN_ONLY_KEYS = ['smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_from', 'school_email', 'school_name', 'violation_mail_threshold'];
+const ADMIN_ONLY_KEYS = ['smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_from', 'school_email', 'school_name', 'violation_mail_threshold',
+  'sso_enabled', 'sso_tenant_id', 'sso_client_id', 'sso_allowed_domains'];
 
 // Bỏ secret khỏi object cấu hình, thêm cờ <key>_set để UI biết đã cấu hình hay chưa.
 // isAdmin=false -> bỏ luôn các khoá chỉ dành cho admin.
@@ -59,6 +60,7 @@ router.put('/', requireAuth, requireRole('admin'), async (req, res, next) => {
       'bravo_fee_type', 'bravo_room', 'bravo_water', 'bravo_service', 'bravo_electric', 'bravo_parking', 'bravo_washing', 'bravo_other',
       'school_name', 'school_email', 'violation_mail_threshold',
       'smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_pass', 'smtp_from',
+      'sso_enabled', 'sso_tenant_id', 'sso_client_id', 'sso_client_secret', 'sso_allowed_domains',
       'intro_hero_title', 'intro_hero_desc', 'intro_about_eyebrow', 'intro_about_title', 'intro_about_desc',
       'intro_rooms_eyebrow', 'intro_rooms_title', 'intro_rooms_desc', 'intro_amenities_title',
       'intro_price_title', 'intro_price_desc', 'intro_contact_title', 'intro_contact_desc',
@@ -90,7 +92,7 @@ router.put('/', requireAuth, requireRole('admin'), async (req, res, next) => {
         // Không ghi đè mật khẩu SMTP bằng chuỗi rỗng (form ẩn pass, để trống = giữ nguyên)
         if (SECRET_KEYS.includes(key) && !String(req.body[key]).trim()) continue;
         // V2-17: smtp_secure lưu dạng chuẩn 'true'/'false' — "True"/"1"/"yes" không âm thầm thành false.
-        const val = key === 'smtp_secure' ? String(normalizeBool(req.body[key])) : String(req.body[key]);
+        const val = (key === 'smtp_secure' || key === 'sso_enabled') ? String(normalizeBool(req.body[key])) : String(req.body[key]);
         await query(
           `INSERT INTO settings (key, value) VALUES ($1,$2)
            ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`,

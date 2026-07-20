@@ -1,14 +1,42 @@
 // === app-public-auth.js — tach tu app.js (CHANG 4 refactor). Classic script, GIU global scope cho onclick. ===
 // KHONG doi thu tu nap trong index.html; boot()/chong-bam/click-listener nam o app-portals-boot.js (cuoi).
 /* ================= ĐIỀU PHỐI CHÍNH ================= */
-function boot() {
+async function boot() {
   if (location.pathname.replace(/\/$/, '') === '/dang-ky') return renderPublicRegister();
-  const user = Auth.user; // hint hiển thị; nguồn xác thực thật là cookie httpOnly
+  let user = Auth.user; // hint hiển thị; nguồn xác thực thật là cookie httpOnly
   if (!user) return renderLogin();
+  // BL-06: trước đây hint này ghi vào localStorage ĐÚNG MỘT LẦN lúc đăng nhập rồi không bao giờ
+  // đồng bộ lại — admin đổi cơ sở/họ tên của ai đó thì máy người ấy vẫn hiển thị dữ liệu cũ, F5
+  // cũng vô ích vì boot() đọc thẳng localStorage. Hỏi lại /auth/me mỗi lần tải trang: đúng mục
+  // đích endpoint sinh ra, đổi 1 request lấy thông tin tươi.
+  try {
+    const fresh = await API.me();
+    Auth.user = fresh; user = fresh;
+  } catch (e) {
+    // 401 -> api.js đã tự xoá Auth.user và tải lại trang (về màn đăng nhập), không làm gì thêm.
+    // Lỗi mạng tạm -> dùng tiếp hint cũ, không chặn người dùng vào app.
+    if (e && e.status === 401) return;
+  }
   if (user.must_change_password) return renderForceChangePw();
+  if (user.approved === false) return renderChoDuyet();
   if (user.role === 'admin' || user.role === 'staff') renderAdmin();
   else if (user.role === 'maintenance') renderMaintenance();
   else renderStudent();
+}
+
+// Tài khoản do đăng nhập Microsoft tự tạo, admin chưa gán vai/duyệt -> chưa vào được gì.
+function renderChoDuyet() {
+  const u = Auth.user || {};
+  el('app').innerHTML = `
+    <div class="auth"><div class="auth-right" style="flex:1">
+      <div class="auth-form" style="text-align:center">
+        <div style="font-size:40px">${IC.clock || IC.info}</div>
+        <h2>Tài khoản đang chờ duyệt</h2>
+        <p class="sub">Bạn đã đăng nhập bằng Microsoft với email <strong>${esc(u.email || u.username || '')}</strong>,
+        nhưng quản trị viên chưa cấp quyền sử dụng. Vui lòng liên hệ ban quản lý khu nội trú để được duyệt.</p>
+        <button class="btn pri lg auth-btn" data-act="logout">Đăng xuất</button>
+      </div>
+    </div></div>`;
 }
 
 /* ================= TRANG ĐĂNG KÝ CÔNG KHAI ================= */
@@ -221,62 +249,56 @@ async function renderLogin() {
       </div>
       <div class="auth-right">
         <div class="auth-form">
-          <div class="auth-tabs">
-            <button class="auth-tab active" data-t="admin" data-act="loginTab" data-args='["admin"]'>${IC.shield} Ban quản lý</button>
-            <button class="auth-tab" data-t="student" data-act="loginTab" data-args='["student"]'>${IC.graduation} Học viên</button>
-          </div>
           <h2>Đăng nhập</h2>
-          <p class="sub" id="lgSub">Đăng nhập hệ thống quản lý ký túc xá.</p>
+          <p class="sub" id="lgSub">Nhân viên và học viên dùng chung một chỗ đăng nhập.</p>
+          <div id="lgNotice"></div>
+          <div id="lgSso" style="display:none">
+            <a class="btn lg auth-btn auth-sso" href="/api/auth/sso/start">${IC.shield} Đăng nhập bằng tài khoản Microsoft</a>
+            <div class="auth-or"><span>hoặc dùng mật khẩu</span></div>
+          </div>
           <form id="loginForm">
             <div class="field"><label>Tài khoản</label><input id="lg_user" autocomplete="username" placeholder="Tên đăng nhập" autofocus></div>
             <div class="field"><label>Mật khẩu</label><input id="lg_pass" type="password" autocomplete="current-password" placeholder="Mật khẩu"></div>
             <button class="btn pri lg auth-btn" type="submit">Đăng nhập →</button>
           </form>
-          <div id="lgStudentExtra" style="display:none">
-            <div class="auth-or"><span>Chưa có tài khoản?</span></div>
-            <a class="auth-card" href="/dang-ky">
-              <span class="ac-ico">${IC.graduation}</span>
-              <div><b>Xem giới thiệu &amp; đăng ký nội trú</b><small>Xem phòng ở, tiện ích, bảng giá và đăng ký — không cần tài khoản</small></div>
-              <span class="ac-arrow">→</span>
-            </a>
-          </div>
+          <div class="auth-or"><span>Chưa có tài khoản?</span></div>
+          <a class="auth-card" href="/dang-ky">
+            <span class="ac-ico">${IC.graduation}</span>
+            <div><b>Xem giới thiệu &amp; đăng ký nội trú</b><small>Xem phòng ở, tiện ích, bảng giá và đăng ký — không cần tài khoản</small></div>
+            <span class="ac-arrow">→</span>
+          </a>
         </div>
       </div>
     </div>`;
-  loginTab(_congDangChon);
+
+  // Thông báo khi vừa quay về từ Microsoft (server chuyển hướng kèm tham số)
+  const qp = new URLSearchParams(location.search);
+  if (qp.get('sso_pending')) {
+    el('lgNotice').innerHTML = `<div class="auth-note">Tài khoản Microsoft của bạn đã được ghi nhận nhưng <strong>chưa được quản trị viên duyệt</strong>. Vui lòng liên hệ ban quản lý.</div>`;
+  } else if (qp.get('sso_error')) {
+    el('lgNotice').innerHTML = `<div class="auth-note err"><span class="err-inline">${esc(qp.get('sso_error'))}</span></div>`;
+  }
+  if (location.search) history.replaceState(null, '', location.pathname); // dọn URL cho sạch
+
+  // Nút Microsoft chỉ hiện khi công ty đã cấu hình xong (ENV hoặc màn Cài đặt). Chưa cấu hình
+  // mà vẫn hiện thì người dùng bấm vào chỉ nhận lỗi — thà giấu đi.
+  API.ssoConfig().then(c => { if (c && c.enabled) el('lgSso').style.display = ''; }).catch(() => {});
+
   el('loginForm').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter; btn.disabled = true; btn.textContent = 'Đang vào...';
     try {
-      const r = await API.login(el('lg_user').value.trim(), el('lg_pass').value, _congDangChon);
+      // KHÔNG gửi "cổng": loại tài khoản là thuộc tính của user trong CSDL, server tự biết.
+      const r = await API.login(el('lg_user').value.trim(), el('lg_pass').value);
       Auth.user = r.user; // cookie phiên do server đặt; đây chỉ là thông tin hiển thị
       if (r.user.must_change_password) return renderForceChangePw();
-      boot();
+      boot();   // boot() tự chọn giao diện theo user.role (quản lý / bảo trì / học viên)
     } catch (err) {
       btn.disabled = false; btn.textContent = 'Đăng nhập →';
-      // Sai cổng: server nói rõ cổng đúng là cổng nào -> chuyển giùm luôn, giữ nguyên chữ đã gõ.
-      // Bắt người ta tự bấm sang tab kia rồi gõ lại từ đầu là phạt họ vì lỗi mình chỉ đường kém.
-      if (err.status === 403 && err.data && err.data.portal) {
-        loginTab(err.data.portal);
-        el('lgSub').innerHTML = `<span class="err-inline">${err.message} Đã chuyển sang cổng này giúp bạn — bấm Đăng nhập lại.</span>`;
-        el('lg_pass').focus();
-        return;
-      }
       toast(err.message, 'err');
     }
   });
 }
-// Cổng đang chọn — gửi lên server để nó chặn khi gõ nhầm cổng. Trước đây hai tab này chỉ đổi
-// màu nút và dòng chữ, không ai gửi lựa chọn đó đi đâu cả, nên tài khoản nào cũng vào được
-// từ cổng nào: hai cổng là trang trí thuần tuý.
-let _congDangChon = 'admin';
-function loginTab(t) {
-  _congDangChon = CONG_HOP_LE.includes(t) ? t : 'admin';
-  document.querySelectorAll('.auth-tab').forEach(b => b.classList.toggle('active', b.dataset.t === _congDangChon));
-  el('lgSub').textContent = _congDangChon === 'student' ? 'Đăng nhập tài khoản học viên (do quản lý cấp).' : 'Đăng nhập hệ thống quản lý ký túc xá.';
-  el('lgStudentExtra').style.display = _congDangChon === 'student' ? '' : 'none';
-}
-const CONG_HOP_LE = ['admin', 'student'];
 
 // Bắt buộc đổi mật khẩu (tài khoản admin khởi tạo lần đầu)
 function renderForceChangePw() {

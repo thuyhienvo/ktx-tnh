@@ -89,13 +89,18 @@ router.get('/audit', async (req, res, next) => {
 const VALID_ROLES = ['admin', 'staff', 'maintenance'];
 // Fragment SQL cho IN (...) — dựng TỪ VALID_ROLES (hằng nội bộ, không phải input người dùng) để không
 // lặp chuỗi 'admin','staff','maintenance' nhiều nơi; thêm/bớt vai chỉ sửa một chỗ.
-const MANAGED_ROLES_SQL = VALID_ROLES.map(r => `'${r}'`).join(',');
+// 'pending' = tài khoản do đăng nhập Microsoft TỰ TẠO, chưa được duyệt. KHÔNG nằm trong VALID_ROLES
+// (admin không gán tay vai này) nhưng PHẢI nằm trong nhóm quản lý được — nếu không thì tài khoản
+// chờ duyệt vô hình với admin, không ai duyệt được, người dùng kẹt vĩnh viễn.
+const MANAGEABLE_ROLES = [...VALID_ROLES, 'pending'];
+const MANAGED_ROLES_SQL = MANAGEABLE_ROLES.map(r => `'${r}'`).join(',');
 
 router.get('/users', async (req, res, next) => {
   try {
     // facility_id NULL = ĐIỀU HÀNH (thấy mọi cơ sở); có giá trị = quản lý đúng cơ sở đó.
     const { rows } = await query(
-      `SELECT u.id, u.username, u.role, u.full_name, u.facility_id, f.name AS facility_name, u.created_at
+      `SELECT u.id, u.username, u.role, u.full_name, u.facility_id, f.name AS facility_name, u.created_at,
+              u.email, u.auth_provider, u.approved
          FROM users u LEFT JOIN facilities f ON f.id = u.facility_id
         WHERE u.role IN (${MANAGED_ROLES_SQL}) AND u.deleted_at IS NULL
         ORDER BY u.role, u.username`);
@@ -174,11 +179,15 @@ router.put('/users/:id', async (req, res, next) => {
     // ADMIN LUÔN là điều hành: nếu vai (mới) là admin thì ÉP facility_id=null, kể cả khi caller không
     // gửi facility_id (vd nâng staff-có-cơ-sở lên admin mà quên bỏ cơ sở) (chốt 18/07).
     if (newRole === 'admin') { hasFac = true; facVal = null; }
+    // Gán cho tài khoản chờ duyệt một vai THẬT = chính là hành động DUYỆT nó. Không tách nút riêng:
+    // admin phải chọn vai + cơ sở rồi mới duyệt được, tránh duyệt xong mà tài khoản chưa có quyền gì.
+    const duyet = cur.role === 'pending' && newRole !== 'pending';
     await query(
       `UPDATE users SET full_name = CASE WHEN $1 THEN $2 ELSE full_name END, role=$3,
-         facility_id = CASE WHEN $5 THEN $6 ELSE facility_id END
+         facility_id = CASE WHEN $5 THEN $6 ELSE facility_id END,
+         approved = CASE WHEN $7 THEN true ELSE approved END
        WHERE id=$4 AND role IN (${MANAGED_ROLES_SQL}) AND deleted_at IS NULL`,
-      [hasName, (req.body.full_name || '').trim(), newRole, id, hasFac, facVal]);
+      [hasName, (req.body.full_name || '').trim(), newRole, id, hasFac, facVal, duyet]);
     // Đổi vai trò -> THU HỒI vé cũ ngay (người vừa bị giáng chức không giữ quyền admin 30 ngày).
     if (newRole !== cur.role) await revokeTokens(id);
     res.json({ ok: true });

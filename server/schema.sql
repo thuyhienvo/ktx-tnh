@@ -122,6 +122,26 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS token_epoch INTEGER NOT NULL DEFAULT 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS facility_id INTEGER REFERENCES facilities(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS ix_users_facility ON users (facility_id);
 
+-- ===== ĐĂNG NHẬP MICROSOFT (SSO / OpenID Connect) =====
+-- Nguyên tắc: SSO chỉ là CÁCH CHỨNG MINH danh tính. Sau khi chứng minh xong, phiên vẫn là cookie
+-- httpOnly + token_epoch y như đăng nhập mật khẩu — không có đường quyền riêng cho SSO.
+-- email: dùng để LIÊN KẾT tài khoản đã có với danh tính Microsoft (khớp lần đầu, sau đó khoá theo sso_subject).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+-- sso_subject: mã định danh BẤT BIẾN do Microsoft cấp (claim `oid` — KHÔNG dùng email vì email đổi được).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_subject TEXT;
+-- auth_provider: 'local' = đăng nhập bằng mật khẩu · 'sso' = chỉ Microsoft · 'both' = dùng được cả hai.
+-- Quyết định tài khoản nào ĐƯỢC PHÉP dùng form mật khẩu (tài khoản 'sso' thuần thì không).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT 'local';
+-- approved: tài khoản do SSO TỰ TẠO (người trong tenant chưa có hồ sơ) = false -> chưa dùng được gì,
+-- chờ admin gán vai + duyệt. Tài khoản cũ/ do admin tạo = true (mặc định) nên không ai bị khoá oan.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT true;
+-- Tài khoản SSO thuần KHÔNG có mật khẩu. Nhét hash rác sẽ mở đường "đặt lại mật khẩu" chạy song song
+-- SSO -> bỏ ràng buộc NOT NULL và chặn đăng nhập mật khẩu khi password_hash IS NULL.
+ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+-- Một email / một danh tính Microsoft chỉ gắn được vào MỘT tài khoản còn sống.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email ON users (lower(email)) WHERE email IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_users_sso_subject ON users (sso_subject) WHERE sso_subject IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS logs (
   id          SERIAL PRIMARY KEY,
   student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,

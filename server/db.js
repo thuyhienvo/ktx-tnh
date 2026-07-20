@@ -187,6 +187,14 @@ async function seedDefaults() {
     room_cap_A: '8', room_cap_B: '8', room_cap_C: '8', room_cap_D: '8',  // trần giường theo hạng phòng
     checkout_max_future_days: '365',   // HV tự xin trả phòng: ngày mong muốn không quá N ngày tới
     max_cccd_mb: '12',                 // trần dung lượng mỗi ảnh CCCD (MB) — phải <= giới hạn body parser
+    // ---- Đăng nhập Microsoft (SSO). Điền ở màn Cài đặt HOẶC đặt bằng biến môi trường.
+    // ENV được ƯU TIÊN hơn giá trị trong CSDL (môi trường thật nên giữ bí mật ở ENV, không nằm trong DB).
+    // Đủ tenant_id + client_id + client_secret (và sso_enabled=true) thì nút Microsoft mới hiện.
+    sso_enabled: 'false',
+    sso_tenant_id: '',
+    sso_client_id: '',
+    sso_client_secret: '',             // BÍ MẬT — không bao giờ trả về client (xem SECRET_KEYS)
+    sso_allowed_domains: '',           // vd "esuhai.com,esuhai.vn" — rỗng = chấp nhận mọi email trong tenant
     legal_female: 'E2', legal_male: 'S2', due_day_from: '1', due_day_to: '5', hotline: '',
     room_price_A: '5500000', room_price_B: '4800000', room_price_C: '4200000', room_price_D: '3600000',
     bravo_fee_type: 'T0704',

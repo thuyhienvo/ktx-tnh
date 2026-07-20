@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { query, withTransaction, getSettings } = require('../db');
-const { requireAuth, requireRole } = require('../auth');
+const { requireAuth, requireRole, revokeTokens } = require('../auth');
 const { depositRefundEligible } = require('../billing');
 const { recalcInvoice } = require('../invoice-calc');
 const storage = require('../storage');
@@ -340,7 +340,8 @@ router.post('/', requireRole('admin', 'staff'), async (req, res, next) => {
       );
       if (b.create_login) {
         await client.query(
-          `INSERT INTO users (username, password_hash, role, full_name, student_id) VALUES ($1,$2,'student',$3,$4)`,
+          // must_change_password=true — xem BL-08: ngưỡng yếu INITIAL_PASSWORD_MIN chỉ hợp lệ khi kèm điều kiện bù này
+          `INSERT INTO users (username, password_hash, role, full_name, student_id, must_change_password) VALUES ($1,$2,'student',$3,$4,true)`,
           [uname, bcrypt.hashSync(pass, 10), b.name.trim(), st.id]
         );
       }
@@ -698,14 +699,22 @@ router.post('/:id/account', requireRole('admin', 'staff'), async (req, res, next
     const existing = await query('SELECT * FROM users WHERE student_id=$1', [req.params.id]);
     const hash = bcrypt.hashSync(password, 10);
     if (existing.rows[0]) {
-      await query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, existing.rows[0].id]);
+      // BL-08: khớp đúng đường của NHÂN VIÊN (admin.routes.js) — thiếu 2 chốt này thì thao tác
+      // "đặt lại mật khẩu" KHÔNG đạt được mục đích duy nhất của nó:
+      //  · must_change_password: mật khẩu cấp nhanh (thường là SĐT, ≥6 ký tự) buộc phải đổi ở lần
+      //    đăng nhập kế — nếu không thì mật khẩu yếu sống vĩnh viễn, mà SĐT thì cả app đều thấy.
+      //  · revokeTokens: KHÔNG gọi thì vé cũ (JWT trong cookie, hạn 30 ngày) vẫn sống — người bị
+      //    lộ mật khẩu báo đổi, kẻ xem trộm vẫn dùng tiếp. Chính là ca mà đặt lại mật khẩu sinh ra để chặn.
+      await query('UPDATE users SET password_hash=$1, must_change_password=true WHERE id=$2', [hash, existing.rows[0].id]);
+      await revokeTokens(existing.rows[0].id);   // đá mọi phiên đang mở của tài khoản đó
       res.json({ ok: true, username: existing.rows[0].username });
     } else {
       const uname = (username || st.rows[0].code || '').trim();
       if (!uname) return res.status(400).json({ error: 'Cần tên đăng nhập' });
       const dup = await query('SELECT 1 FROM users WHERE lower(username)=lower($1)', [uname]);
       if (dup.rows.length) return res.status(400).json({ error: `Tên đăng nhập "${uname}" đã tồn tại` });
-      await query(`INSERT INTO users (username, password_hash, role, full_name, student_id) VALUES ($1,$2,'student',$3,$4)`,
+      // must_change_password=true: mật khẩu cấp nhanh yếu (≥6) chỉ chấp nhận được vì BẮT BUỘC đổi ngay
+      await query(`INSERT INTO users (username, password_hash, role, full_name, student_id, must_change_password) VALUES ($1,$2,'student',$3,$4,true)`,
         [uname, hash, st.rows[0].name, req.params.id]);
       res.json({ ok: true, username: uname });
     }
