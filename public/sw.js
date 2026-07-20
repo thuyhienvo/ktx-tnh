@@ -1,6 +1,6 @@
 // Service worker: ưu tiên MẠNG cho giao diện (luôn có bản mới nhất khi online),
 // dùng cache làm dự phòng khi offline. API luôn lấy trực tiếp từ mạng.
-const CACHE = 'ktx-shell-v84';
+const CACHE = 'ktx-shell-v88';
 // Số phiên bản SUY RA TỪ TÊN CACHE — tuyệt đối không ghi tay lần thứ hai.
 // Trước đây SHELL ghi cứng '?v=25' trong khi index.html nạp '?v=71': service worker tải sẵn
 // nguyên bộ asset cũ 46 phiên bản mà KHÔNG lần nào dùng tới (trang chỉ xin ?v=71) — máy học viên
@@ -11,7 +11,10 @@ const V = (CACHE.match(/-v(\d+)$/) || [, '1'])[1];
 const SHELL = [
   '/', '/index.html',
   `/css/styles.css?v=${V}`,
-  `/js/icons.js?v=${V}`, `/js/api.js?v=${V}`, `/js/ui.js?v=${V}`, `/js/app.js?v=${V}`,
+  `/js/icons.js?v=${V}`, `/js/api.js?v=${V}`, `/js/ui.js?v=${V}`, `/js/app-actions.js?v=${V}`,
+  `/js/app-public-auth.js?v=${V}`, `/js/app-admin-core.js?v=${V}`, `/js/app-exec-dashboard.js?v=${V}`,
+  `/js/app-rooms-students.js?v=${V}`, `/js/app-services-revenue-audit.js?v=${V}`, `/js/app-requests-checkin.js?v=${V}`,
+  `/js/app-invoices-settings.js?v=${V}`, `/js/app-portals-boot.js?v=${V}`, `/js/sw-register.js?v=${V}`,
   '/manifest.webmanifest', '/icons/icon.svg',
 ];
 
