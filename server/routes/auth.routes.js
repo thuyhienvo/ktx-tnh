@@ -61,7 +61,9 @@ router.post('/login', async (req, res, next) => {
     // Đúng cổng chưa? Kiểm SAU khi đã xác thực mật khẩu — nếu kiểm trước thì câu báo lỗi
     // vô tình nói cho người lạ biết "tên đăng nhập này là tài khoản học viên", tức là
     // biến ô đăng nhập thành máy dò xem tài khoản nào tồn tại và thuộc loại gì.
-    const cong = CONG[req.body.portal];
+    // hasOwnProperty: tra thẳng CONG[...] sẽ ăn cả thuộc tính kế thừa từ Object.prototype —
+    // gửi portal="constructor" cho ra một hàm (truthy) không có .vai -> TypeError -> 500.
+    const cong = Object.prototype.hasOwnProperty.call(CONG, req.body.portal) ? CONG[req.body.portal] : null;
     if (cong && !cong.vai.includes(user.role)) {
       // Mật khẩu ĐÚNG, chỉ nhầm cổng -> KHÔNG tính là lần sai, xoá bộ đếm.
       guard.ghiNhanKetQua(username, true, now);
