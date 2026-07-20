@@ -97,7 +97,7 @@ async function viewRevenue() {
     </div>
 
     <div class="panel"><div class="hd"><h2>${IC.trendingUp} Dự báo doanh thu theo tháng — năm ${revYear}</h2>
-      <button class="btn sm" onclick='exportRevenue(${JSON.stringify(data).replace(/'/g, "&#39;")})'>${IC.download} Xuất Excel (CSV)</button></div>
+      <button class="btn sm" data-act="exportRevenue" data-args='[${JSON.stringify(data).replace(/'/g, "&#39;")}]'>${IC.download} Xuất Excel (CSV)</button></div>
       <div class="table-wrap">
       ${data.length ? `<table><thead><tr><th>Tháng</th>
         ${REV_SERVICES.filter(x => x[0] !== 'other' || sum('other')).map(([, l]) => `<th class="num">${l.replace('Phí ', '').replace(' sinh hoạt', '').replace(' (tiền phòng)', '')}</th>`).join('')}

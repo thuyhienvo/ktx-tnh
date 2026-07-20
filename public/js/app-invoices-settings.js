@@ -58,7 +58,7 @@ async function viewInvoices() {
       <span class="muted" style="font-size:12px">Đơn vị: đồng</span>
       <div class="toolbar">
         <div class="search"><span class="i">${IC.search}</span><input id="invs" placeholder="Tìm tên HV / số phòng..." value="${esc(invSearch)}"></div>
-        ${all.length ? `<button class="btn sm" onclick='exportCSV(${JSON.stringify(list).replace(/'/g, "&#39;")})'>${IC.download} Xuất Excel (CSV)</button>` : ''}</div></div>
+        ${all.length ? `<button class="btn sm" data-act="exportCSV" data-args='[${JSON.stringify(list).replace(/'/g, "&#39;")}]'>${IC.download} Xuất Excel (CSV)</button>` : ''}</div></div>
       <div class="table-wrap">
       ${all.length === 0 ? `<div class="empty">Chưa có hóa đơn nào cho kỳ này.<br><br><button class="btn pri" data-act="generateForm">${IC.receipt} Tạo hóa đơn</button></div>` :
       list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Giảm</th><th class="num">Tổng</th><th></th></tr></thead><tbody>
@@ -77,9 +77,9 @@ async function viewInvoices() {
             : '—'}</td>
           <td class="num"><strong>${moneyN(i.total)}</strong></td>
           <td class="num"><div class="rowbtns" style="justify-content:flex-end">
-            <button class="btn sm pri" onclick='phieuBao(${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.fileText} Phiếu báo</button>
+            <button class="btn sm pri" data-act="phieuBao" data-args='[${JSON.stringify(i).replace(/'/g, "&#39;")}]'>${IC.fileText} Phiếu báo</button>
             <button class="btn sm ghost" title="Tính lại theo số ngày ở hiện tại" data-act="recalcInv" data-args='[${i.id}]'>${IC.refresh}</button>
-            <button class="btn sm ghost" onclick='invoiceForm(${i.id}, ${JSON.stringify(i).replace(/'/g, "&#39;")})'>${IC.pencil}</button>
+            <button class="btn sm ghost" data-act="invoiceForm" data-args='[${i.id}, ${JSON.stringify(i).replace(/'/g, "&#39;")}]'>${IC.pencil}</button>
             <button class="btn sm ghost" data-act="delInvoice" data-args='[${i.id}]'>${IC.trash}</button>
           </div></td></tr>`).join('')}
         <tr class="no-result" style="display:none"><td colspan="12"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
