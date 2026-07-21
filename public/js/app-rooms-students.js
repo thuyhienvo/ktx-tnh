@@ -384,8 +384,9 @@ async function applyRenumber() {
 async function studentDetail(id) {
   const s = await guard(() => API.student(id));
   let invs = [], logs = [];
-  try { invs = (await API.invoices()).filter(i => i.student_id === id); } catch {}
-  try { logs = (await API.logs()).filter(l => l.student_id === id).slice(0, 12); } catch {}
+  // BL-11: server lọc theo student_id (không kéo 500 dòng nhật ký / toàn bộ hoá đơn mọi kỳ rồi .filter).
+  try { invs = await API.invoices({ student_id: id }); } catch {}
+  try { logs = (await API.logs({ student_id: id })).slice(0, 12); } catch {}
   const vehicles = s.vehicles || [];
   window._detailVehicles = vehicles;
   const vios = s.violations || [];

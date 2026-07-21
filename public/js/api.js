@@ -122,13 +122,31 @@ const API = {
   updateAsset: (id, b) => api('/assets/' + id, { method: 'PUT', body: b }),
   deleteAsset: id => api('/assets/' + id, { method: 'DELETE' }),
 
-  logs: type => api('/logs' + (type ? '?type=' + type : '') + facAmp(!!type)),
+  // Nhận chuỗi type (tương thích cũ: API.logs('in')) HOẶC object { type, student_id, limit }.
+  // BL-11: student_id để SERVER lọc (không tải 500 dòng rồi .filter ở client).
+  logs: opts => {
+    const o = (opts && typeof opts === 'object') ? opts : { type: opts };
+    const p = new URLSearchParams();
+    if (o.type) p.set('type', o.type);
+    if (o.student_id) p.set('student_id', o.student_id);
+    if (o.limit) p.set('limit', o.limit);
+    const s = p.toString();
+    return api('/logs' + (s ? '?' + s : '') + facAmp(!!s));
+  },
 
   electric: month => api('/electric?month=' + month),
   electricHistory: (month, n) => api('/electric/history?month=' + month + (n ? '&n=' + n : '')),
   saveElectric: b => api('/electric/bulk', { method: 'POST', body: b }),
 
-  invoices: month => api('/invoices' + (month ? '?month=' + month : '') + facAmp(!!month)),
+  // Nhận chuỗi month (tương thích cũ: API.invoices('2026-07')) HOẶC object { month, student_id }.
+  invoices: opts => {
+    const o = (opts && typeof opts === 'object') ? opts : { month: opts };
+    const p = new URLSearchParams();
+    if (o.month) p.set('month', o.month);
+    if (o.student_id) p.set('student_id', o.student_id);
+    const s = p.toString();
+    return api('/invoices' + (s ? '?' + s : '') + facAmp(!!s));
+  },
   invoiceMonths: () => api('/invoices/months'),
   generateInvoices: b => api('/invoices/generate', { method: 'POST', body: b }),
   generateOneInvoice: b => api('/invoices/generate-one', { method: 'POST', body: b }),

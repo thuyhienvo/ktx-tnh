@@ -59,8 +59,33 @@ function renderAdmin() {
   // ?view= cũ (giữ tương thích link/bookmark cũ). adminGo {replace} sẽ nắn '/?view=students' thành '/hoc-vien'.
   const initial = (fromPath && fromPath !== 'dashboard') ? fromPath
     : (views.includes(legacy) ? legacy : (fromPath || 'dashboard'));
-  refreshCache().then(() => adminGo(initial, { replace: true })).catch(e => toast(e.message, 'err'));
+  bootLoad(initial, { replace: true });
   startNotifPolling();
+}
+
+// BL-13: nạp dữ liệu nền lúc vào app. 4 API lõi (rooms/students/facilities/settings) là ĐIỀU KIỆN
+// TIÊN QUYẾT — hỏng thì KHÔNG vẽ màn với số 0 giả (người ta tin số mà quyết định sai), mà hiện trạng
+// thái lỗi kèm nút Thử lại — MỘT chỗ, không phải 11 .catch. Trước đây: Promise.all reject -> adminGo
+// không chạy -> vùng nội dung kẹt ở <div class="spinner"> vĩnh viễn, toast lỗi thì bay mất -> bế tắc.
+let _bootLoaded = false, _bootInitial = 'dashboard', _bootOpts = { replace: true };
+function bootLoad(initial, opts) {
+  _bootInitial = initial; _bootOpts = opts || {};
+  const c = el('content'); if (c) c.innerHTML = '<div class="spinner"></div>';
+  refreshCache().then(() => { _bootLoaded = true; adminGo(initial, _bootOpts); }).catch(renderBootError);
+}
+function bootRetry() { bootLoad(_bootInitial, _bootOpts); }
+function renderBootError(e) {
+  const c = el('content'); if (!c) return;
+  c.innerHTML = `
+    <div class="panel" style="max-width:460px;margin:48px auto;text-align:center">
+      <div class="pad">
+        <div style="color:var(--red-ink,#b91c1c);display:flex;justify-content:center;margin-bottom:8px">${IC.alert}</div>
+        <h2 style="margin:0 0 6px">Không tải được dữ liệu</h2>
+        <p class="muted" style="margin:0 0 4px">${esc((e && e.message) || 'Lỗi kết nối máy chủ')}</p>
+        <p class="muted" style="font-size:13px;margin:0 0 16px">Máy chủ có thể đang khởi động lại (gói miễn phí ngủ đông) hoặc mất mạng. Chưa tải được dữ liệu nền nên chưa mở màn nào — bấm Thử lại.</p>
+        <button class="btn pri" data-act="bootRetry">${IC.refresh} Thử lại</button>
+      </div>
+    </div>`;
 }
 
 async function refreshCache() {
@@ -317,6 +342,9 @@ function syncFilterUrl() {
 // (URL đã đổi sẵn, chỉ đồng bộ lại nếu bị nắn view) · mặc định: điều hướng thường -> pushState.
 function adminGo(view, opts) {
   opts = opts || {};
+  // BL-13: dữ liệu nền chưa nạp xong (đang boot / boot lỗi / đang thử lại) -> đừng vẽ màn rỗng hoặc
+  // crash vì ST.students còn trống; quay về luồng nạp (hiện spinner rồi lỗi/Thử lại nếu vẫn hỏng).
+  if (!_bootLoaded) return bootLoad(view, { replace: true });
   // Đang điền dở form mà bấm menu khác -> hỏi trước, đừng vứt luôn công sức của người ta.
   // _dangLuu = đang trong luồng lưu (adminGo được gọi lại sau khi lưu xong) -> không hỏi.
   if (!window._dangLuu && typeof formDangDo === 'function' && formDangDo()) {
