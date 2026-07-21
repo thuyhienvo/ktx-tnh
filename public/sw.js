@@ -1,6 +1,6 @@
 // Service worker: ưu tiên MẠNG cho giao diện (luôn có bản mới nhất khi online),
 // dùng cache làm dự phòng khi offline. API luôn lấy trực tiếp từ mạng.
-const CACHE = 'ktx-shell-v89';
+const CACHE = 'ktx-shell-v90';
 // Số phiên bản SUY RA TỪ TÊN CACHE — tuyệt đối không ghi tay lần thứ hai.
 // Trước đây SHELL ghi cứng '?v=25' trong khi index.html nạp '?v=71': service worker tải sẵn
 // nguyên bộ asset cũ 46 phiên bản mà KHÔNG lần nào dùng tới (trang chỉ xin ?v=71) — máy học viên
@@ -41,6 +41,13 @@ self.addEventListener('fetch', e => {
         caches.open(CACHE).then(c => c.put(e.request, copy));
       }
       return res;
-    }).catch(() => caches.match(e.request))
+    }).catch(() =>
+      // BL-14: request ĐIỀU HƯỚNG (mở /students, /dang-ky, /?view=... khi offline) — cache chỉ có '/'
+      // và '/index.html', tra theo URL đầy đủ nên mọi đường dẫn/khác query đều trượt → trang trắng.
+      // App là SPA: mọi đường dẫn đều phải trả index.html (giống SPA fallback của máy chủ ở index.js),
+      // để định tuyến (BL-10) chạy được cả khi mất mạng. Request tài nguyên (js/css/ảnh) thì tra bình thường.
+      e.request.mode === 'navigate'
+        ? caches.match('/index.html').then(r => r || caches.match('/'))
+        : caches.match(e.request))
   );
 });

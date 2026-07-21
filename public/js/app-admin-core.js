@@ -50,10 +50,16 @@ function renderAdmin() {
     </div>`;
   document.querySelectorAll('#nav button').forEach(b => b.addEventListener('click', () => adminGo(b.dataset.v)));
   startTableResize();
-  const qp = new URLSearchParams(location.search);
-  const startView = qp.get('view');
+  // Màn ban đầu: ƯU TIÊN đường dẫn (deep-link /hoc-vien...), rồi tới ?view= cũ (giữ tương thích link cũ),
+  // cuối cùng mặc định Tổng quan. adminGo lần đầu dùng {replace} để không tạo bước lịch sử thừa.
   const views = ['exec', 'dashboard', 'students', 'rooms', 'vehicles', 'services', 'checkin', 'invoices', 'revenue', 'reg', 'checkout', 'repair', 'violations', 'feedback', 'requests', 'audit', 'settings'];
-  refreshCache().then(() => adminGo(views.includes(startView) ? startView : 'dashboard')).catch(e => toast(e.message, 'err'));
+  const legacy = new URLSearchParams(location.search).get('view');
+  const fromPath = viewFromPath(location.pathname);
+  // Ưu tiên đường dẫn khi nó chỉ tới một màn CỤ THỂ; còn '/' (→ dashboard) hoặc path lạ thì mới xét
+  // ?view= cũ (giữ tương thích link/bookmark cũ). adminGo {replace} sẽ nắn '/?view=students' thành '/hoc-vien'.
+  const initial = (fromPath && fromPath !== 'dashboard') ? fromPath
+    : (views.includes(legacy) ? legacy : (fromPath || 'dashboard'));
+  refreshCache().then(() => adminGo(initial, { replace: true })).catch(e => toast(e.message, 'err'));
   startNotifPolling();
 }
 
@@ -181,24 +187,68 @@ function closeSide() {
   const s = document.querySelector('.side'), b = el('sideBackdrop');
   if (s) s.classList.remove('open'); if (b) b.classList.remove('show');
 }
-function adminGo(view) {
+/* ================= ĐỊNH TUYẾN (BL-10) =================
+   Trước đây mọi màn quản trị dùng chung URL '/': Back thoát app, F5 mất chỗ, không gửi link được.
+   Mỗi màn nay có đường dẫn riêng (/students, /rooms...). Server đã trả index.html cho mọi path
+   không phải /api (SPA fallback), và sw.js trả index.html cho request điều hướng khi offline (BL-14),
+   nên đổi URL không cần thêm gì ở server. '/' = Tổng quan (mặc định). */
+const VIEW_PATHS = {
+  dashboard: '/', exec: '/dieu-hanh', students: '/hoc-vien', rooms: '/phong', services: '/dich-vu',
+  checkin: '/check-in', invoices: '/tien-phong', revenue: '/doanh-thu', reg: '/dang-ky-noi-tru',
+  checkout: '/tra-phong', repair: '/bao-hong', violations: '/vi-pham', feedback: '/gop-y',
+  audit: '/lich-su', settings: '/cai-dat',
+};
+const PATH_VIEWS = Object.fromEntries(Object.entries(VIEW_PATHS).map(([v, p]) => [p, v]));
+const pathForView = v => VIEW_PATHS[v] || '/';
+// Đường dẫn hiện tại -> tên view (null nếu không phải màn quản trị nào, vd /dang-ky công khai).
+function viewFromPath(pathname) {
+  const p = (pathname || '/').replace(/\/+$/, '') || '/';
+  return PATH_VIEWS[p] || null;
+}
+
+// opts.replace: nạp lần đầu (thay URL, không thêm history) · opts.fromPop: đến từ nút Back/Forward
+// (URL đã đổi sẵn, chỉ đồng bộ lại nếu bị nắn view) · mặc định: điều hướng thường -> pushState.
+function adminGo(view, opts) {
+  opts = opts || {};
   // Đang điền dở form mà bấm menu khác -> hỏi trước, đừng vứt luôn công sức của người ta.
   // _dangLuu = đang trong luồng lưu (adminGo được gọi lại sau khi lưu xong) -> không hỏi.
   if (!window._dangLuu && typeof formDangDo === 'function' && formDangDo()) {
-    if (!confirm('Bạn có dữ liệu chưa lưu.\n\nRời khỏi và bỏ những gì vừa nhập?')) return;
+    if (!confirm('Bạn có dữ liệu chưa lưu.\n\nRời khỏi và bỏ những gì vừa nhập?')) {
+      // Người dùng bấm Back rồi lại Huỷ: trình duyệt ĐÃ lùi URL — kéo lại về màn đang đứng.
+      // pushState KHÔNG kích hoạt popstate nên không sinh vòng lặp.
+      if (opts.fromPop) history.pushState({ view: ST.view }, '', pathForView(ST.view));
+      return;
+    }
     closeModalNgay();
   }
   if (view === 'requests') view = 'reg'; // alias cũ → trang Đăng ký ở nội trú
   if (view === 'vehicles') { svcTab = 'parking'; view = 'services'; } // Xe đã gộp vào Dịch vụ → Gửi xe
-  // Chặn nhân viên (staff) truy cập các mục dành riêng quản trị (kể cả deep-link)
+  // Chặn nhân viên (staff) truy cập các mục dành riêng quản trị (kể cả deep-link — nay deep-link có thật)
   if (ADMIN_ONLY_VIEWS.includes(view) && Auth.user.role !== 'admin') view = 'dashboard';
+  const prev = ST.view;
   ST.view = view; closeSide();
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.v === view));
   el('pgTitle').textContent = AdminTitles[view][0];
   el('pgSub').textContent = AdminTitles[view][1];
   el('topActions').innerHTML = '';
+  // Đồng bộ URL. pushState/replaceState KHÔNG kích hoạt popstate -> an toàn, không vòng lặp.
+  const target = pathForView(view);
+  const cur = (location.pathname || '/').replace(/\/+$/, '') || '/';
+  if (opts.replace || opts.fromPop || view === prev) {
+    if (cur !== target) history.replaceState({ view }, '', target); // nạp đầu / Back bị nắn view / vẽ lại cùng màn
+  } else {
+    history.pushState({ view }, '', target);                        // điều hướng thường -> thêm 1 bước lịch sử
+  }
   ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, services: viewServices, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, reg: viewRequests, checkout: viewRequests, repair: viewRequests, violations: viewRequests, feedback: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
 }
+// Nút Back/Forward của trình duyệt (kể cả nút cứng Android trên PWA standalone).
+// Gán bằng onpopstate (không phải addEventListener) để boot() gọi lại nhiều lần cũng không nhân đôi.
+window.onpopstate = () => {
+  if (!Auth.user || !['admin', 'staff'].includes(Auth.user.role) || !el('nav')) return; // chỉ áp cho giao diện quản trị
+  const v = viewFromPath(location.pathname);
+  if (v) adminGo(v, { fromPop: true });
+  else location.reload(); // lùi tới đường dẫn ngoài hệ view (vd /dang-ky) -> để boot() tự quyết
+};
 const roomById = id => ST.rooms.find(r => r.id === id);
 const studentById = id => ST.students.find(s => s.id === id);
 const facilityName = id => { const f = ST.facilities.find(x => x.id === id); return f ? f.name : '—'; };
