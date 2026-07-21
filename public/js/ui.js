@@ -68,24 +68,134 @@ function debounce(fn, ms = 180) {
   return function (...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
 }
 
-// Tìm kiếm tức thì: chỉ ẩn/hiện các hàng <tr data-s="..."> — KHÔNG dựng lại cả bảng
-// (mượt, không chớp, không mất con trỏ). countId: id ô hiển thị số kết quả.
+// ===== TÌM KIẾM + LỌC CỘT (dùng CHUNG một bộ hiển thị) =====================================
+// Ô tìm kiếm lọc theo data-s (mọi cột). Phễu ▾ trên tiêu đề lọc theo TỪNG cột: cột ít giá trị
+// (trạng thái, hợp đồng…) -> danh sách tick kiểu Excel; cột nhiều giá trị (họ tên…) -> ô gõ chữ
+// "chứa". Cả hai đi qua applyRowFilters() nên HỢP với nhau, chỉ ẩn/hiện <tr> (mượt, không dựng lại
+// bảng). State gắn trên table._flt (mất khi bảng render lại — chấp nhận). CSP: chỉ addEventListener.
+const COLFILT_MAX = 12; // <= số giá trị phân biệt này -> danh sách tick; nhiều hơn -> ô gõ chữ
+const _FUNNEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>';
+const _stripSel = '.sub2,.sub,.rowbtns,button,.col-filt,.sort-ar,.rz-handle';
+function _cellText(cell) {
+  if (!cell) return '';
+  const c = cell.cloneNode(true);
+  c.querySelectorAll(_stripSel).forEach(n => n.remove());
+  return (c.textContent || '').replace(/\s+/g, ' ').trim();
+}
+function _tableState(t) { return t._flt || (t._flt = { q: '', cols: new Map(), countId: null }); }
+
+// Nguồn sự thật hiển thị hàng: qua ô tìm kiếm (data-s) VÀ mọi bộ lọc cột đang bật.
+function applyRowFilters(table) {
+  const st = table._flt; if (!st) return;
+  const head = table.tHead && table.tHead.rows[0]; const nCol = head ? head.cells.length : 0;
+  const body = table.tBodies && table.tBodies[0]; if (!body) return;
+  let n = 0;
+  for (const tr of body.rows) {
+    if (tr.classList.contains('no-result')) continue;
+    if (nCol && tr.cells.length !== nCol) continue; // hàng tổng/đặc biệt (colspan) -> để yên
+    let show = true;
+    if (st.q) { const ds = tr.getAttribute('data-s'); if (ds != null && ds.indexOf(st.q) === -1) show = false; }
+    if (show) for (const [idx, f] of st.cols) {
+      const v = _cellText(tr.cells[idx]);
+      if (f.type === 'set') { if (f.set.size && !f.set.has(v)) { show = false; break; } }
+      else if (f.text && v.toLowerCase().indexOf(f.text) === -1) { show = false; break; }
+    }
+    tr.style.display = show ? '' : 'none'; if (show) n++;
+  }
+  if (st.countId) { const c = el(st.countId); if (c) c.textContent = n; }
+  const er = table.querySelector('.no-result'); if (er) er.style.display = n === 0 ? '' : 'none';
+  if (head) for (const th of head.cells) {
+    const fn = th.querySelector('.col-filt'); if (!fn) continue;
+    const f = st.cols.get(th.cellIndex);
+    fn.classList.toggle('on', !!(f && (f.type === 'set' ? f.set.size : f.text)));
+  }
+}
+
+// Tìm kiếm tức thì (ô search) — nay đi qua applyRowFilters để HỢP với lọc cột.
 function attachRowSearch(input, countId) {
   if (!input) return;
   const panel = input.closest('.panel') || document;
-  const run = () => {
-    const q = input.value.trim().toLowerCase();
-    const rows = panel.querySelectorAll('tbody tr[data-s]');
-    let n = 0;
-    for (const tr of rows) {
-      const show = !q || tr.dataset.s.indexOf(q) !== -1;
-      tr.style.display = show ? '' : 'none';
-      if (show) n++;
-    }
-    if (countId) { const c = el(countId); if (c) c.textContent = n; }
-    const er = panel.querySelector('.no-result');
-    if (er) er.style.display = n === 0 ? '' : 'none';
-  };
+  const table = panel.querySelector('table'); if (!table) return;
+  const st = _tableState(table); st.countId = countId;
+  const run = () => { st.q = input.value.trim().toLowerCase(); applyRowFilters(table); };
   input.addEventListener('input', run);
-  if (input.value) run();
+  if (input.value) run(); else applyRowFilters(table);
 }
+
+function _distinctCol(table, idx) {
+  const body = table.tBodies[0], nCol = table.tHead.rows[0].cells.length, m = new Map();
+  for (const tr of body.rows) {
+    if (tr.classList.contains('no-result') || tr.cells.length !== nCol) continue;
+    const v = _cellText(tr.cells[idx]); m.set(v, (m.get(v) || 0) + 1);
+  }
+  return m;
+}
+function _closeColPop() { const p = el('colPop'); if (p) p.remove(); document.removeEventListener('mousedown', _colPopOutside, true); }
+function _colPopOutside(e) { const p = el('colPop'); if (p && !p.contains(e.target) && !e.target.closest('.col-filt')) _closeColPop(); }
+
+function openColFilter(table, idx, anchor) {
+  const prev = el('colPop'); _closeColPop();
+  if (prev && prev._ci === idx && prev._t === table) return; // bấm lại phễu đang mở = đóng
+  const st = _tableState(table);
+  const dist = _distinctCol(table, idx);
+  const cur = st.cols.get(idx);
+  const label = _cellText(table.tHead.rows[0].cells[idx]) || 'Cột';
+  const useList = dist.size > 0 && dist.size <= COLFILT_MAX;
+  const pop = document.createElement('div'); pop.id = 'colPop'; pop.className = 'col-pop'; pop._ci = idx; pop._t = table;
+  let html = `<div class="cp-hd">Lọc: ${esc(label)}</div>`;
+  if (useList) {
+    const vals = [...dist.keys()].sort((a, b) => a.localeCompare(b, 'vi'));
+    const sel = cur && cur.type === 'set' ? cur.set : null;
+    html += `<label class="cp-all"><input type="checkbox" id="cpAll"> <b>Chọn tất cả</b></label><div class="cp-list">` +
+      vals.map(v => `<label><input type="checkbox" class="cpv" value="${esc(v)}" ${(!sel || sel.has(v)) ? 'checked' : ''}><span>${esc(v || '(trống)')}</span><span class="cp-n">${dist.get(v)}</span></label>`).join('') +
+      `</div><div class="cp-ft"><button class="btn sm ghost" id="cpClear">Xoá lọc</button><button class="btn sm pri" id="cpApply">Áp dụng</button></div>`;
+  } else {
+    html += `<div class="cp-tx"><input id="cpText" placeholder="Chứa chữ..." value="${cur && cur.type === 'text' ? esc(cur.text) : ''}"></div>` +
+      `<div class="cp-ft"><button class="btn sm ghost" id="cpClear">Xoá lọc</button><button class="btn sm pri" id="cpApply">Lọc</button></div>`;
+  }
+  pop.innerHTML = html; document.body.appendChild(pop);
+  const r = anchor.getBoundingClientRect();
+  pop.style.top = (r.bottom + window.scrollY + 5) + 'px';
+  let left = r.left + window.scrollX;
+  if (left + pop.offsetWidth > window.scrollX + window.innerWidth - 8) left = window.scrollX + window.innerWidth - pop.offsetWidth - 8;
+  pop.style.left = Math.max(window.scrollX + 8, left) + 'px';
+  el('cpClear').addEventListener('click', () => { st.cols.delete(idx); applyRowFilters(table); _closeColPop(); });
+  if (useList) {
+    const all = el('cpAll'), boxes = [...pop.querySelectorAll('.cpv')];
+    const sync = () => { all.checked = boxes.every(b => b.checked); all.indeterminate = !all.checked && boxes.some(b => b.checked); };
+    sync();
+    all.addEventListener('change', () => boxes.forEach(b => (b.checked = all.checked)));
+    boxes.forEach(b => b.addEventListener('change', sync));
+    el('cpApply').addEventListener('click', () => {
+      const chosen = boxes.filter(b => b.checked).map(b => b.value);
+      if (chosen.length === 0 || chosen.length === boxes.length) st.cols.delete(idx); // rỗng / tất cả = không lọc
+      else st.cols.set(idx, { type: 'set', set: new Set(chosen) });
+      applyRowFilters(table); _closeColPop();
+    });
+  } else {
+    const inp = el('cpText'); setTimeout(() => inp.focus(), 0);
+    const apply = () => { const t = inp.value.trim().toLowerCase(); if (t) st.cols.set(idx, { type: 'text', text: t }); else st.cols.delete(idx); applyRowFilters(table); };
+    el('cpApply').addEventListener('click', () => { apply(); _closeColPop(); });
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { apply(); _closeColPop(); } });
+  }
+  setTimeout(() => document.addEventListener('mousedown', _colPopOutside, true), 0);
+}
+
+// Gắn phễu ▾ vào tiêu đề mọi bảng danh sách (.table-wrap table). Cột trống (thao tác) -> bỏ qua.
+function enhanceColFilters(root) {
+  (root || document).querySelectorAll('.table-wrap table').forEach(table => {
+    if (table._fltEnhanced) return;
+    const head = table.tHead && table.tHead.rows[0], body = table.tBodies && table.tBodies[0];
+    if (!head || !body || !body.querySelector('tr')) return;
+    table._fltEnhanced = true; _tableState(table);
+    for (const th of head.cells) {
+      if (!_cellText(th) || th.querySelector('.col-filt')) continue;
+      const f = document.createElement('span');
+      f.className = 'col-filt'; f.title = 'Lọc cột'; f.innerHTML = _FUNNEL;
+      f.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); openColFilter(table, th.cellIndex, f); });
+      th.appendChild(f);
+    }
+  });
+}
+const _enhColScan = debounce(() => enhanceColFilters(document), 60);
+if (typeof MutationObserver !== 'undefined') new MutationObserver(_enhColScan).observe(document.body, { childList: true, subtree: true });
