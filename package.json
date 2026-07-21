@@ -5,13 +5,14 @@
   "main": "server/index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node server/index.js",
-    "dev": "node --watch server/index.js",
+    "start": "go run ./cmd/server",
+    "dev": "go run ./cmd/server",
     "test": "node tests/run.js",
     "test:unit": "node tests/run.js --unit",
     "services": "docker compose up -d",
     "services:down": "docker compose down"
   },
+  "_comment": "BL-18: backend là Go/Gin (cmd/server). npm start/dev chạy Go. npm test (e2e JS) gọi HTTP :3000 nên PHẢI có server Go đang chạy (npm start). Thư mục server/ (Node cũ) giữ lại để đối chiếu — KHÔNG phải backend chạy thật; việc gỡ hẳn chờ owner quyết (xem .agents/bl_18.md).",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1085.0",
     "@aws-sdk/s3-request-presigner": "^3.1085.0",

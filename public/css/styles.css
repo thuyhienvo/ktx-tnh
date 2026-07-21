@@ -61,7 +61,9 @@ a:hover{text-decoration:underline;text-underline-offset:2px}
 .auth-amen{display:flex;flex-wrap:wrap;gap:9px;margin-top:28px;max-width:44ch}
 .auth-amen span{background:rgba(255,255,255,.06);border:1px solid rgba(216,194,144,.26);color:#efe9dc;padding:7px 14px;border-radius:999px;font-size:12.5px;font-weight:500;white-space:nowrap;letter-spacing:.01em}
 .auth-right{flex:1;background:var(--card);display:flex;align-items:center;justify-content:center;padding:40px 24px}
-.auth-form{width:100%;max-width:392px}
+/* BL-03: khung nhập co giãn theo bề ngang màn hình (392px trên laptop, nới dần tới 520px trên màn
+   rộng) thay vì cố định 392px lọt thỏm. Media 860px bên dưới vẫn ghi đè cho mobile. */
+.auth-form{width:100%;max-width:clamp(392px,32vw,520px)}
 .auth-form h2{font-family:var(--serif);font-size:32px;margin:0 0 4px;font-weight:600;letter-spacing:.005em}
 .auth-form .sub{color:var(--muted);font-size:14px;margin:0}
 .err-inline{color:var(--red);font-weight:600}

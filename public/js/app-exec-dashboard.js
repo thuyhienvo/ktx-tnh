@@ -227,7 +227,9 @@ async function viewDashboard() {
   const needMail = (ST.vstats && ST.vstats.needMail) || 0;
   const logs = ST.logs, apps = ST.applications, damage = ST.damage, couts = ST.couts;
   let invAll = [];
-  try { invAll = await API.invoices(); } catch {}
+  // BL-12: chỉ lấy hoá đơn THÁNG NÀY (dashboard chỉ dùng 2 con số của tháng hiện tại) thay vì kéo
+  // mọi hoá đơn từ trước tới nay. Server đã hỗ trợ lọc theo tháng sẵn.
+  try { invAll = await API.invoices(curMonth()); } catch {}
   const pApps = apps.filter(a => a.status === 'pending').length;
   // CHỈ đếm hư hỏng phòng (category='damage') — ô "Bảo trì" bấm vào mở trang repair (chỉ hiện damage).
   // Trước đây đếm gộp cả feedback/vi phạm (category violation/other) -> số > số dòng thực (khớp updateNavBadges).

@@ -15,10 +15,40 @@ async function renderStudent() {
   startTableResize();
   loadStudentPortal();
 }
+// BL-16: cổng HV — bấm hàng phiếu báo để xem TÁCH các khoản (nước/dịch vụ/giặt/xe/khác + ghi chú
+// "other_note"), số kWh và số ngày ở. Dữ liệu đã có sẵn trong /me/invoices (SELECT *); bảng ngoài chỉ
+// gộp lại nên HV thấy cục "Khác" không giải thích được. _myInvs được lưu khi vẽ danh sách.
+function myInvoiceDetail(id) {
+  const i = (window._myInvs || []).find(x => x.id === id);
+  if (!i) return;
+  const line = (label, val, sub) => `<tr><td>${label}${sub ? ` <span class="muted" style="font-size:12px">${sub}</span>` : ''}</td><td class="num">${money(+val || 0)}</td></tr>`;
+  const opt = (label, val, sub) => (+val) ? line(label, val, sub) : '';
+  const leaderD = +i.leader_discount || 0, roomD = +i.room_discount || 0;
+  openModal(`
+    <div class="mh"><h3>${IC.receipt} Chi tiết phiếu ${monthLabel(i.month)}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mb">
+      <p class="muted" style="margin:0 0 12px">Số ngày ở trong kỳ: <strong>${i.days_stayed || 0}</strong> ngày</p>
+      <div class="table-wrap"><table><tbody>
+        ${line('Tiền phòng', i.room_charge)}
+        ${line('Tiền điện', i.electric_charge, `${i.electric_kwh || 0} kWh`)}
+        ${opt('Tiền nước', i.water_charge)}
+        ${opt('Phí dịch vụ', i.service_charge)}
+        ${opt('Máy giặt', i.washing_charge)}
+        ${opt('Gửi xe', i.parking_charge)}
+        ${opt('Khoản khác', i.other_charge, i.other_note ? esc(i.other_note) : '')}
+        ${leaderD ? `<tr><td>Giảm phòng trưởng</td><td class="num" style="color:var(--green)">−${money(leaderD)}</td></tr>` : ''}
+        ${roomD ? `<tr><td>Giảm tiền phòng</td><td class="num" style="color:var(--green)">−${money(roomD)}</td></tr>` : ''}
+        <tr style="border-top:2px solid var(--line)"><td><strong>Tổng cộng</strong></td><td class="num"><strong>${money(i.total)}</strong></td></tr>
+      </tbody></table></div>
+      <p class="muted" style="font-size:12.5px;margin:12px 0 0">${IC.creditCard} Đóng tiền qua mã QR quản lý gửi trên Zalo.</p>
+    </div>
+    <div class="mf"><button class="btn" data-act="closeModal">Đóng</button></div>`);
+}
 async function loadStudentPortal() {
   let profile, invs, damage, coutReqs, myVios = [], mates = [], assets = [], chores = [];
   try { [profile, invs, damage, coutReqs, myVios, mates, assets, chores] = await Promise.all([API.meProfile(), API.meInvoices(), API.meDamage(), API.meCheckoutReq(), API.meViolations().catch(() => []), API.meRoommates().catch(() => []), API.meAssets().catch(() => []), API.meChores().catch(() => [])]); }
   catch (e) { el('content').innerHTML = `<div class="hint">${IC.alert} ${esc(e.message)}</div>`; return; }
+  window._myInvs = invs; // BL-16: để myInvoiceDetail() tra cứu chi tiết khi bấm hàng
   const billNow = invs.filter(i => i.month === curMonth()).reduce((a, i) => a + (+i.total || 0), 0);
   const depTxt = { held: 'Đang giữ', refunded: 'Đã hoàn', forfeited: 'Không hoàn', none: '—' }[profile.deposit_status] || '—';
   const pendingCout = coutReqs.find(c => c.status === 'pending');
@@ -70,13 +100,13 @@ async function loadStudentPortal() {
         ${invs.map(i => {
           // Cột "Giảm" phải hiện, nếu không thì 4 cột đầu cộng lại KHÔNG ra Tổng — học viên tưởng app tính sai
           const giam = (+i.leader_discount || 0) + (+i.room_discount || 0);
-          return `<tr><td>${monthLabel(i.month)}</td><td class="num">${money(i.room_charge)}</td><td class="num">${money(i.electric_charge)}</td>
+          return `<tr style="cursor:pointer" data-act="myInvoiceDetail" data-args='[${i.id}]' title="Bấm để xem chi tiết khoản thu"><td>${monthLabel(i.month)}</td><td class="num">${money(i.room_charge)}</td><td class="num">${money(i.electric_charge)}</td>
           <td class="num">${money((+i.water_charge) + (+i.service_charge) + (+i.washing_charge) + (+i.parking_charge) + (+i.other_charge || 0))}</td>
           <td class="num">${giam ? `<span class="badge green">−${money(giam)}</span>` : '—'}</td>
           <td class="num"><strong>${money(i.total)}</strong></td></tr>`;
         }).join('')}
       </tbody></table>` : '<div class="empty">Chưa có phiếu báo.</div>'}
-      <div class="pad muted" style="font-size:12.5px">${IC.creditCard} Đóng tiền qua mã QR quản lý gửi trên Zalo theo hạn hằng tháng.</div>
+      <div class="pad muted" style="font-size:12.5px">${IC.info} Bấm vào từng kỳ để xem chi tiết khoản thu. &nbsp;·&nbsp; ${IC.creditCard} Đóng tiền qua mã QR quản lý gửi trên Zalo theo hạn hằng tháng.</div>
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.handCoins} Hỗ trợ học viên</h2><button class="btn sm pri" data-act="damageForm">${IC.plus} Gửi yêu cầu hỗ trợ</button></div><div class="table-wrap">
