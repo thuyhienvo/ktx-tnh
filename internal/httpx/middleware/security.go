@@ -1,0 +1,32 @@
+// Package middleware — các middleware cross-cutting cho gin, port từ server/index.js.
+package middleware
+
+import "github.com/gin-gonic/gin"
+
+// CSP + header bảo mật, khớp cấu hình helmet ở server/index.js:22-41.
+// scriptSrc CHỈ 'self' (không unsafe-inline) — frontend đã bỏ hết inline on* (event delegation).
+const csp = "default-src 'self'; " +
+	"script-src 'self'; " +
+	"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+	"font-src 'self' https://fonts.gstatic.com data:; " +
+	"img-src 'self' data: blob: https:; " +
+	"connect-src 'self'; " +
+	"frame-src https://www.google.com; " +
+	"object-src 'none'; " +
+	"base-uri 'self'; " +
+	"frame-ancestors 'none'; " +
+	"form-action 'self'"
+
+// Security đặt CSP + các header helmet mặc định quan trọng.
+func Security() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		h := c.Writer.Header()
+		h.Set("Content-Security-Policy", csp)
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "SAMEORIGIN")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("X-DNS-Prefetch-Control", "off")
+		h.Set("Strict-Transport-Security", "max-age=15552000; includeSubDomains")
+		c.Next()
+	}
+}
