@@ -89,7 +89,8 @@ async function viewInvoices() {
     </div></div>
     ${elecPanel}`;
   const im = el('im'); if (im) im.onchange = e => { invMonth = e.target.value; viewInvoices(); };
-  const iv = el('invs'); if (iv) { iv.addEventListener('input', () => invSearch = iv.value); attachRowSearch(iv, 'invCount'); }
+  const iv = el('invs'); if (iv) { iv.addEventListener('input', () => { invSearch = iv.value; syncFilterUrl(); }); attachRowSearch(iv, 'invCount'); }
+  syncFilterUrl(); // BL-17: kỳ (thang, đã nắn theo tháng có dữ liệu) + tìm kiếm lên URL
 }
 function invActions(i) {
   if (i.status === 'pending') return `<button class="btn sm" data-act="setInvStatus" data-args='[${i.id},"sent"]'>Đã gửi QR</button><button class="btn sm green" data-act="setInvStatus" data-args='[${i.id},"paid"]'>${IC.check} Đóng</button>`;

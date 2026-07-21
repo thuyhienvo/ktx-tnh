@@ -206,7 +206,7 @@ function viewStudents() {
       <tr class="no-result" style="display:none"><td colspan="${nCols}"><div class="empty">Không tìm thấy học viên phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có học viên phù hợp.</div>`}
     </div></div>`;
-  const ss = el('ss'); if (ss) { ss.addEventListener('input', () => stuSearch = ss.value); attachRowSearch(ss, 'stuCount'); }
+  const ss = el('ss'); if (ss) { ss.addEventListener('input', () => { stuSearch = ss.value; syncFilterUrl(); }); attachRowSearch(ss, 'stuCount'); }
   document.querySelectorAll('#content th.sortable').forEach(th => {
     th.onclick = e => {
       if (e.target.classList.contains('rz-handle')) return; // đang kéo giãn cột
@@ -215,6 +215,7 @@ function viewStudents() {
       viewStudents();
     };
   });
+  syncFilterUrl(); // BL-17: bộ lọc (f) + sắp xếp (sort) lên URL
 }
 function depositBadge(s) {
   if (s.deposit_status === 'held') return '<span class="badge amber">Đang giữ</span>';

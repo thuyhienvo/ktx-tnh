@@ -206,6 +206,113 @@ function viewFromPath(pathname) {
   return PATH_VIEWS[p] || null;
 }
 
+/* ================= BỘ LỌC TRÊN URL (BL-17) =================
+   Path = màn (đã có ở BL-10). Query = bộ lọc CỦA CHÍNH màn đó. Vì path tách namespace theo màn,
+   mỗi màn tự đặt tên tham số query mà không đụng màn khác (vd /hoc-vien?f=in, /lich-su?nguoi=an).
+   Mỗi màn khai read()/write():
+   - read(params): dựng LẠI toàn bộ trạng thái lọc từ query — thiếu tham số nào thì về mặc định
+     (URL là nguồn sự thật khi nạp đầu / Back-Forward).
+   - write(): sinh URLSearchParams từ biến RAM hiện tại, BỎ giá trị mặc định cho URL gọn.
+   Màn không có bộ lọc thì không cần đăng ký (filterUrl trả về path trơn).
+   Ngoài phạm vi: elecMonth (modal "Chỉ số điện" — không có route riêng); ST.facilityFilter (phạm vi
+   toàn cục, có bộ chọn riêng, áp cho MỌI màn — không phải bộ lọc của một màn). */
+const FILTERS = {
+  students: {
+    read: q => {
+      stuFilter = q.get('f') || 'all';
+      const s = q.get('sort') || '';
+      stuSort = s ? { key: s.replace(/^-/, ''), dir: s[0] === '-' ? -1 : 1 } : { key: '', dir: 1 };
+      stuSearch = q.get('q') || '';
+    },
+    write: () => {
+      const p = new URLSearchParams();
+      if (stuFilter && stuFilter !== 'all') p.set('f', stuFilter);
+      if (stuSort && stuSort.key) p.set('sort', (stuSort.dir === -1 ? '-' : '') + stuSort.key);
+      if (stuSearch) p.set('q', stuSearch);
+      return p;
+    },
+  },
+  services: {
+    read: q => {
+      svcTab = q.get('tab') === 'parking' ? 'parking' : 'washing';
+      vehSearch = q.get('q') || '';
+    },
+    write: () => {
+      const p = new URLSearchParams();
+      if (svcTab && svcTab !== 'washing') p.set('tab', svcTab);
+      if (vehSearch) p.set('q', vehSearch);
+      return p;
+    },
+  },
+  checkin: {
+    read: q => { logFilter = q.get('loai') || 'all'; },
+    write: () => {
+      const p = new URLSearchParams();
+      if (logFilter && logFilter !== 'all') p.set('loai', logFilter);
+      return p;
+    },
+  },
+  invoices: {
+    read: q => {
+      invMonth = q.get('thang') || curMonth();
+      invFilter = q.get('loc') || 'all';
+      invSearch = q.get('q') || '';
+    },
+    write: () => {
+      const p = new URLSearchParams();
+      if (invMonth && invMonth !== curMonth()) p.set('thang', invMonth);
+      if (invFilter && invFilter !== 'all') p.set('loc', invFilter);
+      if (invSearch) p.set('q', invSearch);
+      return p;
+    },
+  },
+  revenue: {
+    read: q => { revYear = q.get('nam') || curMonth().slice(0, 4); },
+    write: () => {
+      const p = new URLSearchParams();
+      if (revYear && revYear !== curMonth().slice(0, 4)) p.set('nam', revYear);
+      return p;
+    },
+  },
+  audit: {
+    read: q => {
+      auditFilter = {
+        user: q.get('nguoi') || '', from: q.get('tu') || '', to: q.get('den') || '',
+        offset: +(q.get('offset') || 0) || 0,
+      };
+      auditLimit = +(q.get('limit') || 200) || 200;
+    },
+    write: () => {
+      const p = new URLSearchParams();
+      if (auditFilter.user) p.set('nguoi', auditFilter.user);
+      if (auditFilter.from) p.set('tu', auditFilter.from);
+      if (auditFilter.to) p.set('den', auditFilter.to);
+      if (auditFilter.offset) p.set('offset', String(auditFilter.offset));
+      if (auditLimit && auditLimit !== 200) p.set('limit', String(auditLimit));
+      return p;
+    },
+  },
+};
+// URL hiện tại (đường dẫn đã chuẩn hoá + query) — để so sánh idempotent trước khi ghi history.
+function curUrl() {
+  const p = (location.pathname || '/').replace(/\/+$/, '') || '/';
+  return p + location.search;
+}
+// path của màn + '?' + bộ lọc (đã bỏ mặc định). Màn chưa đăng ký -> path trơn.
+function filterUrl(view) {
+  const qs = FILTERS[view] ? FILTERS[view].write().toString() : '';
+  return pathForView(view) + (qs ? '?' + qs : '');
+}
+// Đồng bộ RAM -> URL khi đổi bộ lọc TRONG cùng một màn. Dùng replaceState nên KHÔNG rác lịch sử:
+// nút Back (kể cả nút cứng Android trên PWA) vẫn rời màn thay vì lùi qua từng lần đổi bộ lọc; F5 và
+// copy link vẫn giữ đúng bộ lọc. Gọi ở CUỐI mỗi viewX() (bắt mọi setter re-render) + ở ô tìm kiếm
+// (những ô này lọc bằng ẩn/hiện hàng, không re-render nên phải gọi tay).
+function syncFilterUrl() {
+  if (!Auth.user || !el('nav')) return;             // chỉ áp cho giao diện quản trị
+  const target = filterUrl(ST.view);
+  if (curUrl() !== target) history.replaceState({ view: ST.view }, '', target);
+}
+
 // opts.replace: nạp lần đầu (thay URL, không thêm history) · opts.fromPop: đến từ nút Back/Forward
 // (URL đã đổi sẵn, chỉ đồng bộ lại nếu bị nắn view) · mặc định: điều hướng thường -> pushState.
 function adminGo(view, opts) {
@@ -215,8 +322,8 @@ function adminGo(view, opts) {
   if (!window._dangLuu && typeof formDangDo === 'function' && formDangDo()) {
     if (!confirm('Bạn có dữ liệu chưa lưu.\n\nRời khỏi và bỏ những gì vừa nhập?')) {
       // Người dùng bấm Back rồi lại Huỷ: trình duyệt ĐÃ lùi URL — kéo lại về màn đang đứng.
-      // pushState KHÔNG kích hoạt popstate nên không sinh vòng lặp.
-      if (opts.fromPop) history.pushState({ view: ST.view }, '', pathForView(ST.view));
+      // pushState KHÔNG kích hoạt popstate nên không sinh vòng lặp. Giữ cả bộ lọc đang xem (BL-17).
+      if (opts.fromPop) history.pushState({ view: ST.view }, '', filterUrl(ST.view));
       return;
     }
     closeModalNgay();
@@ -231,9 +338,12 @@ function adminGo(view, opts) {
   el('pgTitle').textContent = AdminTitles[view][0];
   el('pgSub').textContent = AdminTitles[view][1];
   el('topActions').innerHTML = '';
+  // BL-17: trên đường "URL-là-nguồn" (nạp đầu {replace} / Back-Forward {fromPop}), nạp bộ lọc từ query
+  // vào RAM TRƯỚC khi vẽ, để deep-link/F5 hiện đúng bộ lọc. Điều hướng thường: RAM là nguồn -> ghi ra URL.
+  if ((opts.replace || opts.fromPop) && FILTERS[view]) FILTERS[view].read(new URLSearchParams(location.search));
   // Đồng bộ URL. pushState/replaceState KHÔNG kích hoạt popstate -> an toàn, không vòng lặp.
-  const target = pathForView(view);
-  const cur = (location.pathname || '/').replace(/\/+$/, '') || '/';
+  const target = filterUrl(view);   // path màn + query bộ lọc hiện tại (đã bỏ mặc định)
+  const cur = curUrl();
   if (opts.replace || opts.fromPop || view === prev) {
     if (cur !== target) history.replaceState({ view }, '', target); // nạp đầu / Back bị nắn view / vẽ lại cùng màn
   } else {

@@ -35,13 +35,14 @@ async function viewServices() {
         </tr>`).join('')}
         <tr class="no-result" style="display:none"><td colspan="5"><div class="empty">Không tìm thấy xe phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Chưa có HV đang ở gửi xe. Thêm xe trong <strong>Chi tiết học viên</strong>.</div>`}</div></div>`;
-    const vs = el('vs'); if (vs) { vs.addEventListener('input', () => vehSearch = vs.value); attachRowSearch(vs, 'vehCount'); }
+    const vs = el('vs'); if (vs) { vs.addEventListener('input', () => { vehSearch = vs.value; syncFilterUrl(); }); attachRowSearch(vs, 'vehCount'); }
   } else {
     el('svcBody').innerHTML = `<div class="panel"><div class="hd"><h2>${IC.washer} Máy giặt</h2><button class="btn sm pri" data-act="addWashingForm">${IC.plus} Thêm HV dùng máy giặt</button></div>
       <div class="table-wrap">${washUsers.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th></th></tr></thead><tbody>
         ${washUsers.map(s => `<tr><td><a href="#" data-act="studentDetail" data-args='[${s.id}]'><strong>${esc(s.name)}</strong></a>${s.code ? `<div class="muted" style="font-size:11px">${esc(s.code)}</div>` : ''}</td><td>${esc(s.room_name || '—')}</td><td class="num"><button class="btn sm ghost" data-act="toggleWashing" data-args='[${s.id}, false]'>${IC.trash} Ngưng</button></td></tr>`).join('')}
       </tbody></table>` : '<div class="empty">Chưa có HV đăng ký máy giặt. Bấm "Thêm HV dùng máy giặt".</div>'}</div></div>`;
   }
+  syncFilterUrl(); // BL-17: tab dịch vụ (washing/parking) + tìm xe lên URL
 }
 function addWashingForm() {
   const avail = ST.students.filter(s => !s.uses_washing && isOccupying(s)).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'));
@@ -123,6 +124,7 @@ async function viewRevenue() {
       <div class="pad muted" style="font-size:12.5px">${IC.bulb} Mã sản phẩm Bravo chỉnh trong <a href="#" data-act="adminGo" data-args='["settings"]'>Cài đặt</a>. Số liệu = tổng tiền đã lập phiếu báo (chưa gồm cọc). Thu tiền thực tế do Bravo quản lý. Số HV xuất cảnh xem ở <a href="#" data-act="adminGo" data-args='["exec"]'>Điều hành</a>.</div>
     </div>`;
   const ry = el('ry'); if (ry) ry.onchange = e => { revYear = e.target.value; viewRevenue(); };
+  syncFilterUrl(); // BL-17: năm (đã nắn theo years có dữ liệu) lên URL
 }
 function exportRevenue() {
   const data = _revData;
@@ -261,6 +263,7 @@ async function viewAudit() {
   el('auLimit').onchange = e => { auditLimit = +e.target.value; auditFilter.offset = 0; viewAudit(); };
   el('auPrev').onclick = () => { auditFilter.offset = Math.max(0, offset - auditLimit); viewAudit(); };
   el('auNext').onclick = () => { auditFilter.offset = offset + auditLimit; viewAudit(); };
+  syncFilterUrl(); // BL-17: người/từ/đến/offset/limit lên URL (chia sẻ đúng trang đang xem)
 }
 
 /* ---------- TRUNG TÂM HỖ TRỢ ---------- */

@@ -335,6 +335,7 @@ async function viewCheckin() {
       <button class="btn sm ${logFilter === 'out' ? 'pri' : ''}" data-act="logGo" data-args='["out"]'><span class="dot-svg" style="color:var(--red)">${IC.dot}</span> Check-out</button>
     </div>
     <div class="panel"><div class="hd"><h2>Lịch sử ra / vào (${logs.length})</h2></div><div class="table-wrap">${logsTable(logs)}</div></div>`;
+  syncFilterUrl(); // BL-17: bộ lọc ra/vào (loai) lên URL
 }
 function quickPick(type) {
   // Check-out nhanh: chỉ người ĐANG THỰC SỰ Ở (isOccupying — tính theo ngày). Trước đây dùng cột tĩnh
