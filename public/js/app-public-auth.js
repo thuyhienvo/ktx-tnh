@@ -3,19 +3,19 @@
 /* ================= ĐIỀU PHỐI CHÍNH ================= */
 async function boot() {
   if (location.pathname.replace(/\/$/, '') === '/dang-ky') return renderPublicRegister();
-  let user = Auth.user; // hint hiển thị; nguồn xác thực thật là cookie httpOnly
-  if (!user) return renderLogin();
-  // BL-06: trước đây hint này ghi vào localStorage ĐÚNG MỘT LẦN lúc đăng nhập rồi không bao giờ
-  // đồng bộ lại — admin đổi cơ sở/họ tên của ai đó thì máy người ấy vẫn hiển thị dữ liệu cũ, F5
-  // cũng vô ích vì boot() đọc thẳng localStorage. Hỏi lại /auth/me mỗi lần tải trang: đúng mục
-  // đích endpoint sinh ra, đổi 1 request lấy thông tin tươi.
+  // `/auth/me` là NGUỒN DUY NHẤT về danh tính: cookie httpOnly xác thực, server đọc user từ DB trả về.
+  // KHÔNG lấy thông tin user từ response /login nữa (login chỉ đặt cookie) -> không có 2 nguồn lệch nhau,
+  // và F5 / admin đổi cơ sở / đổi họ tên đều tự tươi vì mỗi lần tải trang đều hỏi lại /me (BL-06).
+  // localStorage (Auth.user) chỉ còn là hint HIỂN THỊ để mở được app khi offline, không phải nguồn xác thực.
+  let user;
   try {
-    const fresh = await API.me();
-    Auth.user = fresh; user = fresh;
+    user = await API.me();
+    Auth.user = user;                 // lưu lại hint cho lần mở offline sau
   } catch (e) {
-    // 401 -> api.js đã tự xoá Auth.user và tải lại trang (về màn đăng nhập), không làm gì thêm.
-    // Lỗi mạng tạm -> dùng tiếp hint cũ, không chặn người dùng vào app.
-    if (e && e.status === 401) return;
+    if (e && e.status === 401) { Auth.user = null; return renderLogin(); } // chưa / không còn đăng nhập
+    // Lỗi mạng (offline / server đang ngủ): dùng tạm hint đã lưu để app vẫn mở; không có thì về đăng nhập.
+    user = Auth.user;
+    if (!user) return renderLogin();
   }
   if (user.must_change_password) return renderForceChangePw();
   if (user.approved === false) return renderChoDuyet();
@@ -288,11 +288,11 @@ async function renderLogin() {
     e.preventDefault();
     const btn = e.submitter; btn.disabled = true; btn.textContent = 'Đang vào...';
     try {
-      // KHÔNG gửi "cổng": loại tài khoản là thuộc tính của user trong CSDL, server tự biết.
-      const r = await API.login(el('lg_user').value.trim(), el('lg_pass').value);
-      Auth.user = r.user; // cookie phiên do server đặt; đây chỉ là thông tin hiển thị
-      if (r.user.must_change_password) return renderForceChangePw();
-      boot();   // boot() tự chọn giao diện theo user.role (quản lý / bảo trì / học viên)
+      // /login CHỈ xác thực + đặt cookie. KHÔNG gửi "cổng" (loại tài khoản là thuộc tính user trong DB),
+      // và KHÔNG lấy thông tin user ở đây — boot() sẽ hỏi /auth/me (nguồn duy nhất về danh tính).
+      await API.login(el('lg_user').value.trim(), el('lg_pass').value);
+      Auth.user = null;   // xoá hint cũ để boot() lấy thông tin MỚI từ /me, không dùng nhầm dữ liệu người trước
+      boot();             // boot() gọi /me + chọn giao diện theo user.role (quản lý / bảo trì / học viên)
     } catch (err) {
       btn.disabled = false; btn.textContent = 'Đăng nhập →';
       toast(err.message, 'err');

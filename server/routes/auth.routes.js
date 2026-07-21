@@ -75,7 +75,9 @@ router.post('/login', async (req, res, next) => {
     guard.ghiNhanKetQua(username, true, now);
     await guard.ghiNhatKyDangNhap(db.pool, { user, req, ketQua: 'đăng nhập thành công' });
     setAuthCookie(res, signToken(user));
-    res.json({ user: publicUser(user) });
+    // /login CHỈ xác thực + đặt cookie. Thông tin user lấy qua GET /auth/me — MỘT nguồn duy nhất,
+    // tránh chuyện login trả một bản, /me trả một bản, rồi hai bản trôi khỏi nhau (yêu cầu 21/07).
+    res.json({ ok: true });
   } catch (e) { next(e); }
 });
 

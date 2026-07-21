@@ -57,6 +57,9 @@ module.exports = {
       const nv = await dangNhap(P + '_nv', pw);
       t.eq('TC-A1 · nhân viên đăng nhập (không khai cổng) → 200', nv.status, 200, `HTTP ${nv.status}`);
       t.ok('TC-A1b · … và được cấp vé', nv.cookie === true, nv.cookie ? 'có set-cookie' : 'KHÔNG cấp vé!');
+      // /login chỉ xác thực + đặt cookie; thông tin user lấy qua /me (MỘT nguồn duy nhất) — yêu cầu 21/07.
+      t.ok('TC-A1c · /login KHÔNG trả object user (client lấy qua /auth/me)',
+        nv.json && !('user' in nv.json), `body = ${JSON.stringify(nv.json)}`);
 
       const hv = await dangNhap(P + '_hv', pw);
       t.eq('TC-A2 · học viên đăng nhập CÙNG form đó → 200 (không còn "nhầm cổng")', hv.status, 200, `HTTP ${hv.status}`);
