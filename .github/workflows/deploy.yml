@@ -10,7 +10,27 @@ permissions:
   packages: write
 
 jobs:
+  # DP-01: cổng test — build & push image CHỈ chạy khi test Go xanh.
+  # (Lưu ý: Render đang autoDeploy TỪ SOURCE nên job này chưa chặn được Render; muốn chặn thật
+  #  owner phải đặt render.yaml autoDeploy:false + bật deploy hook gated. Xem .agents/bl_41.md.)
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+
   build-and-deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

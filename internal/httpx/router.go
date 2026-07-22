@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"ktx/internal/auth"
@@ -48,7 +49,18 @@ func NewRouter(database *db.DB, cfg *config.Config) *gin.Engine {
 	api := r.Group("/api")
 	api.Use(middleware.APILimiter())
 	api.Use(middleware.Audit(database.Pool)) // nhật ký thao tác (write + GET nhạy cảm)
-	api.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+	// MON-01: health check PHẢI chạm DB. Trước đây trả {ok:true} vô điều kiện → Supabase chết mà
+	// Render vẫn tưởng app khỏe (không restart, không cảnh báo) → app 500 hàng loạt trong im lặng.
+	// Ping DB (timeout ngắn) → DB hỏng thì trả 503 để Render/monitor bên ngoài phát hiện.
+	api.GET("/health", func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		if err := database.Pool.Ping(ctx); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "db": "down"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true, "db": "ok"})
+	})
 
 	ag := api.Group("/auth")
 	ag.POST("/login", authLim, h.Login)
