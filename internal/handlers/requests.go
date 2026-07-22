@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"ktx/internal/auth"
+	"ktx/internal/billing"
 	"ktx/internal/checkout"
 	"ktx/internal/db"
 	"ktx/internal/invoicecalc"
@@ -448,7 +449,24 @@ func (h *Handlers) ConfirmCheckout(c *gin.Context) {
 	if dropped == nil {
 		dropped = []string{} // khớp Node: rows.map(...) luôn là mảng
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "dropped_future_invoices": dropped})
+	// BL-25: trả điều kiện hoàn cọc + phiếu tháng trả đã tính lại (như CheckOut thủ công) để FE nối bước
+	// xử lý cọc (depositSettlePrompt). noticeDate = ngày HV gửi đơn (created_at); date = ngày rời thực tế.
+	settings, _ := h.DB.GetSettings(ctx)
+	reasonStr := ""
+	if crReason != nil {
+		reasonStr = *crReason
+	}
+	elig := billing.DepositRefundEligible(noticeDate, date, reasonStr, int(studentsSettingNum(settings, "deposit_notice_min_days")))
+	var recalced interface{}
+	if r, e := invoicecalc.RecalcInvoice(ctx, h.DB, studentID, date[:7]); e == nil && r != nil {
+		recalced = r
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":                      true,
+		"dropped_future_invoices": dropped,
+		"refund":                  gin.H{"eligible": elig.Eligible, "reason": elig.Reason},
+		"recalced":                recalced,
+	})
 }
 
 type checkoutNoteBody struct {

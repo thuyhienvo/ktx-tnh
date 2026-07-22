@@ -251,7 +251,32 @@ async function assignMaint(id) {
   await guard(() => API.assignMaintenance(id));
   toast('Đã chuyển cho bộ phận bảo trì'); viewRequests();
 }
-async function confirmCout(id) { if (!confirm('Xác nhận trả phòng cho học viên này?')) return; await guard(() => API.confirmCheckoutReq(id, {})); await refreshCache(); toast('Đã trả phòng'); viewRequests(); }
+// BL-25: duyệt đơn trả phòng đi qua CÙNG luồng như check-out thủ công — thu chỉ số công-tơ lúc rời phòng
+// (tính đúng tiền điện kỳ cuối) + xử lý tiền cọc — thay vì confirm() trống gửi {} (bỏ chốt công-tơ + cọc).
+function confirmCout(id) {
+  const cr = (ST.couts || []).find(c => c.id === id) || {};
+  const s = cr.student_id ? studentById(cr.student_id) : null;
+  const roomName = (s && s.room_name) || cr.room_name || '';
+  const hasRoom = !!((s && s.room_id) || roomName);
+  openModal(`
+    <div class="mh"><h3>${IC.doorOpen} Duyệt trả phòng: ${esc(cr.student_name || (s && s.name) || '')}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mb">
+      <div class="field"><label>Ngày rời thực tế</label><input id="cc_date" type="date" value="${esc(cr.desired_date ? String(cr.desired_date).slice(0, 10) : today())}"></div>
+      ${hasRoom ? meterField('cc_meter', roomName, 'rời phòng') : ''}
+      <div class="hint">${IC.info} Chốt công-tơ lúc rời phòng để tính đúng tiền điện kỳ cuối. App tự xét điều kiện hoàn cọc theo ngày HV gửi đơn + lý do.</div>
+    </div>
+    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn green" data-act="doConfirmCout" data-args='[${id}]'>Xác nhận trả phòng</button></div>`);
+}
+async function doConfirmCout(id) {
+  const cr = (ST.couts || []).find(c => c.id === id) || {};
+  const s = cr.student_id ? studentById(cr.student_id) : null;
+  const meter = el('cc_meter') ? el('cc_meter').value.trim() : '';
+  const r = await guard(() => API.confirmCheckoutReq(id, { date: el('cc_date').value, meter_reading: meter || undefined }));
+  await refreshCache(); closeModal();
+  toast(r && r.recalced ? `Đã trả phòng · phiếu tháng tính lại ${r.recalced.days_stayed} ngày ở` : 'Đã trả phòng');
+  if (s && s.deposit_status === 'held' && r && r.refund) depositSettlePrompt(cr.student_id, r.refund);
+  else viewRequests();
+}
 async function rejectCout(id) { if (!confirm('Từ chối đơn trả phòng?')) return; await guard(() => API.rejectCheckoutReq(id)); toast('Đã từ chối'); viewRequests(); }
 
 /* ---------- CHECK-IN / OUT ---------- */
