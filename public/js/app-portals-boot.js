@@ -486,10 +486,15 @@ function openCalendar(input) {
     cal.querySelector('[data-clear]').onclick = () => pick('');
   };
   document.body.appendChild(cal);
+  render();   // BL-27: dựng nội dung TRƯỚC để đo chiều cao thật (cần cho việc lật-lên)
   const r = input.getBoundingClientRect();
-  cal.style.left = Math.min(r.left, window.innerWidth - 300) + 'px';
-  cal.style.top = (r.bottom + 6) + 'px';
-  render();
+  const calH = cal.offsetHeight || 300, calW = cal.offsetWidth || 288;
+  // BL-27: mặc định mở XUỐNG; nếu gần đáy màn (tràn viewport) thì LẬT LÊN để hàng ngày cuối + nút
+  // "Hôm nay/Xóa" không bị cắt khỏi màn hình. .cal-pop là position:fixed nên dùng toạ độ viewport.
+  let top = r.bottom + 6;
+  if (top + calH > window.innerHeight - 8) top = Math.max(8, r.top - calH - 6);
+  cal.style.top = top + 'px';
+  cal.style.left = Math.max(8, Math.min(r.left, window.innerWidth - calW - 8)) + 'px';
   _calEl = cal;
   setTimeout(() => document.addEventListener('mousedown', _calOutside, true), 0);
 }
