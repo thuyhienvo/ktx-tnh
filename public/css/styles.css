@@ -537,6 +537,14 @@ th.sortable.asc .sort-ar,th.sortable.desc .sort-ar{opacity:1;color:var(--brand-d
   .modal .mh,.modal .mb,.modal .mf{padding-left:16px;padding-right:16px}
   .pill-row{gap:7px}
   .cards,.kpis{gap:12px}
+  /* BL-46: đưa cụm nút hành động + chuông xuống HÀNG RIÊNG dưới tựa (flex-basis:100%) → khối tựa
+     (flex:1) chiếm trọn hàng 1, hết cảnh tựa/phụ đề bị nén thành cột dọc trên màn hẹp. */
+  .top>.flex{flex-basis:100%;justify-content:flex-start;margin-top:2px}
+  /* BL-26: vùng chạm ≥40px cho nút nhỏ/phễu lọc/điều hướng lịch; input ≥16px chặn iOS auto-zoom. */
+  .btn.sm,.btn.ghost,.cal-nav{min-height:40px}
+  .btn.ghost,.col-filt,.cal-nav{min-width:40px}
+  .cal-d{padding:11px 0}
+  input,select,textarea{font-size:16px}
 }
 @media(max-width:520px){
   .top h1{font-size:18px}
