@@ -245,6 +245,18 @@ func (h *Handlers) adminParseFacilityID(ctx context.Context, raw json.RawMessage
 }
 
 // ListUsers: GET /api/admin/users — tài khoản nhân viên (kèm cơ sở). admin.routes.js:98-109
+// AdminPendingCount: GET /admin/pending-count — số tài khoản đang chờ duyệt (SSO tự tạo role='pending').
+// Dùng để BÁO cho admin (chuông + badge) rằng có người cần duyệt.
+func (h *Handlers) AdminPendingCount(c *gin.Context) {
+	var n int
+	if err := h.pool().QueryRow(c.Request.Context(),
+		"SELECT COUNT(*)::int FROM users WHERE role='pending' AND deleted_at IS NULL").Scan(&n); err != nil {
+		serverErr(c)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"pending": n})
+}
+
 func (h *Handlers) ListUsers(c *gin.Context) {
 	rows, err := h.pool().Query(c.Request.Context(),
 		`SELECT u.id, u.username, u.role, u.full_name, u.facility_id, f.name AS facility_name, u.created_at,

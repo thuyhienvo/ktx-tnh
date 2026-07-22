@@ -131,15 +131,19 @@ func (h *Handlers) SSOCallback(c *gin.Context) {
 
 	loginLog(h, c, &user.ID, user.Username, user.Role, "đăng nhập Microsoft")
 	h.ssoClearCookie(c)
-	if !user.Approved {
-		c.Redirect(http.StatusFound, "/?sso_pending=1")
-		return
-	}
+	// Cấp vé cho CẢ tài khoản đang chờ duyệt. Middleware pendingAllow chỉ cho tài khoản pending gọi
+	// /me + /logout (mọi thứ khác 403), nên giao diện gọi được /me -> hiện màn "chờ duyệt"
+	// (renderChoDuyet). Nếu KHÔNG cấp vé thì /me trả 401 "Chưa đăng nhập" -> người dùng bị bí, không
+	// biết mình đã đăng nhập Microsoft xong và đang chờ duyệt.
 	token, err := h.Auth.SignToken(user.ID, user.Username, user.Role, user.StudentID, user.TokenEpoch)
 	if err != nil {
 		veTrang("Lỗi cấp phiên.")
 		return
 	}
 	h.Auth.SetAuthCookie(c, token)
+	if !user.Approved {
+		c.Redirect(http.StatusFound, "/?sso_pending=1")
+		return
+	}
 	c.Redirect(http.StatusFound, "/")
 }

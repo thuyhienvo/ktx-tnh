@@ -25,7 +25,7 @@ function renderAdmin() {
           <button data-v="feedback"><span class="ico">${IC.inbox}</span><span class="lbl">Hộp thư hỗ trợ/góp ý</span><span class="cnt" id="navFeed" style="display:none"></span></button>
           ${isAdmin ? `<div class="grp">Hệ thống</div>
           <button data-v="audit"><span class="ico">${IC.history}</span><span class="lbl">Lịch sử</span></button>
-          <button data-v="settings"><span class="ico">${IC.settings}</span><span class="lbl">Cài đặt</span></button>` : ''}
+          <button data-v="settings"><span class="ico">${IC.settings}</span><span class="lbl">Cài đặt</span><span class="cnt" id="navSettings" style="display:none"></span></button>` : ''}
         </nav>
         <div class="foot">
           <div class="u">${esc(Auth.user.full_name || Auth.user.username)}</div>
@@ -95,6 +95,9 @@ async function refreshCache() {
     API.violationTypes().catch(() => []), API.violationStats().catch(() => ({ byStudent: [], needMail: 0, threshold: 3 })),
   ]);
   Object.assign(ST, { rooms, students, facilities, settings, applications, damage, couts, logs, assets, vtypes, vstats });
+  // Admin: đếm tài khoản chờ duyệt (SSO tự tạo role='pending') để BÁO qua chuông + badge Cài đặt.
+  // Staff không có quyền endpoint này -> bỏ qua.
+  if (Auth.user && Auth.user.role === 'admin') { try { ST.pendingCount = ((await API.pendingCount()) || {}).pending || 0; } catch (e) { /* giữ giá trị cũ */ } }
   updateNavBadges();
   renderFacilitySelector();
 }
@@ -124,6 +127,7 @@ function updateNavBadges() {
   setBadge('navRepair', dmg.filter(d => (d.category || 'damage') === 'damage' && d.status !== 'done').length);
   setBadge('navViol', (ST.vstats && ST.vstats.needMail) || 0);
   setBadge('navFeed', dmg.filter(d => ['violation', 'other'].includes(d.category) && d.status !== 'done').length);
+  setBadge('navSettings', ST.pendingCount || 0);   // SSO: tài khoản chờ duyệt
   updateNotif();
 }
 /* ---- Trung tâm thông báo (chuông) ---- */
@@ -134,6 +138,8 @@ function notifItems() {
   const pCout = ST.couts.filter(c => c.status === 'pending').length;
   const needMail = (ST.vstats && ST.vstats.needMail) || 0;
   const refund = ST.students.filter(s => liveStatus(s) === 'left' && s.deposit_status === 'held').length;
+  const pend = ST.pendingCount || 0;
+  if (pend) items.push({ n: pend, ic: IC.shield, tx: `${pend} tài khoản Microsoft chờ duyệt`, act: actAttr('adminGo', 'settings') });
   if (pApps) items.push({ n: pApps, ic: IC.filePen, tx: `${pApps} đơn đăng ký chờ duyệt`, act: actAttr('adminGo', 'reg') });
   if (pDmg) items.push({ n: pDmg, ic: IC.wrench, tx: `${pDmg} báo hư hỏng chưa xử lý`, act: actAttr('adminGo', 'repair') });
   if (pCout) items.push({ n: pCout, ic: IC.logOut, tx: `${pCout} đơn xin trả phòng`, act: actAttr('adminGo', 'checkout') });
@@ -155,6 +161,7 @@ async function refreshNotifCounts() {
       API.applications(), API.damageAll(), API.checkoutReqs(), API.violationStats().catch(() => ST.vstats),
     ]);
     Object.assign(ST, { applications, damage, couts, vstats });
+    if (Auth.user.role === 'admin') { try { ST.pendingCount = ((await API.pendingCount()) || {}).pending || 0; } catch (e) { /* bỏ qua */ } }
     updateNavBadges();                          // cập nhật cả badge nav lẫn chuông
     if (el('notifPanel')) {                      // panel đang mở -> vẽ lại nội dung cho khớp
       const items = notifItems();

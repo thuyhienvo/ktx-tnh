@@ -130,6 +130,7 @@ func NewRouter(database *db.DB, cfg *config.Config) *gin.Engine {
 	adm := api.Group("/admin", a.RequireAuth(), a.RequireRole("admin"))
 	adm.GET("/data-health", h.DataHealth)
 	adm.GET("/audit", h.ListAudit)
+	adm.GET("/pending-count", h.AdminPendingCount)
 	adm.GET("/users", h.ListUsers)
 	adm.POST("/users", h.CreateUser)
 	adm.PUT("/users/:id", h.UpdateUser)

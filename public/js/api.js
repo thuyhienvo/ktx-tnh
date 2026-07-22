@@ -184,6 +184,7 @@ const API = {
     return api('/admin/audit' + (s ? '?' + s : ''));
   },
   dataHealth: () => api('/admin/data-health'),
+  pendingCount: () => api('/admin/pending-count'),
   adminUsers: () => api('/admin/users'),
   createUser: b => api('/admin/users', { method: 'POST', body: b }),
   updateUser: (id, b) => api('/admin/users/' + id, { method: 'PUT', body: b }),
