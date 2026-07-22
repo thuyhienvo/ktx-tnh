@@ -139,7 +139,7 @@ function notifItems() {
   const needMail = (ST.vstats && ST.vstats.needMail) || 0;
   const refund = ST.students.filter(s => liveStatus(s) === 'left' && s.deposit_status === 'held').length;
   const pend = ST.pendingCount || 0;
-  if (pend) items.push({ n: pend, ic: IC.shield, tx: `${pend} tài khoản Microsoft chờ duyệt`, act: actAttr('adminGo', 'settings') });
+  if (pend) items.push({ n: pend, ic: IC.shield, tx: `${pend} tài khoản Microsoft chờ duyệt`, act: actAttr('gotoUsers') });
   if (pApps) items.push({ n: pApps, ic: IC.filePen, tx: `${pApps} đơn đăng ký chờ duyệt`, act: actAttr('adminGo', 'reg') });
   if (pDmg) items.push({ n: pDmg, ic: IC.wrench, tx: `${pDmg} báo hư hỏng chưa xử lý`, act: actAttr('adminGo', 'repair') });
   if (pCout) items.push({ n: pCout, ic: IC.logOut, tx: `${pCout} đơn xin trả phòng`, act: actAttr('adminGo', 'checkout') });

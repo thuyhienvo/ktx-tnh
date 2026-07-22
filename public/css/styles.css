@@ -180,6 +180,9 @@ th .col-filt svg{width:12px;height:12px}
 .col-pop .cp-n{margin-left:auto;color:var(--muted);font-size:11px;padding-left:8px}
 .col-pop .cp-tx input{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-size:13px}
 .col-pop .cp-ft{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}
+/* Nháy nhẹ khi nhảy tới một mục (vd bấm thông báo -> mục Người dùng ở Cài đặt) */
+@keyframes flashHl{0%,55%{box-shadow:0 0 0 3px var(--brand)}100%{box-shadow:0 0 0 0 rgba(0,0,0,0)}}
+.flash{animation:flashHl 1.6s ease-out}
 tbody tr{transition:background .13s}
 tbody tr:hover{background:#faf6ee}
 tbody tr:last-child td{border-bottom:none}

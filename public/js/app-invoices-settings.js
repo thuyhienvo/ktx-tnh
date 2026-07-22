@@ -538,7 +538,7 @@ function viewSettings() {
       <div class="rowbtns" style="margin-top:6px"><button class="btn pri" data-act="saveSsoSettings">Lưu cấu hình Microsoft</button></div>
     </div></div>
 
-    <div class="panel"><div class="hd"><h2>${IC.shield} Người dùng & phân quyền</h2><button class="btn sm" data-act="userForm">${IC.plus} Thêm nhân viên</button></div>
+    <div class="panel" id="usersPanel"><div class="hd"><h2>${IC.shield} Người dùng & phân quyền</h2><button class="btn sm" data-act="userForm">${IC.plus} Thêm nhân viên</button></div>
       <div class="table-wrap"><table><thead><tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Vai trò</th><th>Cơ sở</th><th></th></tr></thead>
         <tbody id="usrRows"><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody></table></div>
       <div class="pad muted" style="font-size:12.5px">${IC.bulb} <strong>Quản trị viên</strong> có toàn quyền (kể cả Điều hành, Doanh thu, Nhật ký, Cài đặt). <strong>Nhân viên</strong> chỉ thao tác nghiệp vụ (Học viên, Phòng, Xe, Check-in/out, Tiền phòng, Tiếp nhận & Hỗ trợ) và đều được ghi vào Nhật ký.</div>
@@ -550,6 +550,16 @@ function viewSettings() {
   loadAdminUsers();
   refreshRulesDocStatus();
   loadDataHealth();
+}
+// Bấm thông báo "N tài khoản Microsoft chờ duyệt" -> vào Cài đặt và CUỘN THẲNG tới mục Người dùng
+// (không phải scroll tay). viewSettings dựng #usersPanel đồng bộ nên chỉ cần đợi 1-2 frame cho vẽ xong.
+function gotoUsers() {
+  adminGo('settings');
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const p = el('usersPanel'); if (!p) return;
+    p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    p.classList.add('flash'); setTimeout(() => p.classList.remove('flash'), 1600);
+  }));
 }
 /* ---------- Quản lý tài khoản nhân viên (chỉ quản trị) ---------- */
 const ROLE_LABEL = { admin: ['Quản trị viên', 'gray'], staff: ['Nhân viên', 'blue'], maintenance: ['Bảo trì', 'amber'] };
