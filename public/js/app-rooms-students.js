@@ -184,7 +184,7 @@ function viewStudents() {
     </div>
     <div class="panel"><div class="hd"><h2>Học viên (<span id="stuCount">${list.length}</span>)</h2>
       <div class="search"><span class="i">${IC.search}</span><input id="ss" placeholder="Tìm tên, mã, lớp, SĐT, số phòng..." value="${esc(stuSearch)}"></div>
-    </div><div class="table-wrap">
+    </div><div class="table-wrap card-tbl">
       ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}${hasXC ? '<th>Dự kiến XC</th>' : ''}${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
       ${list.map(s => {
         const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.alert}</span>` : ''}${contractOverdue(s) ? `<span title="Thuê ghép >${overdueDays()} ngày chưa ký HĐ" style="color:var(--red-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
@@ -194,11 +194,11 @@ function viewStudents() {
           <strong>${esc(s.name)}</strong> <span class="badge ${s.gender === 'female' ? 'red' : 'blue'}" style="font-size:10px">${genderLabel(s.gender)}</span>${s.login_username ? ` <span title="Có tài khoản">${IC.key}</span>` : ''}
           <div class="sub2">${esc(s.code || '—')}${s.class_name ? ' · ' + esc(s.class_name) : ''}${showFacilityUI() && s.facility_id ? ` · <span class="badge gray" style="font-size:10px">${esc(facilityName(s.facility_id))}</span>` : ''}${flags}</div>
         </div></div></td>
-        <td>${s.room_name ? `<strong>${esc(s.room_name)}</strong>` : '<span class="muted">Chưa xếp</span>'}<div class="sub2">${RENTAL_LABEL[s.rental_type] || 'Thuê ghép'}</div></td>
-        <td><span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span>${s.contract_no ? `<div class="sub2">${esc(s.contract_no)}</div>` : ''}</td>
-        <td>${depositBadge(s)}${s.deposit_status === 'none' && isOccupying(s) ? ` <button class="btn sm ghost" style="white-space:nowrap" title="Ghi nhận đóng cọc" data-act="depositForm" data-args='[${s.id}]'>＋ Thu cọc</button>` : ''}</td>
-        ${hasXC ? `<td class="muted" style="font-size:12px;white-space:nowrap">${xcOf(s) ? fmtDate(xcOf(s)) : '—'}</td>` : ''}
-        <td>${statusBadge(s)}</td>
+        <td data-label="Phòng">${s.room_name ? `<strong>${esc(s.room_name)}</strong>` : '<span class="muted">Chưa xếp</span>'}<div class="sub2">${RENTAL_LABEL[s.rental_type] || 'Thuê ghép'}</div></td>
+        <td data-label="Hợp đồng"><span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span>${s.contract_no ? `<div class="sub2">${esc(s.contract_no)}</div>` : ''}</td>
+        <td data-label="Cọc">${depositBadge(s)}${s.deposit_status === 'none' && isOccupying(s) ? ` <button class="btn sm ghost" style="white-space:nowrap" title="Ghi nhận đóng cọc" data-act="depositForm" data-args='[${s.id}]'>＋ Thu cọc</button>` : ''}</td>
+        ${hasXC ? `<td class="muted" data-label="Dự kiến XC" style="font-size:12px;white-space:nowrap">${xcOf(s) ? fmtDate(xcOf(s)) : '—'}</td>` : ''}
+        <td data-label="Trạng thái">${statusBadge(s)}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${isOccupying(s) ? `<button class="btn sm danger" data-act="checkOutForm" data-args='[${s.id}]'>Check-out</button>` : `<button class="btn sm" title="Nhận lại học viên đã trả phòng" data-act="checkInForm" data-args='[${s.id}]'>Check-in</button>`}
           <button class="btn sm pri" data-act="studentDetail" data-args='[${s.id}]'>Chi tiết</button>

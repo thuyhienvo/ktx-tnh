@@ -301,14 +301,14 @@ async function loadMaintenance() {
     </div>
     <div id="handoverArea"><div class="spinner"></div></div>
     ${pending.length ? `<div class="hint" style="border-color:var(--amber-ink)">${IC.bell} Bạn có <strong>${pending.length}</strong> công việc bảo trì cần xử lý.</div>` : ''}
-    <div class="panel"><div class="hd"><h2>${IC.wrench} Công việc cần xử lý</h2></div><div class="table-wrap">
+    <div class="panel"><div class="hd"><h2>${IC.wrench} Công việc cần xử lý</h2></div><div class="table-wrap card-tbl">
       ${pending.length ? `<table><thead><tr><th>Chuyển lúc</th><th>Phòng</th><th>Nội dung</th><th>Người báo</th><th>Trạng thái</th><th></th></tr></thead><tbody>
         ${pending.map(t => `<tr>
-          <td>${fmtDate(String(t.assigned_at).slice(0, 10))}</td>
-          <td><strong>${esc(t.room_name || '—')}</strong></td>
-          <td><strong>${esc(t.title)}</strong>${t.description ? `<div class="muted" style="font-size:12px">${esc(t.description)}</div>` : ''}</td>
-          <td>${esc(t.student_name || '—')}${t.student_phone ? `<div class="muted" style="font-size:11px">${esc(t.student_phone)}</div>` : ''}</td>
-          <td>${t.status === 'blocked' ? `<span class="badge red">Chưa xử lý được</span>${t.admin_note ? `<div style="font-size:11px;color:var(--red-ink)">Lý do: ${esc(t.admin_note)}</div>` : ''}`
+          <td data-label="Chuyển lúc">${fmtDate(String(t.assigned_at).slice(0, 10))}</td>
+          <td data-label="Phòng"><strong>${esc(t.room_name || '—')}</strong></td>
+          <td data-label="Nội dung"><strong>${esc(t.title)}</strong>${t.description ? `<div class="muted" style="font-size:12px">${esc(t.description)}</div>` : ''}</td>
+          <td data-label="Người báo">${esc(t.student_name || '—')}${t.student_phone ? `<div class="muted" style="font-size:11px">${esc(t.student_phone)}</div>` : ''}</td>
+          <td data-label="Trạng thái">${t.status === 'blocked' ? `<span class="badge red">Chưa xử lý được</span>${t.admin_note ? `<div style="font-size:11px;color:var(--red-ink)">Lý do: ${esc(t.admin_note)}</div>` : ''}`
             : t.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới nhận</span>'}</td>
           <td class="num"><div class="rowbtns" style="justify-content:flex-end;flex-wrap:wrap;gap:4px">
             ${t.status !== 'processing' ? `<button class="btn sm" data-act="maintDo" data-args='[${t.id},"processing"]'>Bắt đầu xử lý</button>` : ''}
@@ -339,12 +339,12 @@ async function loadHandovers(month) {
   for (let i = -1; i <= 12; i++) { const dt = new Date(); dt.setDate(1); dt.setMonth(dt.getMonth() - i); monthsList.push(dt.toISOString().slice(0, 7)); }
   const monthOpts = monthsList.map(m => `<option value="${m}" ${m === hoMonth ? 'selected' : ''}>${monthLabel(m)}</option>`).join('');
   const inRow = x => `<tr>
-    <td><strong>${esc(x.name)}</strong></td><td>${esc(x.room_name || '—')}</td><td>${fmtDate(x.date)}</td>
+    <td data-label="Học viên"><strong>${esc(x.name)}</strong></td><td data-label="Phòng">${esc(x.room_name || '—')}</td><td data-label="Ngày">${fmtDate(x.date)}</td>
     <td class="num">${x.checkin_confirmed_at
       ? `<span class="badge green">${IC.check} Đã nhận phòng</span>${x.checkin_confirm_note ? `<div class="muted" style="font-size:11px;white-space:normal">${esc(x.checkin_confirm_note)}</div>` : ''}`
       : `<button class="btn sm green" data-act="handoverCheckinRow" data-args='[${x.id}]' data-hname="${esc(x.name)}">${IC.check} Đã nhận phòng</button>`}</td></tr>`;
   const outRow = x => `<tr>
-    <td><strong>${esc(x.name)}</strong></td><td>${esc(x.room_name || '—')}</td><td>${fmtDate(x.date)}</td>
+    <td data-label="Học viên"><strong>${esc(x.name)}</strong></td><td data-label="Phòng">${esc(x.room_name || '—')}</td><td data-label="Ngày ĐK">${fmtDate(x.date)}</td>
     <td class="num">${x.checkout_confirmed_at
       ? `<span class="badge green">${IC.check} Đã trả ${fmtDate(x.checkout_actual_date)}</span>${x.checkout_confirm_note ? `<div class="muted" style="font-size:11px;white-space:normal">${esc(x.checkout_confirm_note)}</div>` : ''}`
       : `<button class="btn sm green" data-act="handoverCheckoutRow" data-args='[${x.id}]' data-hname="${esc(x.name)}" data-plandate="${esc(x.date || '')}">${IC.check} Đã trả phòng</button>`}</td></tr>`;
@@ -354,9 +354,9 @@ async function loadHandovers(month) {
       <div class="pad"><div class="hint">${IC.info} <strong>${monthLabel(hoMonth)}</strong>: ${d.checkins.length} nhận phòng (<strong>${pIn}</strong> chưa xác nhận) · ${d.checkouts.length} trả phòng (<strong>${pOut}</strong> chưa xác nhận). Xác nhận thực tế + kiểm tra tài sản, thu chìa khóa.</div></div>
       <div class="grid2" style="align-items:start;padding:0 16px 16px;gap:16px">
         <div><h4 style="margin:0 0 8px"><span class="dot-svg dot-green">${IC.dot}</span> Nhận phòng (${d.checkins.length})</h4>
-          <div class="table-wrap">${d.checkins.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th>Ngày</th><th></th></tr></thead><tbody>${d.checkins.map(inRow).join('')}</tbody></table>` : '<div class="empty">Không có ai nhận phòng tháng này.</div>'}</div></div>
+          <div class="table-wrap card-tbl">${d.checkins.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th>Ngày</th><th></th></tr></thead><tbody>${d.checkins.map(inRow).join('')}</tbody></table>` : '<div class="empty">Không có ai nhận phòng tháng này.</div>'}</div></div>
         <div><h4 style="margin:0 0 8px"><span class="dot-svg dot-gray">${IC.dot}</span> Trả phòng (${d.checkouts.length})</h4>
-          <div class="table-wrap">${d.checkouts.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th>Ngày ĐK</th><th></th></tr></thead><tbody>${d.checkouts.map(outRow).join('')}</tbody></table>` : '<div class="empty">Không có ai trả phòng tháng này.</div>'}</div></div>
+          <div class="table-wrap card-tbl">${d.checkouts.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th>Ngày ĐK</th><th></th></tr></thead><tbody>${d.checkouts.map(outRow).join('')}</tbody></table>` : '<div class="empty">Không có ai trả phòng tháng này.</div>'}</div></div>
       </div>
     </div>`;
 }

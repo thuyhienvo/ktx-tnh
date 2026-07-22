@@ -61,23 +61,23 @@ async function viewInvoices() {
       <div class="toolbar">
         <div class="search"><span class="i">${IC.search}</span><input id="invs" placeholder="Tìm tên HV / số phòng..." value="${esc(invSearch)}"></div>
         ${all.length ? `<button class="btn sm" data-act="exportCSV">${IC.download} Xuất Excel (CSV)</button>` : ''}</div></div>
-      <div class="table-wrap">
+      <div class="table-wrap card-tbl">
       ${all.length === 0 ? `<div class="empty">Chưa có hóa đơn nào cho kỳ này.<br><br><button class="btn pri" data-act="generateForm">${IC.receipt} Tạo hóa đơn</button></div>` :
       list.length ? `<table><thead><tr><th>Học viên</th><th>Phòng</th><th class="num">Ngày ở</th><th class="num">Tiền phòng</th><th class="num">Điện</th><th class="num">Nước</th><th class="num">DV</th><th class="num">Giặt</th><th class="num">Xe</th><th class="num">Giảm</th><th class="num">Tổng</th><th></th></tr></thead><tbody>
         ${list.map(i => `<tr data-s="${esc(((i.student_name || '') + ' ' + (i.student_code || '') + ' ' + (i.room_name || '')).toLowerCase())}">
           <td><strong>${esc(i.student_name)}</strong>${i.student_code ? `<div class="muted" style="font-size:11px">${esc(i.student_code)}</div>` : ''}</td>
-          <td>${esc(i.room_name || '—')}</td>
-          <td class="num">${i.days_stayed}</td>
-          <td class="num">${moneyN(i.room_charge)}</td>
-          <td class="num">${moneyN(i.electric_charge)}<div class="muted" style="font-size:10px">${i.electric_kwh || 0} kWh</div></td>
-          <td class="num">${moneyN(i.water_charge)}</td>
-          <td class="num">${moneyN(i.service_charge)}</td>
-          <td class="num">${i.washing_charge ? moneyN(i.washing_charge) : '—'}</td>
-          <td class="num">${i.parking_charge ? moneyN(i.parking_charge) : '—'}</td>
-          <td class="num">${(+i.leader_discount || 0) + (+i.room_discount || 0)
+          <td data-label="Phòng">${esc(i.room_name || '—')}</td>
+          <td class="num" data-label="Ngày ở">${i.days_stayed}</td>
+          <td class="num" data-label="Tiền phòng">${moneyN(i.room_charge)}</td>
+          <td class="num" data-label="Điện">${moneyN(i.electric_charge)}<div class="muted" style="font-size:10px">${i.electric_kwh || 0} kWh</div></td>
+          <td class="num" data-label="Nước">${moneyN(i.water_charge)}</td>
+          <td class="num" data-label="DV">${moneyN(i.service_charge)}</td>
+          <td class="num" data-label="Giặt">${i.washing_charge ? moneyN(i.washing_charge) : '—'}</td>
+          <td class="num" data-label="Xe">${i.parking_charge ? moneyN(i.parking_charge) : '—'}</td>
+          <td class="num" data-label="Giảm">${(+i.leader_discount || 0) + (+i.room_discount || 0)
             ? `<span class="badge green" title="${[+i.room_discount ? 'Giảm tiền phòng ' + money(i.room_discount) : '', +i.leader_discount ? 'Giảm phòng trưởng ' + money(i.leader_discount) : ''].filter(Boolean).join(' · ')}">−${moneyN((+i.leader_discount || 0) + (+i.room_discount || 0))}</span>`
             : '—'}</td>
-          <td class="num"><strong>${moneyN(i.total)}</strong></td>
+          <td class="num" data-label="Tổng"><strong>${moneyN(i.total)}</strong></td>
           <td class="num"><div class="rowbtns" style="justify-content:flex-end">
             <button class="btn sm pri" data-act="phieuBao" data-args='[${i.id}]'>${IC.fileText} Phiếu báo</button>
             <button class="btn sm ghost" title="Tính lại theo số ngày ở hiện tại" data-act="recalcInv" data-args='[${i.id}]'>${IC.refresh}</button>

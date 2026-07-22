@@ -596,3 +596,19 @@ th.sortable.asc .sort-ar,th.sortable.desc .sort-ar{opacity:1;color:var(--brand-d
    Dùng var(--muted) (màu của nền giấy sáng) trên nền than #22252e chỉ đạt tương phản 2.74 —
    nhãn vai trò "Quản trị viên / Nhân viên" gần như chìm vào nền. */
 .side .muted{color:var(--dark-ink2)}
+
+/* ===== BL-28/47: bảng .card-tbl -> THẺ xếp dọc trên điện thoại (hết cuộn ngang burying nút) =====
+   Ô có data-label hiện "NHÃN: giá trị" (2 đầu); ô không nhãn (tự mô tả / cột nút) để trơn full-width. */
+@media(max-width:620px){
+  .card-tbl table,.card-tbl thead,.card-tbl tbody,.card-tbl tr,.card-tbl td{display:block;width:auto}
+  .card-tbl thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)} /* ẩn header, giữ a11y */
+  .card-tbl tr{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;padding:8px 12px;background:var(--card)}
+  .card-tbl tbody tr:hover{background:var(--card)}
+  .card-tbl td{border:none;padding:4px 0;white-space:normal;text-align:left}
+  .card-tbl td[data-label]{display:flex;justify-content:space-between;gap:12px;align-items:baseline;text-align:right}
+  .card-tbl td[data-label]::before{content:attr(data-label);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);text-align:left;flex:none}
+  .card-tbl td.num{text-align:right}
+  .card-tbl .rowbtns{justify-content:stretch;flex-wrap:wrap;gap:6px;margin-top:2px}
+  .card-tbl .rowbtns .btn{flex:1 1 44%;justify-content:center;min-height:40px}
+  .card-tbl .col-filt,.card-tbl .rz-handle{display:none} /* thẻ không cần phễu/kéo cột */
+}
