@@ -340,11 +340,27 @@ function exportCSV() {
 }
 
 /* ---------- CÀI ĐẶT ---------- */
+let settingsTab = 'gia'; // nhóm cài đặt đang mở (trang dài -> gom thành menu, mỗi lần hiện 1 nhóm)
 function viewSettings() {
   const s = ST.settings;
   // Số tiền 7 chữ số rất dễ gõ dư/thiếu số 0 -> hiện luôn bản đã phân cách nghìn ngay dưới ô, cập nhật khi gõ
   const fee = (lbl, key, note = '') => `<div class="field"><label>${lbl} ${note ? `<span class="opt">${note}</span>` : ''}</label><input id="set_${key}" type="number" min="0" value="${esc(s[key] || 0)}" data-input="feeHint" data-args='["${key}"]'><div class="sub2" id="hint_${key}" style="margin-top:4px">${money(s[key] || 0)}</div></div>`;
-  el('content').innerHTML = `
+  // Menu gom nhóm: mọi panel VẪN nằm trong DOM (chỉ ẩn bằng [hidden]) để nút "Lưu" đọc field chéo
+  // panel (vd saveSettings đọc cả phiếu báo + đơn giá + ngưỡng) và loadAdminUsers/loadDataHealth vẫn chạy.
+  const SET_TABS = [
+    ['gia', 'Đơn giá & tính tiền', IC.banknote],
+    ['coso', 'Cơ sở & tài sản', IC.building],
+    ['gioithieu', 'Trang giới thiệu', IC.filePen],
+    ['vipham', 'Vi phạm & Email', IC.inbox],
+    ['baomat', 'Bảo mật & người dùng', IC.shield],
+    ['hethong', 'Hệ thống & dữ liệu', IC.clipboard],
+  ];
+  if (!SET_TABS.some(t => t[0] === settingsTab)) settingsTab = 'gia';
+  const setNav = `<div class="pill-row set-nav">${SET_TABS.map(([id, label, ic]) =>
+    `<button class="btn sm ${settingsTab === id ? 'pri' : ''}" data-tab="${id}" data-act="settingsGo" data-args='["${id}"]'>${ic} ${label}</button>`).join('')}</div>`;
+  const grpOpen = id => `<div class="set-group" data-setgroup="${id}"${settingsTab === id ? '' : ' hidden'}>`;
+  el('content').innerHTML = setNav + `
+    ${grpOpen('gia')}
     <div class="panel"><div class="hd"><h2>${IC.home} Thông tin hiển thị trên phiếu báo</h2></div><div class="pad">
       <div class="field"><label>Tên ký túc xá</label><input id="set_dorm_name" value="${esc(s.dorm_name || '')}"></div>
       <p class="muted" style="font-size:12px;margin:0">Địa chỉ lấy theo từng cơ sở (mục Cơ sở bên dưới). Hotline chỉnh ở mục <strong>Trang giới thiệu</strong> bên dưới.</p>
@@ -428,7 +444,9 @@ function viewSettings() {
       </div>
       <button class="btn pri" data-act="saveBravo">Lưu mã Bravo</button>
     </div></div>
+    </div>
 
+    ${grpOpen('coso')}
     <div class="panel"><div class="hd"><h2>${IC.building} Cơ sở ký túc xá</h2><button class="btn sm" data-act="facilityForm">${IC.plus} Thêm cơ sở</button></div>
       <div class="table-wrap"><table><thead><tr><th>Tên</th><th>Địa chỉ</th><th class="num">Số phòng</th><th></th></tr></thead><tbody>
         ${ST.facilities.map(f => `<tr><td><strong>${esc(f.name)}</strong></td><td class="muted">${esc(f.address || '')}</td><td class="num">${f.room_count}</td>
@@ -447,11 +465,9 @@ function viewSettings() {
       </tbody></table></div>
       <div class="pad muted" style="font-size:12.5px">${IC.bulb} Phí bồi hoàn dùng để khấu trừ vào cọc khi học viên trả phòng (nếu tài sản hư/mất/không vệ sinh).</div>
     </div>
+    </div>
 
-    ${dataHealthBlock()}
-
-    ${rulesDocBlock()}
-
+    ${grpOpen('gioithieu')}
     <div class="panel"><div class="hd"><h2>${IC.filePen} Nội dung trang giới thiệu</h2><a class="btn sm" href="/dang-ky" target="_blank">Xem trang</a></div><div class="pad">
       <div class="hint">${IC.info} Chỉnh tiêu đề &amp; mô tả từng mục ở trang đăng ký công khai. Để trống sẽ dùng nội dung mặc định.</div>
       ${INTRO_FIELDS.map(([k, label, t]) => `<div class="field"><label>${label}</label>${t === 'ta' ? `<textarea id="set_${k}" rows="2">${esc(s[k] || '')}</textarea>` : `<input id="set_${k}" value="${esc(s[k] || '')}">`}</div>`).join('')}
@@ -472,7 +488,9 @@ function viewSettings() {
       </div>
       <button class="btn pri" style="margin-top:14px" data-act="saveImgCaptions">Lưu nhãn ảnh</button>
     </div></div>
+    </div>
 
+    ${grpOpen('vipham')}
     <div class="panel"><div class="hd"><h2>${IC.alert} Loại vi phạm / nhắc nhở</h2><button class="btn sm" data-act="vtypeForm">${IC.plus} Thêm loại</button></div>
       <div class="table-wrap"><table><thead><tr><th>Tên loại vi phạm</th><th>Mức độ</th><th></th></tr></thead><tbody>
         ${(ST.vtypes || []).map(t => `<tr>
@@ -510,7 +528,9 @@ function viewSettings() {
         <span id="smtpTestResult" class="muted" style="font-size:12.5px;align-self:center"></span>
       </div>
     </div></div>
+    </div>
 
+    ${grpOpen('baomat')}
     <div class="panel"><div class="hd"><h2>${IC.shield} Đăng nhập bằng tài khoản Microsoft (SSO)</h2>
       <span class="muted" style="font-size:12px">${s.sso_enabled === 'true' && s.sso_tenant_id && s.sso_client_id ? '<span class="badge green">Đang bật</span>' : '<span class="badge gray">Đang tắt</span>'}</span></div><div class="pad">
       <div class="hint">${IC.info} Lấy 3 thông số ở <strong>Azure Portal → Microsoft Entra ID → App registrations</strong>.
@@ -546,14 +566,28 @@ function viewSettings() {
 
     <div class="panel"><div class="hd"><h2>${IC.key} Tài khoản của bạn</h2></div><div class="pad">
       <button class="btn" data-act="changePwd">${IC.key} Đổi mật khẩu</button>
-    </div></div>`;
+    </div></div>
+    </div>
+
+    ${grpOpen('hethong')}
+    ${dataHealthBlock()}
+    ${rulesDocBlock()}
+    </div>`;
   loadAdminUsers();
   refreshRulesDocStatus();
   loadDataHealth();
 }
+// Menu Cài đặt: đổi nhóm đang hiện, KHÔNG vẽ lại (giữ ảnh đã tải, không chạy lại loadAdminUsers/loadDataHealth).
+function settingsGo(t) {
+  settingsTab = t;
+  document.querySelectorAll('#content .set-group').forEach(g => { g.hidden = g.dataset.setgroup !== t; });
+  document.querySelectorAll('#content .set-nav button').forEach(b => b.classList.toggle('pri', b.dataset.tab === t));
+  window.scrollTo({ top: 0 });
+}
 // Bấm thông báo "N tài khoản Microsoft chờ duyệt" -> vào Cài đặt và CUỘN THẲNG tới mục Người dùng
 // (không phải scroll tay). viewSettings dựng #usersPanel đồng bộ nên chỉ cần đợi 1-2 frame cho vẽ xong.
 function gotoUsers() {
+  settingsTab = 'baomat'; // mục Người dùng nằm trong nhóm "Bảo mật & người dùng"
   adminGo('settings');
   requestAnimationFrame(() => requestAnimationFrame(() => {
     const p = el('usersPanel'); if (!p) return;
