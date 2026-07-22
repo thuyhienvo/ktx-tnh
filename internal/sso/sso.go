@@ -275,7 +275,28 @@ func (m *Manager) ExchangeAndVerify(ctx context.Context, ssoCookie, code, state 
 	}
 	_ = json.Unmarshal(body, &tok)
 	if r.StatusCode != 200 || tok.IDToken == "" {
-		return Identity{}, &HTTPError{502, "Không đổi được mã đăng nhập với Microsoft."}
+		// NÊU RÕ lý do Microsoft từ chối (vd AADSTS7000218 = app kiểu Web bắt buộc client_secret) để
+		// admin biết đường sửa, thay vì thông báo chung chung.
+		var e struct {
+			Error string `json:"error"`
+			Desc  string `json:"error_description"`
+		}
+		_ = json.Unmarshal(body, &e)
+		reason := e.Desc
+		if reason == "" {
+			reason = e.Error
+		}
+		if i := strings.IndexAny(reason, "\r\n"); i > 0 { // Microsoft trả nhiều dòng -> lấy dòng đầu
+			reason = reason[:i]
+		}
+		if len(reason) > 220 {
+			reason = reason[:220]
+		}
+		msg := "Microsoft từ chối đổi mã đăng nhập."
+		if reason != "" {
+			msg += " Lý do: " + reason
+		}
+		return Identity{}, &HTTPError{502, msg}
 	}
 
 	var claims jwt.MapClaims
