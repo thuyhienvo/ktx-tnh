@@ -39,6 +39,7 @@ func NewRouter(database *db.DB, cfg *config.Config) *gin.Engine {
 
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(middleware.RequestLog())  // log mỗi request /api (+ thông điệp lỗi) ra stderr -> Render/Docker
 	r.Use(middleware.Security()) // helmet/CSP cho MỌI response (kể cả index.html)
 	r.Use(middleware.BodyLimit())
 
