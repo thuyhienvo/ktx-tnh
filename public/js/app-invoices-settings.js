@@ -278,7 +278,7 @@ async function phieuBao(inv) {
         <div><b>Phòng:</b> ${esc(inv.room_name || '—')} (Hạng ${esc(room.hang || '')}) &nbsp;&nbsp; <b style="min-width:0">MSHV:</b> ${esc(s.code || '—')} &nbsp;&nbsp; <b style="min-width:0">Lớp:</b> ${esc(s.class_name || '—')}</div>
         <div><b>Ngày nhận phòng:</b> ${fmtDate(s.check_in_date)}</div>
       </div>
-      <table><thead><tr><th style="width:36px">STT</th><th>Khoản thu</th><th>Chi tiết</th><th class="n">Thành tiền</th></tr></thead><tbody>
+      <table><thead><tr><th style="width:36px">STT</th><th>Khoản thu</th><th>Chi tiết</th><th class="n">Thành tiền (đồng)</th></tr></thead><tbody>
         ${rows.join('')}
         <tr class="rc-total"><td colspan="3">TỔNG CỘNG PHẢI NỘP</td><td class="n">${money(inv.total)}</td></tr>
       </tbody></table>
@@ -289,6 +289,7 @@ async function phieuBao(inv) {
     </div></div></div>
     <div class="mf rc-noprint">
       <button class="btn" data-act="closeModal">Đóng</button>
+      <button class="btn" data-act="doPrint">${IC.printer} In phiếu</button>
       <button class="btn pri" data-act="downloadPhieuBao" data-args='["phieu-bao-${esc(String(s.code || inv.student_id))}-${inv.month}"]'>${IC.download} Tải phiếu báo</button>
     </div>`, true);
 }
