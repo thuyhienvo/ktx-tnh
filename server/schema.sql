@@ -442,7 +442,12 @@ ALTER TABLE students ADD COLUMN IF NOT EXISTS room_fee_discount_pct SMALLINT NOT
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS room_discount NUMERIC(12,0) NOT NULL DEFAULT 0;
 
 DO $ktx$
-DECLARE r RECORD;
+DECLARE
+  r RECORD;
+  -- BL-36: nhóm ràng buộc TÀI CHÍNH (chống trùng hồ sơ → thu/xuất phiếu 2 lần) là FAIL-CLOSED:
+  -- áp không được (dữ liệu còn trùng) thì DỪNG boot (RAISE) — buộc dọn trùng TRƯỚC khi vận hành,
+  -- thay vì ghi schema_guard rồi chạy tiếp mà thiếu chốt. Các ràng buộc còn lại vẫn fail-open như cũ.
+  critical_names text[] := ARRAY['uq_students_id_card','uq_students_code','uq_vehicles_plate','uq_vehicles_plate_norm'];
 BEGIN
   FOR r IN SELECT * FROM (VALUES
     -- Trùng CCCD = một người có 2 hồ sơ -> bị tính tiền 2 lần. Bỏ qua hồ sơ đã xoá & CCCD trống.
@@ -527,6 +532,11 @@ BEGIN
       WHEN duplicate_object OR duplicate_table THEN
         DELETE FROM schema_guard WHERE ten = r.ten; -- đã có sẵn từ trước, bình thường
       WHEN others THEN
+        -- BL-36: ràng buộc tài chính → FAIL-CLOSED. Không nuốt lỗi vào schema_guard mà DỪNG boot,
+        -- buộc dọn dữ liệu trùng rồi khởi động lại — không vận hành app khi thiếu chốt chống thu 2 lần.
+        IF r.ten = ANY(critical_names) THEN
+          RAISE EXCEPTION 'BL-36: ràng buộc tài chính % KHÔNG áp được vì dữ liệu còn bản trùng (%). Dọn trùng rồi khởi động lại — KHÔNG vận hành app khi thiếu chốt chống thu/xuất phiếu 2 lần.', r.ten, SQLERRM;
+        END IF;
         INSERT INTO schema_guard (ten, loi) VALUES (r.ten, SQLERRM)
           ON CONFLICT (ten) DO UPDATE SET loi = EXCLUDED.loi, checked_at = now();
     END;
