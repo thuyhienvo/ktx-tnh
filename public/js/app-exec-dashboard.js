@@ -84,8 +84,8 @@ async function viewExec() {
     </div>
     <div class="panel"><div class="hd"><h2>${IC.shield} Vận hành &amp; Tuân thủ</h2></div><div class="pad">
       <div class="exec-stats">
-        ${es(IC.flag, 'ic-amber', 'Tạm trú', `${resiReg}<span> đã đăng ký</span>`, `${resiUnreg} chưa đăng ký${resiOverdueE ? ` · <strong style="color:var(--red-ink)">${resiOverdueE} quá ${overdueDays()} ngày</strong>` : ''}`, resiPct, "residencyModal()")}
-        ${es(IC.fileText, 'ic-brand', 'Hợp đồng (ghép dài hạn)', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá ${overdueDays()} ngày</strong>` : ''}${shortTerm ? ` · Ngắn hạn: ${shortTerm} bàn giao${shortPending ? ` (<strong style="color:var(--amber-ink)">${shortPending} chưa ký phiếu</strong>)` : ''}` : ''}`, cPct, "contractIssuesModal()")}
+        ${es(IC.flag, 'ic-amber', 'Tạm trú', `${resiReg}<span> đã đăng ký</span>`, `${resiUnreg} chưa đăng ký${resiOverdueE ? ` · <strong style="color:var(--red-ink)">${resiOverdueE} quá ${overdueDays()} ngày</strong>` : ''}`, resiPct, actAttr('residencyModal'))}
+        ${es(IC.fileText, 'ic-brand', 'Hợp đồng (ghép dài hạn)', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá ${overdueDays()} ngày</strong>` : ''}${shortTerm ? ` · Ngắn hạn: ${shortTerm} bàn giao${shortPending ? ` (<strong style="color:var(--amber-ink)">${shortPending} chưa ký phiếu</strong>)` : ''}` : ''}`, cPct, actAttr('contractIssuesModal'))}
         ${es(IC.wrench, 'ic-gray', 'Bảo trì', `${dmg.length}<span> lượt báo</span>`, `Đã xử lý ${dmgDone} · đang xử lý ${dmgOpen} · chưa xử lý được ${dmgBlocked}`, dmgPct, actAttr('adminGo', 'repair'))}
         ${es(IC.alert, 'ic-red', 'Vi phạm', `${vioTotal}<span> lượt</span>`, `${vioNeedMail} HV cần báo trường${vioSev ? ' · ' + vioSev : ''}`, null, actAttr('adminGo', 'violations'))}
       </div>
@@ -263,9 +263,9 @@ async function viewDashboard() {
       <div class="todo-grid">
         ${todo(IC.filePen, 'Thuê phòng / trả phòng', pApps + pCout, pApps ? actAttr('adminGo', 'reg') : actAttr('adminGo', 'checkout'), 'on')}
         ${todo(IC.wrench, 'Bảo trì', pDmg, actAttr('adminGo', 'repair'), 'warn')}
-        ${todo(IC.flag, 'Đăng ký Tạm Trú', resiOverdue, "residencyModal()", 'warn')}
-        ${todo(IC.fileText, 'Hợp đồng', contractIncomplete, "contractIssuesModal()", 'warn')}
-        ${todo(IC.handCoins, 'Tiền cọc', refundPending + occ.filter(s => s.deposit_status === 'none').length, "depositModal()", 'warn')}
+        ${todo(IC.flag, 'Đăng ký Tạm Trú', resiOverdue, actAttr('residencyModal'), 'warn')}
+        ${todo(IC.fileText, 'Hợp đồng', contractIncomplete, actAttr('contractIssuesModal'), 'warn')}
+        ${todo(IC.handCoins, 'Tiền cọc', refundPending + occ.filter(s => s.deposit_status === 'none').length, actAttr('depositModal'), 'warn')}
         ${todo(IC.planeTakeoff, 'Dự kiến xuất cảnh (điều phối phòng)', depExpected, actAttr('stuGoAdmin', 'departure_expected'), 'on')}
         ${todo(IC.alert, 'Quản lý vi phạm', needMail, actAttr('adminGo', 'violations'), 'bad')}
       </div>
