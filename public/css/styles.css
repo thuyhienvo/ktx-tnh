@@ -273,6 +273,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);b
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:15px}
 .check{display:flex;align-items:center;gap:9px;font-size:14px}
 .check input{width:auto}
+/* BL-39: checkbox/radio KHÔNG bị luật input{width:100%} kéo giãn full-width (vỡ popover lọc cột,
+   form dùng .chk). flex:none để không ăn theo dòng flex; accent-color theo tông vàng thay vì xanh mặc định. */
+input[type=checkbox],input[type=radio]{width:auto;flex:none;accent-color:var(--brand)}
 .search{position:relative}
 .search input{padding-left:37px;min-width:210px}
 .search .i{position:absolute;left:13px;top:11px;color:var(--muted)}

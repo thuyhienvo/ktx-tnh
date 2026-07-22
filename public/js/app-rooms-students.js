@@ -671,8 +671,8 @@ function appForm() {
       <div class="field"><label>Cơ sở</label><select id="ap_fac">${facOpts}</select></div>
       <div class="field"><label>Nguyện vọng phòng</label><input id="ap_pref" placeholder="VD: tầng thấp, gần thang máy..."></div>
       <div class="grid2">
-        <label class="chk" style="align-self:center"><input type="checkbox" id="ap_wash"> Đăng ký máy giặt</label>
-        <label class="chk" style="align-self:center"><input type="checkbox" id="ap_park"> Gửi xe</label>
+        <label class="check" style="align-self:center"><input type="checkbox" id="ap_wash"> Đăng ký máy giặt</label>
+        <label class="check" style="align-self:center"><input type="checkbox" id="ap_park"> Gửi xe</label>
       </div>
       <div class="field"><label>Biển số xe (nếu gửi xe)</label><input id="ap_plate" placeholder="59-..."></div>
       <div class="field"><label>Ghi chú</label><textarea id="ap_note" rows="2"></textarea></div>
