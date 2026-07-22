@@ -531,12 +531,18 @@ BEGIN
     EXCEPTION
       WHEN duplicate_object OR duplicate_table THEN
         DELETE FROM schema_guard WHERE ten = r.ten; -- đã có sẵn từ trước, bình thường
-      WHEN others THEN
-        -- BL-36: ràng buộc tài chính → FAIL-CLOSED. Không nuốt lỗi vào schema_guard mà DỪNG boot,
-        -- buộc dọn dữ liệu trùng rồi khởi động lại — không vận hành app khi thiếu chốt chống thu 2 lần.
+      WHEN unique_violation THEN
+        -- BL-36: TRÙNG DỮ LIỆU ở ràng buộc TÀI CHÍNH → FAIL-CLOSED (dừng boot, buộc dọn trùng).
+        -- CHỈ bắt đúng ca trùng (unique_violation khi CREATE UNIQUE INDEX gặp bản trùng) — lỗi TẠM
+        -- (timeout/khoá/quyền…) rơi xuống WHEN others (fail-open) để KHÔNG chặn boot nhầm.
         IF r.ten = ANY(critical_names) THEN
           RAISE EXCEPTION 'BL-36: ràng buộc tài chính % KHÔNG áp được vì dữ liệu còn bản trùng (%). Dọn trùng rồi khởi động lại — KHÔNG vận hành app khi thiếu chốt chống thu/xuất phiếu 2 lần.', r.ten, SQLERRM;
         END IF;
+        INSERT INTO schema_guard (ten, loi) VALUES (r.ten, SQLERRM)
+          ON CONFLICT (ten) DO UPDATE SET loi = EXCLUDED.loi, checked_at = now();
+      WHEN others THEN
+        -- Lỗi KHÁC (timeout/khoá/quyền…) → fail-open cho MỌI ràng buộc (kể cả tài chính): lỗi tạm
+        -- không nên chặn boot; lần khởi động sau thử lại. Giữ nguyên hành vi gốc trước BL-36.
         INSERT INTO schema_guard (ten, loi) VALUES (r.ten, SQLERRM)
           ON CONFLICT (ten) DO UPDATE SET loi = EXCLUDED.loi, checked_at = now();
     END;
