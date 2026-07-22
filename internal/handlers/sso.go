@@ -129,24 +129,46 @@ func (h *Handlers) SSOCallback(c *gin.Context) {
 // ssoResolveUser: từ danh tính Microsoft -> user trong CSDL. (1) khớp sso_subject; (2) khớp email ->
 // liên kết; (3) chưa có -> tạo 'pending' chờ duyệt. Dùng chung cho callback (server-side) và verify (SPA).
 func (h *Handlers) ssoResolveUser(ctx context.Context, identity sso.Identity) (*ssoUser, error) {
-	if u := h.ssoLoadUser(ctx, "sso_subject = $1", identity.Subject); u != nil {
-		return u, nil
+	// 1) Theo sso_subject — KỂ CẢ tài khoản đã XOÁ MỀM. Unique index (sso_subject, username) KHÔNG loại
+	// trừ deleted_at, nên KHÔNG được INSERT lại (sẽ trùng khoá -> 500). Đăng nhập lại sau khi bị xoá =
+	// KHÔI PHỤC bản ghi cũ; nếu từng bị xoá thì đưa về CHỜ DUYỆT để admin duyệt lại.
+	var existID int
+	if h.pool().QueryRow(ctx, "SELECT id FROM users WHERE sso_subject = $1", identity.Subject).Scan(&existID) == nil {
+		if _, err := h.pool().Exec(ctx,
+			`UPDATE users SET
+			   email = $2,
+			   full_name = CASE WHEN $3 <> '' THEN $3 ELSE full_name END,
+			   auth_provider = CASE WHEN password_hash IS NULL THEN 'sso' ELSE 'both' END,
+			   approved = CASE WHEN deleted_at IS NOT NULL THEN false ELSE approved END,
+			   deleted_at = NULL
+			 WHERE id = $1`, existID, identity.Email, identity.FullName); err != nil {
+			return nil, err
+		}
+		return h.ssoLoadUser(ctx, "id = $1", existID), nil
 	}
+	// 2) Theo email (tài khoản còn sống) -> liên kết lần đầu.
 	if byEmail := h.ssoLoadUser(ctx, "lower(email) = lower($1)", identity.Email); byEmail != nil {
 		_, _ = h.pool().Exec(ctx,
 			`UPDATE users SET sso_subject = $1, auth_provider = CASE WHEN password_hash IS NULL THEN 'sso' ELSE 'both' END WHERE id = $2`,
 			identity.Subject, byEmail.ID)
 		return h.ssoLoadUser(ctx, "id = $1", byEmail.ID), nil
 	}
+	// 3) Chưa có -> tạo 'pending'. Nếu username (email) đã bị một tài khoản khác dùng (kể cả đã xoá mềm)
+	// thì né bằng hậu tố để KHÔNG 500 vì trùng username.
 	fullName := identity.FullName
 	if fullName == "" {
 		fullName = identity.Email
+	}
+	uname := identity.Email
+	var taken int
+	if h.pool().QueryRow(ctx, "SELECT 1 FROM users WHERE lower(username) = lower($1)", uname).Scan(&taken) == nil {
+		uname = identity.Email + ":" + identity.Subject
 	}
 	var newID int
 	if e := h.pool().QueryRow(ctx,
 		`INSERT INTO users (username, password_hash, role, full_name, email, sso_subject, auth_provider, approved)
 		 VALUES ($1, NULL, 'pending', $2, $3, $4, 'sso', false) RETURNING id`,
-		identity.Email, fullName, identity.Email, identity.Subject).Scan(&newID); e != nil {
+		uname, fullName, identity.Email, identity.Subject).Scan(&newID); e != nil {
 		return nil, e
 	}
 	return h.ssoLoadUser(ctx, "id = $1", newID), nil
@@ -176,7 +198,7 @@ func (h *Handlers) SSOVerify(c *gin.Context) {
 	}
 	user, e := h.ssoResolveUser(ctx, identity)
 	if e != nil {
-		serverErr(c)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không tạo/khôi phục được tài khoản: " + e.Error()})
 		return
 	}
 	if user == nil {
