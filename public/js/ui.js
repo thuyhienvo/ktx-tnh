@@ -37,6 +37,11 @@ function openModal(html, wide) {
   el('modal').innerHTML = html;
   el('overlay').classList.add('show');
   _formLucMo = _chupForm();
+  // BL-23: nhiều form gọi attachDate(...) NGAY SAU openModal (điền ngày vào ô đang rỗng). Ảnh chụp ở
+  // trên (lúc ô ngày còn rỗng) khác ảnh sau khi điền → formDangDo() báo NHẦM "chưa lưu" ở MỌI lần Sửa
+  // học viên (ai cũng có ngày sinh). Chụp LẠI sau tick hiện tại, khi các lời gọi đồng bộ hậu-openModal
+  // (attachDate…) đã chạy xong — vẫn bắt được thay đổi thật vì người dùng chưa kịp gõ trong ~0ms này.
+  setTimeout(() => { if (el('overlay').classList.contains('show')) _formLucMo = _chupForm(); }, 0);
 }
 function closeModal() {
   if (!window._dangLuu && formDangDo()
