@@ -107,10 +107,26 @@ func TestConnection(ctx context.Context, database *db.DB, o Override) (bool, str
 	}
 	sc, err := dialer(s).Dial()
 	if err != nil {
-		return false, "Không kết nối được tới máy chủ SMTP với cấu hình này. Kiểm tra lại host, cổng, tài khoản, mật khẩu."
+		return false, smtpErrMsg(err)
 	}
 	_ = sc.Close()
 	return true, ""
+}
+
+// smtpErrMsg: NÊU RÕ lý do thật (thay vì báo chung chung) + gợi ý sửa theo lỗi thường gặp.
+func smtpErrMsg(err error) string {
+	e := err.Error()
+	le := strings.ToLower(e)
+	hint := ""
+	switch {
+	case strings.Contains(le, "timeout") || strings.Contains(le, "connection refused") || strings.Contains(le, "no such host") || strings.Contains(le, "network is unreachable"):
+		hint = " → Sai host/cổng, HOẶC nhà cung cấp máy chủ (vd Render gói free) đang CHẶN cổng SMTP. Thử cổng 587; nếu vẫn timeout thì nhà cung cấp chặn SMTP — phải dùng dịch vụ gửi mail qua HTTP API (SendGrid/Resend…) hoặc nâng gói."
+	case strings.Contains(le, "authentication") || strings.Contains(le, "535") || strings.Contains(le, "username and password") || strings.Contains(le, "5.7."):
+		hint = " → Sai tài khoản/mật khẩu. Gmail & Outlook KHÔNG nhận mật khẩu thường — phải tạo 'App Password' (mật khẩu ứng dụng) và dán vào đây."
+	case strings.Contains(le, "tls") || strings.Contains(le, "certificate") || strings.Contains(le, "handshake") || strings.Contains(le, "first record does not look like"):
+		hint = " → Sai kiểu mã hoá: cổng 465 phải BẬT bảo mật (SSL), cổng 587 phải TẮT bảo mật (dùng STARTTLS). Đổi lại rồi thử."
+	}
+	return "Không kết nối được máy chủ SMTP. Lý do: " + e + hint
 }
 
 // Student + Violation cho mail.
