@@ -96,8 +96,16 @@ function renderChoDuyet() {
 /* ================= TRANG ĐĂNG KÝ CÔNG KHAI ================= */
 async function renderPublicRegister() {
   el('app').innerHTML = `<div class="intro-loading"><div class="spinner"></div></div>`;
-  let info = {};
+  let info = null;
   try { info = await API.publicInfo(); } catch (e) {}
+  if (!info || typeof info !== 'object') {   // BL-22: publicInfo lỗi -> KHÔNG render trang với giá "0" giả
+    el('app').innerHTML = `<div class="login-wrap"><div class="login-card" style="text-align:center">
+      <div style="color:var(--red-ink,#b91c1c);display:flex;justify-content:center;margin-bottom:8px">${IC.alert}</div>
+      <h1 style="font-family:var(--serif);margin:6px 0;font-size:22px">Không tải được thông tin</h1>
+      <p class="muted" style="margin:0 0 16px">Máy chủ có thể đang bận hoặc mất mạng. Vui lòng tải lại trang.</p>
+      <button class="btn pri" data-act="reloadPage">${IC.refresh} Tải lại</button></div></div>`;
+    return;
+  }
   window._pubCccd = {};
   const dorm = esc(info.dorm_name || 'Ký túc xá Học viên');
   const imgCard = (key, def) => { const label = esc(info['imgcap_' + key] || def); return `<figure class="ph-img"><img src="/api/public/image/${key}" alt="${label}" loading="lazy" data-err="onImgRemove"><span class="ph-ico">${IC.building}</span><figcaption>${label}</figcaption></figure>`; };

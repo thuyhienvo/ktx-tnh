@@ -4,7 +4,7 @@ async function viewExec() {
   el('topActions').innerHTML = `<button class="btn" data-act="doPrint">${IC.printer} In / Lưu PDF</button>`;
   el('content').innerHTML = '<div class="spinner"></div>';
   const year = curMonth().slice(0, 4);
-  const [rev, revPrev] = await Promise.all([guard(() => API.revenue(year)), API.revenue(String(+year - 1)).catch(() => [])]);
+  const [rev, revPrev] = await Promise.all([API.revenue(year), API.revenue(String(+year - 1)).catch(() => [])]); // BL-21: lỗi -> reject -> adminGo bắt -> renderViewError
   const sum = (arr, k) => arr.reduce((a, m) => a + (+m[k] || 0), 0);
   const totalYear = sum(rev, 'total'), paidYear = sum(rev, 'paid'), prevYear = sum(revPrev, 'total');
   const collection = totalYear ? Math.round(paidYear / totalYear * 100) : 0;

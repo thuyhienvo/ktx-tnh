@@ -70,6 +70,7 @@ function washAdd() { toggleWashing(+el('wash_stu').value, true); }
 function delUserRow(id) { delUser(id, (this && this.dataset && this.dataset.uname) || ''); } // ten doc tu data-uname
 function logout() { Auth.logout(); }
 function doPrint() { window.print(); }
+function reloadPage() { location.reload(); } // BL-22: nút "Tải lại" trang công khai (CSP chặn inline onclick)
 function handoverCheckinRow(id) { handoverCheckinForm(id, (this && this.dataset && this.dataset.hname) || ''); }     // ten doc tu data-hname (tranh nhet ten vao JSON)
 function handoverCheckoutRow(id) { handoverCheckoutForm(id, (this && this.dataset && this.dataset.hname) || '', (this && this.dataset && this.dataset.plandate) || ''); }
 

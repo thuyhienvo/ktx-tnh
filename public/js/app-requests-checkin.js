@@ -5,7 +5,7 @@ async function viewRequests() {
   el('content').innerHTML = '<div class="spinner"></div>';
   let apps = [], damage = [], couts = [], vios = [], vstats = null;
   try { [apps, damage, couts, vios, vstats] = await Promise.all([API.applications(), API.damageAll(), API.checkoutReqs(), API.violations(), API.violationStats().catch(() => null)]); }
-  catch (e) { return toast(e.message, 'err'); }
+  catch (e) { return renderViewError(ST.view, e); } // BL-21: khối lỗi + Thử lại thay vì kẹt spinner
   Object.assign(ST, { applications: apps, damage, couts, vstats }); updateNavBadges();
   const threshold = (vstats && vstats.threshold) || 3;
 
@@ -327,7 +327,7 @@ let logFilter = 'all';
 async function viewCheckin() {
   el('topActions').innerHTML = `<button class="btn green" data-act="quickPick" data-args='["in"]'><span class="dot-svg dot-green">${IC.dot}</span> Check-in nhanh</button><button class="btn danger" data-act="quickPick" data-args='["out"]'><span class="dot-svg" style="color:var(--red)">${IC.dot}</span> Check-out nhanh</button>`;
   el('content').innerHTML = '<div class="spinner"></div>';
-  let logs = await guard(() => API.logs(logFilter === 'all' ? null : logFilter));
+  let logs = await API.logs(logFilter === 'all' ? null : logFilter); // BL-21: lỗi -> reject -> adminGo bắt -> renderViewError
   el('content').innerHTML = `
     <div class="pill-row">
       <button class="btn sm ${logFilter === 'all' ? 'pri' : ''}" data-act="logGo" data-args='["all"]'>Tất cả</button>

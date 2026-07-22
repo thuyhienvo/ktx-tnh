@@ -87,6 +87,21 @@ function renderBootError(e) {
       </div>
     </div>`;
 }
+// BL-21: lỗi tải TRONG một màn (viewExec/viewRequests/viewCheckin) → hiện khối lỗi + nút Thử lại
+// (nạp lại CHÍNH màn đó qua adminGo), thay vì để #content kẹt ở spinner vĩnh viễn.
+function renderViewError(view, e) {
+  const c = el('content'); if (!c) return;
+  c.innerHTML = `
+    <div class="panel" style="max-width:460px;margin:48px auto;text-align:center">
+      <div class="pad">
+        <div style="color:var(--red-ink,#b91c1c);display:flex;justify-content:center;margin-bottom:8px">${IC.alert}</div>
+        <h2 style="margin:0 0 6px">Không tải được dữ liệu</h2>
+        <p class="muted" style="margin:0 0 4px">${esc((e && e.message) || 'Lỗi kết nối máy chủ')}</p>
+        <p class="muted" style="font-size:13px;margin:0 0 16px">Máy chủ có thể đang bận hoặc mất mạng. Bấm Thử lại.</p>
+        <button class="btn pri" data-act="adminGo" data-args='["${view}"]'>${IC.refresh} Thử lại</button>
+      </div>
+    </div>`;
+}
 
 async function refreshCache() {
   const [rooms, students, facilities, settings, applications, damage, couts, logs, assets, vtypes, vstats] = await Promise.all([
@@ -384,7 +399,9 @@ function adminGo(view, opts) {
   } else {
     history.pushState({ view }, '', target);                        // điều hướng thường -> thêm 1 bước lịch sử
   }
-  ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, services: viewServices, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, reg: viewRequests, checkout: viewRequests, repair: viewRequests, violations: viewRequests, feedback: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
+  const _vp = ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, services: viewServices, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, reg: viewRequests, checkout: viewRequests, repair: viewRequests, violations: viewRequests, feedback: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
+  // BL-21: màn async reject (lỗi tải) -> khối lỗi + Thử lại thay vì kẹt spinner. (Các màn tự bắt lỗi nội bộ thì không reject.)
+  if (_vp && _vp.catch) _vp.catch(e => renderViewError(view, e));
 }
 // Nút Back/Forward của trình duyệt (kể cả nút cứng Android trên PWA standalone).
 // Gán bằng onpopstate (không phải addEventListener) để boot() gọi lại nhiều lần cũng không nhân đôi.

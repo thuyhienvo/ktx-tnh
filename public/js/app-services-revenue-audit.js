@@ -8,7 +8,7 @@ async function viewServices() {
   // Xe: lấy từ bảng xe (nguồn sự thật), lọc theo HV đang ở bằng CÙNG bộ isOccupying như dashboard
   // → totalVeh ở đây == "Xe đang gửi" ở Tổng quan; dùng CHUNG cho KPI, pill và danh sách (tránh 3 số khác nhau)
   const occIds = new Set(occ.map(s => s.id));
-  let allVeh = []; try { allVeh = await API.vehicles(); } catch (e) {}
+  let allVeh = []; try { allVeh = await API.vehicles(); } catch (e) { return renderViewError('services', e); } // BL-22: lỗi tải xe -> khối lỗi, KHÔNG hiện "0 xe" giả
   const veh = allVeh.filter(v => occIds.has(v.student_id)).sort((a, b) => (a.room_name || '').localeCompare(b.room_name || '', 'vi'));
   const totalVeh = veh.length;
   el('topActions').innerHTML = '';
