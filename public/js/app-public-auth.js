@@ -1,7 +1,61 @@
 // === app-public-auth.js — tach tu app.js (CHANG 4 refactor). Classic script, GIU global scope cho onclick. ===
 // KHONG doi thu tu nap trong index.html; boot()/chong-bam/click-listener nam o app-portals-boot.js (cuoi).
+/* ===== SSO Microsoft — LUỒNG SPA (không client_secret, không rotation) =========================
+   Trình duyệt tự chạy auth-code + PKCE với Microsoft (đăng ký app kiểu SPA), tự đổi mã lấy id_token,
+   rồi gửi id_token về /auth/sso/verify. Server xác minh chữ ký (JWKS) + cấp COOKIE PHIÊN ktx_token.
+   Token Microsoft chỉ dùng MỘT LẦN để xác minh danh tính; MỌI API sau đó dùng cookie của app -> thu
+   hồi/khoá tài khoản có hiệu lực TỨC THÌ (token_epoch + đọc DB mỗi request), không đợi token hết hạn. */
+const _MS_AUTH = t => `https://login.microsoftonline.com/${t}/oauth2/v2.0/authorize`;
+const _MS_TOKEN = t => `https://login.microsoftonline.com/${t}/oauth2/v2.0/token`;
+function _b64url(buf) { return btoa(String.fromCharCode.apply(null, new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function _randStr(n) { const a = new Uint8Array(n); crypto.getRandomValues(a); return _b64url(a); }
+async function _sha256url(s) { return _b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))); }
+
+// Bấm "Đăng nhập bằng Microsoft" -> dựng PKCE + chuyển sang trang đăng nhập của Microsoft.
+async function ssoLogin() {
+  let cfg;
+  try { cfg = await API.ssoConfig(); } catch (e) { return toast('Không lấy được cấu hình đăng nhập Microsoft', 'err'); }
+  if (!cfg || !cfg.enabled || !cfg.tenantId || !cfg.clientId) return toast('Đăng nhập Microsoft chưa được cấu hình', 'err');
+  const verifier = _randStr(48), state = _randStr(16), nonce = _randStr(16);
+  const challenge = await _sha256url(verifier);
+  const redirect = location.origin + '/';
+  sessionStorage.setItem('_sso', JSON.stringify({ verifier, state, nonce, tenant: cfg.tenantId, client: cfg.clientId, redirect }));
+  const p = new URLSearchParams({
+    client_id: cfg.clientId, response_type: 'code', redirect_uri: redirect, response_mode: 'query',
+    scope: 'openid profile email', state, nonce, code_challenge: challenge, code_challenge_method: 'S256',
+  });
+  location.href = _MS_AUTH(cfg.tenantId) + '?' + p.toString();
+}
+
+// Microsoft chuyển về (origin/?code=...&state=...). Trả true nếu đang trong luồng SSO (đã xử lý).
+async function ssoHandleReturn() {
+  const qp = new URLSearchParams(location.search);
+  let saved = null; try { saved = JSON.parse(sessionStorage.getItem('_sso') || 'null'); } catch (e) {}
+  if (!qp.get('code') || !saved) return false;
+  sessionStorage.removeItem('_sso');
+  history.replaceState(null, '', location.pathname); // dọn ?code khỏi thanh địa chỉ
+  const fail = msg => { location.href = '/?sso_error=' + encodeURIComponent(msg); }; // dùng lại màn login + ghi chú lỗi
+  if (qp.get('state') !== saved.state) { fail('Yêu cầu đăng nhập không khớp (state). Vui lòng thử lại.'); return true; }
+  el('app').innerHTML = '<div class="intro-loading"><div class="spinner"></div></div>';
+  try {
+    const body = new URLSearchParams({
+      client_id: saved.client, grant_type: 'authorization_code', code: qp.get('code'),
+      redirect_uri: saved.redirect, code_verifier: saved.verifier, scope: 'openid profile email',
+    });
+    const r = await fetch(_MS_TOKEN(saved.tenant), { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
+    const tok = await r.json().catch(() => ({}));
+    if (!r.ok || !tok.id_token) { fail('Microsoft từ chối: ' + String(tok.error_description || tok.error || 'không đổi được mã đăng nhập').split('\n')[0]); return true; }
+    await API.ssoVerify(tok.id_token);   // server xác minh id_token (JWKS) + cấp cookie phiên
+    Auth.user = null; boot();            // đã có cookie -> boot vẽ app / màn chờ duyệt
+  } catch (e) {
+    fail((e && e.message) || 'Lỗi kết nối khi đăng nhập Microsoft.');
+  }
+  return true;
+}
+
 /* ================= ĐIỀU PHỐI CHÍNH ================= */
 async function boot() {
+  if (await ssoHandleReturn()) return; // quay về từ Microsoft (SSO SPA) -> đổi mã + cấp cookie rồi thôi
   if (location.pathname.replace(/\/$/, '') === '/dang-ky') return renderPublicRegister();
   // `/auth/me` là NGUỒN DUY NHẤT về danh tính: cookie httpOnly xác thực, server đọc user từ DB trả về.
   // KHÔNG lấy thông tin user từ response /login nữa (login chỉ đặt cookie) -> không có 2 nguồn lệch nhau,
@@ -253,7 +307,7 @@ async function renderLogin() {
           <p class="sub" id="lgSub">Nhân viên và học viên dùng chung một chỗ đăng nhập.</p>
           <div id="lgNotice"></div>
           <div id="lgSso" style="display:none">
-            <a class="btn lg auth-btn auth-sso" href="/api/auth/sso/start">${IC.shield} Đăng nhập bằng tài khoản Microsoft</a>
+            <button type="button" class="btn lg auth-btn auth-sso" data-act="ssoLogin">${IC.shield} Đăng nhập bằng tài khoản Microsoft</button>
             <div class="auth-or"><span>hoặc dùng mật khẩu</span></div>
           </div>
           <form id="loginForm">

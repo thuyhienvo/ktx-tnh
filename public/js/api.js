@@ -73,6 +73,7 @@ const API = {
   // KHÔNG gửi "cổng": loại tài khoản (nhân viên/học viên) là thuộc tính của user trong CSDL.
   login: (username, password) => api('/auth/login', { method: 'POST', body: { username, password } }),
   ssoConfig: () => api('/auth/sso/config'),
+  ssoVerify: idToken => api('/auth/sso/verify', { method: 'POST', body: { id_token: idToken } }),
   logout: () => api('/auth/logout', { method: 'POST' }),
   me: () => api('/auth/me'),
   changePassword: (oldPassword, newPassword) => api('/auth/change-password', { method: 'POST', body: { oldPassword, newPassword } }),

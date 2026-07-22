@@ -244,7 +244,15 @@ func (h *Handlers) ChangePassword(c *gin.Context) {
 
 // SSOConfig: GET /api/auth/sso/config — chỉ trả {enabled}. server/routes/auth.routes.js:136-139
 func (h *Handlers) SSOConfig(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"enabled": h.SSO.Enabled(c.Request.Context())})
+	cfg := h.SSO.Config(c.Request.Context())
+	// tenantId + clientId KHÔNG bí mật (đằng nào cũng nằm trong URL uỷ quyền). Trình duyệt cần chúng để
+	// tự dựng yêu cầu đăng nhập + đổi mã (luồng SPA, không secret). Chỉ trả khi đã bật.
+	out := gin.H{"enabled": cfg.Enabled}
+	if cfg.Enabled {
+		out["tenantId"] = cfg.TenantID
+		out["clientId"] = cfg.ClientID
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 func trimSpace(s string) string {

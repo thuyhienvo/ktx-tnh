@@ -299,8 +299,20 @@ func (m *Manager) ExchangeAndVerify(ctx context.Context, ssoCookie, code, state 
 		return Identity{}, &HTTPError{502, msg}
 	}
 
+	return m.VerifyIDToken(ctx, tok.IDToken, st.Nonce)
+}
+
+// VerifyIDToken: KIỂM id_token (chữ ký JWKS RS256 + iss + aud=client_id + tid + tên miền cho phép).
+// Dùng chung cho: (1) luồng server-side ExchangeAndVerify (truyền nonce từ state cookie), và (2) luồng
+// SPA — trình duyệt tự đổi mã rồi gửi id_token về /sso/verify (nonce đã kiểm phía trình duyệt -> "").
+// KHÔNG đổi mã, KHÔNG cần client_secret: chỉ tin token do Microsoft ký cho ĐÚNG app + ĐÚNG tenant.
+func (m *Manager) VerifyIDToken(ctx context.Context, idToken, expectedNonce string) (Identity, error) {
+	cfg := m.Config(ctx)
+	if !cfg.Enabled {
+		return Identity{}, &HTTPError{503, "Đăng nhập Microsoft chưa được cấu hình"}
+	}
 	var claims jwt.MapClaims
-	_, err = jwt.ParseWithClaims(tok.IDToken, &claims, func(t *jwt.Token) (interface{}, error) {
+	_, err := jwt.ParseWithClaims(idToken, &claims, func(t *jwt.Token) (interface{}, error) {
 		kid, _ := t.Header["kid"].(string)
 		if kid == "" {
 			return nil, fmt.Errorf("id_token không hợp lệ")
@@ -311,9 +323,10 @@ func (m *Manager) ExchangeAndVerify(ctx context.Context, ssoCookie, code, state 
 	if err != nil {
 		return Identity{}, &HTTPError{401, "Chữ ký id_token không hợp lệ: " + err.Error()}
 	}
-	nonce, _ := claims["nonce"].(string)
-	if nonce != st.Nonce {
-		return Identity{}, &HTTPError{401, "id_token không khớp yêu cầu (nonce)."}
+	if expectedNonce != "" {
+		if nonce, _ := claims["nonce"].(string); nonce != expectedNonce {
+			return Identity{}, &HTTPError{401, "id_token không khớp yêu cầu (nonce)."}
+		}
 	}
 	if tid, _ := claims["tid"].(string); tid != "" && tid != cfg.TenantID {
 		return Identity{}, &HTTPError{403, "Tài khoản không thuộc tổ chức được phép."}

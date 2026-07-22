@@ -58,6 +58,7 @@ func NewRouter(database *db.DB, cfg *config.Config) *gin.Engine {
 	ssoLim := middleware.NewLimiter(15*60*1000, 30, "Bạn đã thử đăng nhập Microsoft quá nhiều lần. Vui lòng đợi vài phút.").Handler()
 	ag.GET("/sso/start", ssoLim, h.SSOStart)
 	ag.GET("/sso/callback", ssoLim, h.SSOCallback)
+	ag.POST("/sso/verify", ssoLim, h.SSOVerify) // luồng SPA: trình duyệt đổi mã, gửi id_token về đây
 
 	set := api.Group("/settings", a.RequireAuth())
 	set.GET("", a.RequireRole("admin", "staff"), h.GetSettings)

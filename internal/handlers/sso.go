@@ -97,32 +97,10 @@ func (h *Handlers) SSOCallback(c *gin.Context) {
 		return
 	}
 
-	// 1) Đã liên kết -> vào thẳng (khoá theo sso_subject).
-	user := h.ssoLoadUser(ctx, "sso_subject = $1", identity.Subject)
-	if user == nil {
-		// 2) Có tài khoản mang đúng email -> LIÊN KẾT lần đầu.
-		byEmail := h.ssoLoadUser(ctx, "lower(email) = lower($1)", identity.Email)
-		if byEmail != nil {
-			_, _ = h.pool().Exec(ctx,
-				`UPDATE users SET sso_subject = $1, auth_provider = CASE WHEN password_hash IS NULL THEN 'sso' ELSE 'both' END WHERE id = $2`,
-				identity.Subject, byEmail.ID)
-			user = h.ssoLoadUser(ctx, "id = $1", byEmail.ID)
-		} else {
-			// 3) Người trong tenant chưa có hồ sơ -> TỰ TẠO 'pending' + approved=false.
-			fullName := identity.FullName
-			if fullName == "" {
-				fullName = identity.Email
-			}
-			var newID int
-			if e := h.pool().QueryRow(ctx,
-				`INSERT INTO users (username, password_hash, role, full_name, email, sso_subject, auth_provider, approved)
-				 VALUES ($1, NULL, 'pending', $2, $3, $4, 'sso', false) RETURNING id`,
-				identity.Email, fullName, identity.Email, identity.Subject).Scan(&newID); e != nil {
-				veTrang("Không tạo được tài khoản.")
-				return
-			}
-			user = h.ssoLoadUser(ctx, "id = $1", newID)
-		}
+	user, e := h.ssoResolveUser(ctx, identity)
+	if e != nil {
+		veTrang("Không tạo được tài khoản.")
+		return
 	}
 	if user == nil {
 		veTrang("Tài khoản không hợp lệ.")
@@ -146,4 +124,71 @@ func (h *Handlers) SSOCallback(c *gin.Context) {
 		return
 	}
 	c.Redirect(http.StatusFound, "/")
+}
+
+// ssoResolveUser: từ danh tính Microsoft -> user trong CSDL. (1) khớp sso_subject; (2) khớp email ->
+// liên kết; (3) chưa có -> tạo 'pending' chờ duyệt. Dùng chung cho callback (server-side) và verify (SPA).
+func (h *Handlers) ssoResolveUser(ctx context.Context, identity sso.Identity) (*ssoUser, error) {
+	if u := h.ssoLoadUser(ctx, "sso_subject = $1", identity.Subject); u != nil {
+		return u, nil
+	}
+	if byEmail := h.ssoLoadUser(ctx, "lower(email) = lower($1)", identity.Email); byEmail != nil {
+		_, _ = h.pool().Exec(ctx,
+			`UPDATE users SET sso_subject = $1, auth_provider = CASE WHEN password_hash IS NULL THEN 'sso' ELSE 'both' END WHERE id = $2`,
+			identity.Subject, byEmail.ID)
+		return h.ssoLoadUser(ctx, "id = $1", byEmail.ID), nil
+	}
+	fullName := identity.FullName
+	if fullName == "" {
+		fullName = identity.Email
+	}
+	var newID int
+	if e := h.pool().QueryRow(ctx,
+		`INSERT INTO users (username, password_hash, role, full_name, email, sso_subject, auth_provider, approved)
+		 VALUES ($1, NULL, 'pending', $2, $3, $4, 'sso', false) RETURNING id`,
+		identity.Email, fullName, identity.Email, identity.Subject).Scan(&newID); e != nil {
+		return nil, e
+	}
+	return h.ssoLoadUser(ctx, "id = $1", newID), nil
+}
+
+// SSOVerify: POST /api/auth/sso/verify {id_token} — LUỒNG SPA (không secret). Trình duyệt tự đổi mã ở
+// Microsoft bằng PKCE rồi gửi id_token về đây; server KIỂM (JWKS) + tìm/tạo user + CẤP COOKIE PHIÊN
+// ktx_token. Token Microsoft chỉ dùng MỘT LẦN để xác minh danh tính — mọi API sau đó dùng cookie của
+// app (thu hồi/khoá tức thì qua token_epoch + đọc DB mỗi request), KHÔNG phụ thuộc hạn token Microsoft.
+func (h *Handlers) SSOVerify(c *gin.Context) {
+	ctx := c.Request.Context()
+	var body struct {
+		IDToken string `json:"id_token"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.IDToken) == "" {
+		badRequest(c, "Thiếu id_token")
+		return
+	}
+	identity, err := h.SSO.VerifyIDToken(ctx, body.IDToken, "") // nonce đã kiểm phía trình duyệt
+	if err != nil {
+		if he, ok := err.(*sso.HTTPError); ok {
+			c.JSON(he.Status, gin.H{"error": he.Msg})
+			return
+		}
+		serverErr(c)
+		return
+	}
+	user, e := h.ssoResolveUser(ctx, identity)
+	if e != nil {
+		serverErr(c)
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Tài khoản không hợp lệ."})
+		return
+	}
+	loginLog(h, c, &user.ID, user.Username, user.Role, "đăng nhập Microsoft")
+	token, err := h.Auth.SignToken(user.ID, user.Username, user.Role, user.StudentID, user.TokenEpoch)
+	if err != nil {
+		serverErr(c)
+		return
+	}
+	h.Auth.SetAuthCookie(c, token) // cấp vé cho CẢ pending (pendingAllow cho /me + /logout)
+	c.JSON(http.StatusOK, gin.H{"ok": true, "pending": !user.Approved})
 }
