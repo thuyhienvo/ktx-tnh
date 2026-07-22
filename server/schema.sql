@@ -497,6 +497,20 @@ BEGIN
          ALTER TABLE users ADD CONSTRAINT users_facility_fk FOREIGN KEY (facility_id) REFERENCES facilities(id) ON DELETE RESTRICT;
        END IF;
      END $fk$;$q$),
+    -- BL-37: FK cho students.facility_id + applications.facility_id (trước chỉ ADD COLUMN, không tham chiếu).
+    -- Bảo toàn tham chiếu + ON DELETE RESTRICT (không xoá cơ sở khi còn HV/đơn gắn nó). NULL vẫn cho phép.
+    ('fk_students_facility',
+     $q$DO $fk$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name='fk_students_facility' AND table_name='students') THEN
+         ALTER TABLE students ADD CONSTRAINT fk_students_facility FOREIGN KEY (facility_id) REFERENCES facilities(id) ON DELETE RESTRICT;
+       END IF;
+     END $fk$;$q$),
+    ('fk_applications_facility',
+     $q$DO $fk$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name='fk_applications_facility' AND table_name='applications') THEN
+         ALTER TABLE applications ADD CONSTRAINT fk_applications_facility FOREIGN KEY (facility_id) REFERENCES facilities(id) ON DELETE RESTRICT;
+       END IF;
+     END $fk$;$q$),
 
     -- ---- Tiền KHÔNG BAO GIỜ được âm. Ô nhập có min=0 nhưng đó chỉ là thuộc tính HTML.
     ('ck_invoices_no_negative',
