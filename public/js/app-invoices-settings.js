@@ -512,7 +512,7 @@ function viewSettings() {
     </div></div>
 
     <div class="panel"><div class="hd"><h2>${IC.shield} Đăng nhập bằng tài khoản Microsoft (SSO)</h2>
-      <span class="muted" style="font-size:12px">${s.sso_enabled === 'true' && s.sso_tenant_id && s.sso_client_id && s.sso_client_secret_set ? '<span class="badge green">Đang bật</span>' : '<span class="badge gray">Đang tắt</span>'}</span></div><div class="pad">
+      <span class="muted" style="font-size:12px">${s.sso_enabled === 'true' && s.sso_tenant_id && s.sso_client_id ? '<span class="badge green">Đang bật</span>' : '<span class="badge gray">Đang tắt</span>'}</span></div><div class="pad">
       <div class="hint">${IC.info} Lấy 3 thông số ở <strong>Azure Portal → Microsoft Entra ID → App registrations</strong>.
         Khi đăng ký ứng dụng phải khai đúng <strong>Redirect URI</strong>:
         <code>${esc(location.origin)}/api/auth/sso/callback</code> và cấp quyền <code>openid profile email</code>.
@@ -531,9 +531,10 @@ function viewSettings() {
         <div class="field"><label>Tenant ID (Directory ID)</label><input id="set_sso_tenant_id" value="${esc(s.sso_tenant_id || '')}" placeholder="vd 72f988bf-86f1-41af-91ab-..."></div>
         <div class="field"><label>Client ID (Application ID)</label><input id="set_sso_client_id" value="${esc(s.sso_client_id || '')}" placeholder="vd 11111111-2222-3333-..."></div>
       </div>
-      <div class="field"><label>Client Secret ${s.sso_client_secret_set ? '<span class="badge green" style="font-size:10px">Đã lưu</span>' : ''}</label>
-        <input id="set_sso_client_secret" type="password" value="" placeholder="${s.sso_client_secret_set ? '•••••• (để trống nếu giữ nguyên)' : 'Dán Client Secret từ Azure'}"></div>
-      <div class="hint" style="font-size:12px">${IC.lock} Client Secret <strong>không bao giờ được trả về</strong> giao diện. Để trống khi lưu nếu muốn giữ nguyên.</div>
+      <div class="field"><label>Client Secret <span class="opt">(tuỳ chọn)</span> ${s.sso_client_secret_set ? '<span class="badge green" style="font-size:10px">Đã lưu</span>' : ''}</label>
+        <input id="set_sso_client_secret" type="password" value="" placeholder="${s.sso_client_secret_set ? '•••••• (để trống nếu giữ nguyên)' : 'Để trống nếu dùng public client (PKCE)'}"></div>
+      <div class="hint" style="font-size:12px">${IC.lock} Client Secret <strong>không bao giờ được trả về</strong> giao diện. Để trống khi lưu = giữ nguyên cái đã lưu (nếu có).
+        <br>${IC.info} <strong>Có thể bỏ trống hẳn</strong> — chỉ cần Tenant ID + Client ID — nếu app trên Azure bật <strong>"Allow public client flows"</strong>. Khi đó đăng nhập dựa trên <strong>PKCE</strong> thay cho secret (app server nên dùng secret; chỉ bỏ khi bạn hiểu đánh đổi bảo mật).</div>
       <div class="rowbtns" style="margin-top:6px"><button class="btn pri" data-act="saveSsoSettings">Lưu cấu hình Microsoft</button></div>
     </div></div>
 
@@ -768,8 +769,8 @@ async function saveSsoSettings() {
   // Chỉ gửi secret khi người dùng THỰC SỰ nhập — để trống nghĩa là giữ nguyên cái đã lưu.
   const sec = el('set_sso_client_secret').value;
   if (sec.trim()) body.sso_client_secret = sec;
-  if (body.sso_enabled === 'true' && !(body.sso_tenant_id && body.sso_client_id && (sec.trim() || (ST.settings || {}).sso_client_secret_set))) {
-    return toast('Bật SSO cần đủ Tenant ID + Client ID + Client Secret', 'err');
+  if (body.sso_enabled === 'true' && !(body.sso_tenant_id && body.sso_client_id)) {
+    return toast('Bật SSO cần ít nhất Tenant ID + Client ID', 'err');
   }
   await guard(() => API.updateSettings(body));
   await refreshCache(); toast('Đã lưu cấu hình đăng nhập Microsoft'); viewSettings();

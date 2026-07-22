@@ -86,8 +86,11 @@ func (m *Manager) Config(ctx context.Context) Config {
 		}
 	}
 	on := pick("sso_enabled") == "true"
+	// Secret KHÔNG bắt buộc: có secret -> client tin cậy (confidential); bỏ trống -> public client,
+	// đăng nhập dựa PKCE (đã dùng ở BuildAuthRequest/ExchangeAndVerify). Muốn chạy không secret thì
+	// app trên Azure phải bật "Allow public client flows".
 	return Config{
-		Enabled: on && tenant != "" && client != "" && secret != "",
+		Enabled: on && tenant != "" && client != "",
 		TenantID: tenant, ClientID: client, ClientSecret: secret, AllowedDomains: domains,
 	}
 }
@@ -251,9 +254,13 @@ func (m *Manager) ExchangeAndVerify(ctx context.Context, ssoCookie, code, state 
 	}
 
 	form := url.Values{
-		"client_id": {cfg.ClientID}, "client_secret": {cfg.ClientSecret},
+		"client_id":  {cfg.ClientID},
 		"grant_type": {"authorization_code"}, "code": {code},
 		"redirect_uri": {st.URI}, "code_verifier": {st.CV}, "scope": {"openid profile email"},
+	}
+	// Có secret -> gửi kèm (confidential). Bỏ trống -> KHÔNG gửi, chỉ dựa PKCE (public client).
+	if cfg.ClientSecret != "" {
+		form.Set("client_secret", cfg.ClientSecret)
 	}
 	req, _ := http.NewRequestWithContext(ctx, "POST", tokenEP(cfg.TenantID), strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
