@@ -774,7 +774,7 @@ async function saveIntro() {
   const body = {};
   INTRO_FIELDS.forEach(([k]) => body[k] = el('set_' + k).value);
   await guard(() => API.updateSettings(body));
-  await refreshCache(); toast('Đã lưu nội dung trang giới thiệu'); viewSettings();
+  await refreshCache(); toast('Đã lưu nội dung trang giới thiệu'); // BL-24: không re-render, giữ input panel khác
 }
 async function saveImgCaptions() {
   const body = {};
@@ -818,7 +818,7 @@ async function saveSsoSettings() {
     return toast('Bật SSO cần ít nhất Tenant ID + Client ID', 'err');
   }
   await guard(() => API.updateSettings(body));
-  await refreshCache(); toast('Đã lưu cấu hình đăng nhập Microsoft'); viewSettings();
+  await refreshCache(); toast('Đã lưu cấu hình đăng nhập Microsoft'); // BL-24: không re-render, giữ input panel khác
 }
 async function saveMailSettings() {
   const body = {
@@ -833,7 +833,7 @@ async function saveMailSettings() {
     smtp_from: el('set_smtp_from').value.trim(),
   };
   await guard(() => API.updateSettings(body));
-  await refreshCache(); toast('Đã lưu cấu hình email'); viewSettings();
+  await refreshCache(); toast('Đã lưu cấu hình email'); // BL-24: không re-render, giữ input panel khác
 }
 async function testSmtpConnection() {
   const btn = el('smtpTestBtn'), out = el('smtpTestResult');
@@ -885,7 +885,7 @@ async function saveBravo() {
   const keys = ['bravo_fee_type', 'bravo_room', 'bravo_electric', 'bravo_water', 'bravo_service', 'bravo_parking', 'bravo_washing'];
   const body = {}; keys.forEach(k => body[k] = el('set_' + k).value.trim());
   await guard(() => API.updateSettings(body));
-  await refreshCache(); toast('Đã lưu mã Bravo'); viewSettings();
+  await refreshCache(); toast('Đã lưu mã Bravo'); // BL-24: không re-render, giữ input panel khác
 }
 function feeHint(key) { const h = el('hint_' + key), i = el('set_' + key); if (h && i) h.textContent = money(i.value || 0); }
 async function saveSettings() {
@@ -900,7 +900,9 @@ async function saveSettings() {
     .forEach(k => { const inp = el('set_' + k); if (inp) body[k] = inp.value; });
   // hotline giờ nằm ở mục "Trang giới thiệu" (lưu qua saveIntro)
   await guard(() => API.updateSettings(body));
-  await refreshCache(); toast('Đã lưu cài đặt'); viewSettings();
+  // BL-24: KHÔNG re-render toàn trang sau khi lưu — giữ input đang gõ ở các panel khác (mọi panel
+  // đều nằm trong DOM). Giá trị hiển thị đã là giá trị vừa gõ = giá trị đã lưu, không cần vẽ lại.
+  await refreshCache(); toast('Đã lưu cài đặt');
 }
 function facilityForm(id) {
   const f = id ? ST.facilities.find(x => x.id === id) : { name: '', address: '' };
