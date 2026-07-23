@@ -106,7 +106,7 @@ async function viewRevenue() {
         ${REV_SERVICES.filter(x => x[0] !== 'other' || sum('other')).map(([, l]) => `<th class="num">${l.replace('Phí ', '').replace(' sinh hoạt', '').replace(' (tiền phòng)', '')}</th>`).join('')}
         <th class="num">Tổng</th></tr></thead>
         <tbody>${monthRows}
-          <tr style="background:#faf6f2"><td><strong>Cả năm</strong></td>
+          <tr style="background:var(--bg2)"><td><strong>Cả năm</strong></td>
           ${REV_SERVICES.filter(x => x[0] !== 'other' || sum('other')).map(([k]) => `<td class="num"><strong>${money(sum(k))}</strong></td>`).join('')}
           <td class="num"><strong>${money(grand)}</strong></td></tr>
         </tbody></table>` : '<div class="empty">Chưa có phiếu báo trong năm này.</div>'}
@@ -119,7 +119,7 @@ async function viewRevenue() {
           <td><strong>${esc(ST.settings[codeKey] || '—')}</strong></td>
           <td class="muted">${esc(ST.settings.bravo_fee_type || '')}</td>
           <td>${l}</td><td class="num">${money(v)}</td></tr>`; }).join('')}
-        <tr style="background:#faf6f2"><td colspan="3"><strong>TỔNG TIỀN PHIẾU</strong></td><td class="num"><strong>${money(grand)}</strong></td></tr>
+        <tr style="background:var(--bg2)"><td colspan="3"><strong>TỔNG TIỀN PHIẾU</strong></td><td class="num"><strong>${money(grand)}</strong></td></tr>
       </tbody></table></div>
       <div class="pad muted" style="font-size:12.5px">${IC.bulb} Mã sản phẩm Bravo chỉnh trong <a href="#" data-act="adminGo" data-args='["settings"]'>Cài đặt</a>. Số liệu = tổng tiền đã lập phiếu báo (chưa gồm cọc). Thu tiền thực tế do Bravo quản lý. Số HV xuất cảnh xem ở <a href="#" data-act="adminGo" data-args='["exec"]'>Điều hành</a>.</div>
     </div>`;

@@ -372,7 +372,7 @@ function depositSettlePrompt(id, refund) {
   openModal(`
     <div class="mh"><h3>${IC.lock} Xử lý tiền cọc</h3><button class="x" data-act="reloadView">×</button></div>
     <div class="mb">
-      <div class="hint" style="background:${refund.eligible ? '#dcfce7' : '#fee2e2'};border-color:${refund.eligible ? '#86efac' : '#fca5a5'};color:${refund.eligible ? '#15803d' : '#b91c1c'}">
+      <div class="hint" style="background:${refund.eligible ? 'var(--green-bg)' : 'var(--red-bg)'};border-color:${refund.eligible ? 'var(--green)' : 'var(--red)'};color:${refund.eligible ? 'var(--green-ink)' : 'var(--red-ink)'}">
         ${refund.eligible ? IC.checkCircle+' Đủ điều kiện hoàn cọc' : IC.alert+' Chưa đủ điều kiện hoàn cọc'} — ${esc(refund.reason)}
       </div>
       <p>Bạn muốn xử lý tiền cọc thế nào?</p>

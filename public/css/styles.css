@@ -200,6 +200,9 @@ td.num,th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-n
 .stu-name:hover strong{text-decoration:underline;text-underline-offset:2px}
 .stu-name:hover .row-chev{color:var(--brand-d);transform:translateX(2px)}
 .stu-name:focus-visible{outline:2px solid var(--brand);outline-offset:-2px;border-radius:10px}
+/* BL-35[5]: phản hồi khi chạm hàng bấm được (vd phiếu HV ở cổng học viên) */
+tr[data-act]{cursor:pointer}
+tr[data-act]:active{background:var(--bg2)}
 
 /* ---------- Thẻ KPI ---------- */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(214px,1fr));gap:16px;margin-bottom:26px}

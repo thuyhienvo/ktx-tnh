@@ -678,7 +678,7 @@ function userForm(id) {
 }
 async function saveUser(id) {
   const body = { full_name: el('u_full').value.trim(), role: el('u_role').value, facility_id: el('u_facility').value };
-  if (!id) { body.username = el('u_username').value.trim(); body.password = el('u_pass').value.trim(); }
+  if (!id) { body.username = el('u_username').value.trim(); body.password = el('u_pass').value.trim(); if (body.password.length < 6) return toast('Mật khẩu tối thiểu 6 ký tự', 'err'); }
   await guard(() => id ? API.updateUser(id, body) : API.createUser(body));
   closeModal(); toast(id ? 'Đã cập nhật tài khoản' : 'Đã tạo tài khoản'); loadAdminUsers();
 }

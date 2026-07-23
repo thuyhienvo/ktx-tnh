@@ -178,7 +178,7 @@ function checkoutReqForm() {
       <div class="hint">${IC.info} Đơn sẽ được gửi tới quản lý để duyệt. Cần báo trước 1 tháng để được hoàn cọc.</div>
     </div>
     <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn danger" data-act="submitCheckoutReq">Gửi đơn</button></div>`);
-  attachDate(el('co_date'), today());
+  attachDate(el('co_date'), today(), { min: today() });   // BL-35[6]: không cho chọn ngày trả trong quá khứ
 }
 async function submitCheckoutReq() {
   const d = el('co_date').dataset.iso;
@@ -263,7 +263,7 @@ function myAssetsPanel(assets, profile) {
 }
 
 async function toggleMyWashing(on) {
-  if (!on && !confirm('Hủy đăng ký máy giặt? Phí máy giặt sẽ không còn tính từ kỳ sau.')) return;
+  if (!confirm(on ? 'Đăng ký dùng máy giặt? Phí sẽ tính vào phiếu báo từ kỳ sau.' : 'Hủy đăng ký máy giặt? Phí máy giặt sẽ không còn tính từ kỳ sau.')) return;
   await guard(() => API.meWashing(on));
   toast(on ? 'Đã đăng ký máy giặt' : 'Đã hủy máy giặt'); loadStudentPortal();
 }
