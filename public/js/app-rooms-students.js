@@ -285,8 +285,9 @@ async function studentForm(id) {
       <div style="background:var(--bg2);padding:12px;border-radius:10px;margin-bottom:14px">
         <div style="font-weight:600;font-size:13px;margin-bottom:10px">${IC.fileText} Hợp đồng</div>
         <div class="grid2">
-          <div class="field" style="margin:0 0 12px"><label>Số HĐ <span class="opt">(nhập tay)</span></label>
-            <input id="f_cno" value="${esc(s.contract_no || '')}" placeholder="03/2026/HDKTX-E2"></div>
+          <div class="field" style="margin:0 0 12px"><label>Số HĐ <span class="opt">(nhập tay · ⚡ gợi ý số kế tiếp)</span></label>
+            <div class="flex" style="gap:6px"><input id="f_cno" value="${esc(s.contract_no || '')}" placeholder="03/2026/HDKTX-E2" style="flex:1">
+            <button type="button" class="btn sm" data-act="suggestContractNo" title="Gợi ý số HĐ kế tiếp (nối tiếp số đã có)">${IC.zap}</button></div></div>
           <div class="field" style="margin:0 0 12px"><label>Ngày ký HĐ</label><input id="f_cdate" type="date" value="${esc((s.contract_date || '').slice(0, 10))}"></div>
         </div>
         <div class="field" style="margin:0 0 12px"><label>Tình trạng HĐ</label><select id="f_cstatus">
@@ -350,9 +351,20 @@ async function saveStudent(id) {
   if (saved === null) return; // người dùng bấm Hủy, hoặc đã được chỉ sang hồ sơ cũ
   await refreshCache(); closeModal(); toast('Đã lưu học viên'); viewStudents();
 }
-// Đã BỎ tính năng đánh số HĐ tự động (gợi ý + đánh lại toàn bộ theo pháp nhân/ngày ký) 23/07:
-// cơ chế này không khớp rule đánh số hiện tại; đánh lại từ đầu làm sai số các HĐ đã có số.
-// Số HĐ nay NHẬP TAY ở ô "Số HĐ" (form Sửa HV / duyệt đơn). Route BE /students/contract-no/* còn nhưng mồ côi.
+// Gợi ý số HĐ KẾ TIẾP = MAX số đã có (cùng năm + pháp nhân, parse từ chính số HĐ) + 1 (backend).
+// NỐI TIẾP số có sẵn, KHÔNG đụng/đánh lại số cũ. (Đã BỎ nút "đánh lại toàn bộ HĐ theo ngày ký" 23/07
+// vì đếm/đánh lại từ đầu làm SAI số các HĐ đã có số — nhất là 97 HĐ có số nhưng chưa có ngày ký.)
+async function suggestContractNo() {
+  const gender = el('f_gender') ? el('f_gender').value : 'female';
+  const date = (el('f_cdate') && el('f_cdate').value) || today();
+  const r = await guard(() => API.contractNoNext(gender, date));
+  if (r && r.contract_no) { el('f_cno').value = r.contract_no; toast('Số HĐ gợi ý: ' + r.contract_no); }
+}
+async function suggestApCno(gender) {
+  const date = (el('ap_cdate') && el('ap_cdate').value) || today();
+  const r = await guard(() => API.contractNoNext(gender, date));
+  if (r && r.contract_no) { el('ap_cno').value = r.contract_no; toast('Số HĐ gợi ý: ' + r.contract_no); }
+}
 async function studentDetail(id) {
   const s = await guard(() => API.student(id));
   let invs = [], logs = [];

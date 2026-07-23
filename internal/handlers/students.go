@@ -842,11 +842,12 @@ func (h *Handlers) ContractNoNext(c *gin.Context) {
 		year = year[:4]
 	}
 	var n int
+	// Số kế tiếp = MAX(NN) trong HĐ ĐÃ CÓ cùng năm + pháp nhân (parse từ CHÍNH số HĐ, kể cả HĐ chưa có
+	// contract_date) + 1 -> nối tiếp số có sẵn, không đánh lại từ đầu, không trùng số đã cấp.
 	if err := h.pool().QueryRow(ctx,
-		`SELECT COUNT(*)::int c FROM students
-       WHERE deleted_at IS NULL AND gender=$1 AND contract_no <> ''
-         AND contract_date IS NOT NULL AND to_char(contract_date,'YYYY')=$2 AND contract_date <= $3`,
-		gender, year, date).Scan(&n); err != nil {
+		`SELECT COALESCE(MAX((split_part(contract_no,'/',1))::int), 0)::int c FROM students
+       WHERE deleted_at IS NULL AND contract_no ~ ('^[0-9]+/' || $1 || '/HDKTX-' || $2 || '$')`,
+		year, entity).Scan(&n); err != nil {
 		serverErr(c)
 		return
 	}
