@@ -517,8 +517,13 @@ th.sortable.asc .sort-ar,th.sortable.desc .sort-ar{opacity:1;color:var(--brand-d
 /* Nút menu (hamburger) — luôn hiện; thanh bên ẩn mặc định, bấm để mở */
 .hamburger{display:inline-flex;border:1px solid var(--line2);background:var(--card);border-radius:11px;width:40px;height:40px;cursor:pointer;align-items:center;justify-content:center;color:var(--ink);flex-shrink:0}
 .hamburger .ic-svg{width:20px;height:20px}
-.side-backdrop{display:none;position:fixed;inset:0;background:rgba(20,17,12,.48);z-index:55}
+.side-backdrop{display:none;position:fixed;inset:0;background:rgba(20,17,12,.48);z-index:55;touch-action:none}
 .side-backdrop.show{display:block}
+/* BL-55: khi drawer mở, khoá cuộn trang nền (không để thao tác kéo chuyền xuống body) + chặn
+   cuộn-chuyền từ menu. iOS ≥16 tôn trọng overflow:hidden trên body; touch-action:none ở nền tối
+   để kéo trên nền không cuộn trang (tap vẫn đóng qua data-act). */
+body.drawer-open{overflow:hidden}
+.side,.side nav{overscroll-behavior:contain}
 
 @media(max-width:820px){
   .grid2{grid-template-columns:1fr}

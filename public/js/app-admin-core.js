@@ -234,10 +234,12 @@ function toggleSide() {
   const s = document.querySelector('.side'), b = el('sideBackdrop');
   const open = s && s.classList.toggle('open');
   if (b) b.classList.toggle('show', !!open);
+  document.body.classList.toggle('drawer-open', !!open);   // BL-55: khoá cuộn trang nền khi drawer mở
 }
 function closeSide() {
   const s = document.querySelector('.side'), b = el('sideBackdrop');
   if (s) s.classList.remove('open'); if (b) b.classList.remove('show');
+  document.body.classList.remove('drawer-open');
 }
 /* ================= ĐỊNH TUYẾN (BL-10) =================
    Trước đây mọi màn quản trị dùng chung URL '/': Back thoát app, F5 mất chỗ, không gửi link được.
