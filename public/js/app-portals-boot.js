@@ -45,8 +45,8 @@ function myInvoiceDetail(id) {
     <div class="mf"><button class="btn" data-act="closeModal">Đóng</button></div>`);
 }
 async function loadStudentPortal() {
-  let profile, invs, damage, coutReqs, myVios = [], mates = [], assets = [], chores = [];
-  try { [profile, invs, damage, coutReqs, myVios, mates, assets, chores] = await Promise.all([API.meProfile(), API.meInvoices(), API.meDamage(), API.meCheckoutReq(), API.meViolations().catch(() => []), API.meRoommates().catch(() => []), API.meAssets().catch(() => []), API.meChores().catch(() => [])]); }
+  let profile, invs, damage, coutReqs, myVios = [], mates = [], assets = [], chores = [], myLogs = [];
+  try { [profile, invs, damage, coutReqs, myVios, mates, assets, chores, myLogs] = await Promise.all([API.meProfile(), API.meInvoices(), API.meDamage(), API.meCheckoutReq(), API.meViolations().catch(() => []), API.meRoommates().catch(() => []), API.meAssets().catch(() => []), API.meChores().catch(() => []), API.meLogs().catch(() => [])]); }
   catch (e) { el('content').innerHTML = `<div class="hint">${IC.alert} ${esc(e.message)}</div>`; return; }
   window._myInvs = invs; // BL-16: để myInvoiceDetail() tra cứu chi tiết khi bấm hàng
   const billNow = invs.filter(i => i.month === curMonth()).reduce((a, i) => a + (+i.total || 0), 0);
@@ -123,6 +123,15 @@ async function loadStudentPortal() {
       ${coutReqs.filter(c => c.status !== 'pending').length ? `<div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Ngày gửi</th><th>Ngày muốn trả</th><th>Trạng thái</th></tr></thead><tbody>
         ${coutReqs.filter(c => c.status !== 'pending').map(c => `<tr><td>${fmtDate(String(c.created_at).slice(0, 10))}</td><td>${fmtDate(c.desired_date)}</td><td>${c.status === 'done' ? '<span class="badge green">Đã duyệt</span>' : '<span class="badge gray">Từ chối</span>'}</td></tr>`).join('')}
       </tbody></table></div>` : ''}
+    </div></div>
+
+    <div class="panel"><div class="hd"><h2>${IC.history} Lịch sử ra / vào của tôi</h2></div><div class="table-wrap">
+      ${myLogs.length ? `<table><thead><tr><th>Ngày</th><th>Hoạt động</th><th>Nguồn</th><th>Ghi chú</th></tr></thead><tbody>
+        ${myLogs.map(l => `<tr><td>${fmtDate(l.date)}</td>
+          <td>${l.type === 'in' ? '<span class="badge green">Nhận phòng</span>' : '<span class="badge red">Trả phòng</span>'}</td>
+          <td>${l.source === 'self' ? '<span class="badge blue">Bạn tự thao tác</span>' : '<span class="badge gray">Quản lý</span>'}</td>
+          <td class="muted">${esc(l.note || '')}</td></tr>`).join('')}
+      </tbody></table>` : '<div class="empty">Chưa có lịch sử ra / vào.</div>'}
     </div></div>`;
 
 }

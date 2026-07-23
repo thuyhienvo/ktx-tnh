@@ -105,6 +105,7 @@ async function viewRequests() {
         <td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>' : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${d.status === 'new' ? `<button class="btn sm" data-act="setDamage" data-args='[${d.id},"processing"]'>Đang xử lý</button>` : ''}
+          ${d.category === 'violation' ? `<button class="btn sm" data-act="vioFromFeedback" data-args='[${d.id}]'>${IC.alert} Ghi nhận vi phạm</button>` : ''}
           ${d.status !== 'done' ? `<button class="btn sm green" data-act="setDamage" data-args='[${d.id},"done"]'>${IC.check} Xong</button>` : `<button class="btn sm" data-act="setDamage" data-args='[${d.id},"new"]'>Mở lại</button>`}
           <button class="btn sm ghost" title="Ghi chú" data-act="noteForm" data-args='["damage", ${d.id}]'>${IC.filePen}</button>
         </div></td></tr>`).join('')}
@@ -136,6 +137,15 @@ async function saveNote(type, id) {
 const noteLine = n => n ? `<div class="sub2" style="color:var(--brand-d);white-space:pre-wrap;margin-top:3px">${IC.filePen} ${esc(n)}</div>` : '';
 
 /* ---- Vi phạm / nhắc nhở ---- */
+// BL-45 #3: nối "phản ánh vi phạm" (góp ý category=violation) sang form ghi nhận vi phạm, chép sẵn nội dung.
+// studentId=0 -> dropdown BẬT để QL tự chọn người BỊ phản ánh (người bị nêu là chữ tự do, tránh gắn sai).
+function vioFromFeedback(id) {
+  const d = (ST.damage || []).find(x => x.id === id) || {};
+  const who = d.student_name ? `${d.student_name}${d.room_name ? ' · ' + d.room_name : ''}` : '';
+  const prefill = `Từ phản ánh${who ? ' của ' + who : ''}: ${d.title || ''}${d.description ? ' — ' + d.description : ''}`;
+  violationForm(0);
+  setTimeout(() => { const n = el('vf_note'); if (n) n.value = prefill; }, 60);
+}
 function violationForm(studentId) {
   const students = ST.students.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'));
   const sOpts = students.map(s => `<option value="${s.id}" ${studentId === s.id ? 'selected' : ''}>${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}</option>`).join('');
