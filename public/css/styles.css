@@ -105,11 +105,11 @@ a:hover{text-decoration:underline;text-underline-offset:2px}
 /* ---------- Bố cục chính ---------- */
 .app{display:flex;min-height:100vh}
 /* Thanh bên = ngăn kéo (drawer) ẩn mặc định ở MỌI kích thước; mở bằng nút ☰, chọn mục xong tự đóng */
-.side{width:min(84vw,270px);background:var(--dark);color:var(--dark-ink);display:flex;flex-direction:column;position:fixed;z-index:60;left:0;top:0;height:100vh;border-right:1px solid var(--dark-line);transform:translateX(-100%);transition:transform .26s ease;box-shadow:0 0 44px rgba(0,0,0,.42)}
+.side{width:min(84vw,270px);background:var(--dark);color:var(--dark-ink);display:flex;flex-direction:column;position:fixed;z-index:60;left:0;top:0;height:100vh;height:100dvh;border-right:1px solid var(--dark-line);transform:translateX(-100%);transition:transform .26s ease;box-shadow:0 0 44px rgba(0,0,0,.42)}
 .side.open{transform:none}
 .side .logo{padding:24px 22px 20px;font-size:16px;font-weight:700;letter-spacing:.02em;color:#f6f1e7;display:flex;align-items:center;gap:11px;font-family:var(--serif);font-size:20px}
 .side .logo span{background:linear-gradient(90deg,#f6f1e7,var(--gold-line));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.side nav{padding:8px 12px;flex:1;overflow:auto}
+.side nav{padding:8px 12px;flex:1;min-height:0;overflow:auto}
 .side nav .grp{font-size:10px;text-transform:uppercase;letter-spacing:.16em;color:var(--dark-ink2);padding:18px 12px 8px;font-weight:700}
 .side nav button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:none;color:var(--dark-ink);padding:11px 13px;border-radius:11px;cursor:pointer;font-size:14px;margin-bottom:2px;position:relative;transition:background .16s,color .16s;font-family:var(--sans);white-space:nowrap}
 .side nav button:hover{background:rgba(255,255,255,.055);color:#fff}
@@ -334,7 +334,7 @@ input[type=checkbox],input[type=radio]{width:auto;flex:none;accent-color:var(--b
 .pill-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
 /* Menu gom trang Cài đặt cho đỡ dài — thanh chọn nhóm ở đầu, mỗi lần hiện 1 nhóm panel */
 .set-nav{border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:22px}
-.hint{background:var(--bg2);border:1px solid var(--line);color:var(--ink2);padding:13px 16px;border-radius:13px;font-size:13.5px;margin-bottom:18px;display:flex;gap:9px;align-items:flex-start;line-height:1.55}
+.hint{background:var(--bg2);border:1px solid var(--line);color:var(--ink2);padding:13px 16px;border-radius:13px;font-size:13.5px;margin-bottom:18px;line-height:1.55;overflow:hidden}
 .avatar{width:37px;height:37px;border-radius:50%;background:var(--brand-soft);color:var(--brand-d);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;letter-spacing:.02em}
 .flex{display:flex;align-items:center;gap:10px}
 .spinner{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:spin .7s linear infinite;margin:48px auto}
@@ -389,10 +389,11 @@ input[type=checkbox],input[type=radio]{width:auto;flex:none;accent-color:var(--b
 .auth-chip .ic-svg{width:15px;height:15px}
 .auth-card .ac-ico .ic-svg{width:20px;height:20px;color:var(--brand-d)}
 .auth-amen span .ic-svg{width:14px;height:14px;vertical-align:-.16em;margin-right:3px;color:var(--gold-line)}
-.hint .ic-svg{width:17px;height:17px;flex-shrink:0;margin-top:1px;color:var(--brand-d)}
-/* .hint là flex -> MỖI thẻ con thành MỘT CỘT. Chèn <strong>/<a> thẳng vào là chữ vỡ thành
-   nhiều cột chồng nhau, đọc không nổi. Muốn có chữ đậm/liên kết thì bọc toàn bộ chữ trong 1 <span>. */
-.hint>span{flex:1;min-width:0}
+.hint .ic-svg{float:left;width:17px;height:17px;margin:1px 9px 0 0;color:var(--brand-d)}
+/* .hint KHÔNG dùng flex nữa: flex làm MỖI <strong>/<a> chèn thẳng thành 1 CỘT -> chữ vỡ, đọc không nổi.
+   Nay icon float trái, chữ (kể cả <strong>/<a> chèn thẳng) chảy quanh icon -> luôn liền mạch.
+   overflow:hidden ở .hint để chứa float; <span> (nếu có) tạo BFC nằm gọn bên phải icon. */
+.hint>span{display:block;overflow:hidden}
 .stat .l .ic-svg{width:15px;height:15px}
 .login-card .brand .ic .ic-svg{width:38px;height:38px;color:var(--brand-d)}
 .dot-svg{width:11px;height:11px;display:inline-block;vertical-align:-.05em}

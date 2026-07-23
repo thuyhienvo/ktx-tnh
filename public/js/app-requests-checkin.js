@@ -228,9 +228,9 @@ function approveForm(id) {
       <div style="background:var(--bg2);padding:12px;border-radius:10px;margin-bottom:12px">
         <div style="font-weight:600;font-size:13px;margin-bottom:10px">${IC.fileText} Hợp đồng thuê</div>
         <div class="grid2">
-          <div class="field" style="margin:0 0 12px"><label>Số HĐ</label>
+          <div class="field" style="margin:0 0 12px"><label>Số HĐ <span class="opt">(nhập tay · ⚡ gợi ý số kế tiếp)</span></label>
             <div class="flex" style="gap:6px"><input id="ap_cno" placeholder="03/2026/HDKTX-${legalEntity(a.gender)}" style="flex:1">
-            <button type="button" class="btn sm" data-act="suggestApCno" data-args='["${a.gender}"]' title="Tạo số HĐ tự động">${IC.zap}</button></div></div>
+            <button type="button" class="btn sm" data-act="suggestApCno" data-args='["${a.gender}"]' title="Gợi ý số HĐ kế tiếp (nối tiếp số đã có)">${IC.zap}</button></div></div>
           <div class="field" style="margin:0 0 12px"><label>Ngày ký HĐ</label><input id="ap_cdate" type="date" value="${today()}"></div>
         </div>
         <div class="field" style="margin:0"><label>Tình trạng HĐ</label><select id="ap_cstatus">

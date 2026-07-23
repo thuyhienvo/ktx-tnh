@@ -179,11 +179,12 @@ router.get('/contract-no/next', requireRole('admin', 'staff'), async (req, res, 
     const entity = entityOf(gender, st);
     const date = (req.query.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
     const year = date.slice(0, 4);
+    // Số kế tiếp = MAX(số NN) trong các HĐ ĐÃ CÓ cùng năm + pháp nhân (parse TỪ CHÍNH số HĐ, kể cả HĐ
+    // chưa có contract_date) + 1 -> nối tiếp số có sẵn, KHÔNG đánh lại từ đầu, KHÔNG trùng số đã cấp.
     const n = (await query(
-      `SELECT COUNT(*)::int c FROM students
-       WHERE deleted_at IS NULL AND gender=$1 AND contract_no <> ''
-         AND contract_date IS NOT NULL AND to_char(contract_date,'YYYY')=$2 AND contract_date <= $3`,
-      [gender, year, date])).rows[0].c;
+      `SELECT COALESCE(MAX((split_part(contract_no,'/',1))::int), 0)::int c FROM students
+       WHERE deleted_at IS NULL AND contract_no ~ ('^[0-9]+/' || $1 || '/HDKTX-' || $2 || '$')`,
+      [year, entity])).rows[0].c;
     res.json({ contract_no: fmtContractNo(n + 1, year, entity), entity, seq: n + 1, year });
   } catch (e) { next(e); }
 });

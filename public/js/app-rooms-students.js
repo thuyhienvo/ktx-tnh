@@ -138,7 +138,7 @@ function stuSortVal(s) {
   }
 }
 function viewStudents() {
-  el('topActions').innerHTML = `<button class="btn" data-act="renumberContractsModal" title="Đánh số HĐ tự động theo pháp nhân & ngày ký">${IC.fileText} Đánh số HĐ</button><button class="btn" data-act="showDeletedStudents">${IC.trash} Đã xóa</button><button class="btn pri" data-act="adminGo" data-args='["reg"]'>${IC.filePen} Đăng ký / duyệt đơn</button>`;
+  el('topActions').innerHTML = `<button class="btn" data-act="showDeletedStudents">${IC.trash} Đã xóa</button><button class="btn pri" data-act="adminGo" data-args='["reg"]'>${IC.filePen} Đăng ký / duyệt đơn</button>`;
   let list = ST.students.slice();
   if (stuFilter === 'in') list = list.filter(isOccupying);
   if (stuFilter === 'upcoming') list = list.filter(s => liveStatus(s) === 'upcoming');
@@ -285,9 +285,9 @@ async function studentForm(id) {
       <div style="background:var(--bg2);padding:12px;border-radius:10px;margin-bottom:14px">
         <div style="font-weight:600;font-size:13px;margin-bottom:10px">${IC.fileText} Hợp đồng</div>
         <div class="grid2">
-          <div class="field" style="margin:0 0 12px"><label>Số HĐ <span class="opt">(tự động theo pháp nhân + ngày ký)</span></label>
+          <div class="field" style="margin:0 0 12px"><label>Số HĐ <span class="opt">(nhập tay · ⚡ gợi ý số kế tiếp)</span></label>
             <div class="flex" style="gap:6px"><input id="f_cno" value="${esc(s.contract_no || '')}" placeholder="03/2026/HDKTX-E2" style="flex:1">
-            <button type="button" class="btn sm" data-act="suggestContractNo" title="Tạo số HĐ tự động">${IC.zap}</button></div></div>
+            <button type="button" class="btn sm" data-act="suggestContractNo" title="Gợi ý số HĐ kế tiếp (nối tiếp số đã có)">${IC.zap}</button></div></div>
           <div class="field" style="margin:0 0 12px"><label>Ngày ký HĐ</label><input id="f_cdate" type="date" value="${esc((s.contract_date || '').slice(0, 10))}"></div>
         </div>
         <div class="field" style="margin:0 0 12px"><label>Tình trạng HĐ</label><select id="f_cstatus">
@@ -351,36 +351,19 @@ async function saveStudent(id) {
   if (saved === null) return; // người dùng bấm Hủy, hoặc đã được chỉ sang hồ sơ cũ
   await refreshCache(); closeModal(); toast('Đã lưu học viên'); viewStudents();
 }
-// Gợi ý số HĐ tự động theo pháp nhân + ngày ký (điểm 7)
+// Gợi ý số HĐ KẾ TIẾP = MAX số đã có (cùng năm + pháp nhân, parse từ chính số HĐ) + 1 (backend).
+// NỐI TIẾP số có sẵn, KHÔNG đụng/đánh lại số cũ. (Đã BỎ nút "đánh lại toàn bộ HĐ theo ngày ký" 23/07
+// vì đếm/đánh lại từ đầu làm SAI số các HĐ đã có số — nhất là 97 HĐ có số nhưng chưa có ngày ký.)
 async function suggestContractNo() {
   const gender = el('f_gender') ? el('f_gender').value : 'female';
   const date = (el('f_cdate') && el('f_cdate').value) || today();
   const r = await guard(() => API.contractNoNext(gender, date));
-  if (r && r.contract_no) { el('f_cno').value = r.contract_no; toast('Số HĐ đề xuất: ' + r.contract_no); }
+  if (r && r.contract_no) { el('f_cno').value = r.contract_no; toast('Số HĐ gợi ý: ' + r.contract_no); }
 }
 async function suggestApCno(gender) {
   const date = (el('ap_cdate') && el('ap_cdate').value) || today();
   const r = await guard(() => API.contractNoNext(gender, date));
-  if (r && r.contract_no) { el('ap_cno').value = r.contract_no; toast('Số HĐ đề xuất: ' + r.contract_no); }
-}
-// Đánh số lại toàn bộ HĐ theo ngày ký (ban thư ký) — xem trước rồi áp dụng
-async function renumberContractsModal() {
-  const r = await guard(() => API.renumberContracts(true));
-  if (!r) return;
-  const rows = r.plan.filter(p => p.changed);
-  openModal(`
-    <div class="mh"><h3>${IC.fileText} Đánh số hợp đồng theo ngày ký</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
-    <div class="mb">
-      <div class="hint">${IC.info} Số HĐ chạy tự động theo <strong>pháp nhân</strong> (${legalEntity('female')} · ${legalEntity('male')}) và <strong>ngày ký</strong>, đánh lại từ đầu mỗi năm. Tổng ${r.total} HĐ đã ký · <strong>${r.changed}</strong> sẽ thay đổi số.</div>
-      ${rows.length ? `<div class="table-wrap" style="max-height:50vh;overflow:auto"><table><thead><tr><th>Học viên</th><th>Ngày ký</th><th>Số cũ</th><th>Số mới</th></tr></thead><tbody>
-        ${rows.map(p => `<tr><td>${esc(p.name)}</td><td>${fmtDate(p.date)}</td><td class="muted">${esc(p.old || '—')}</td><td><strong>${esc(p.new)}</strong></td></tr>`).join('')}
-      </tbody></table></div>` : '<div class="empty">Không có thay đổi — số HĐ đã đúng thứ tự theo ngày ký.</div>'}
-    </div>
-    <div class="mf"><button class="btn" data-act="closeModal">Hủy</button>${rows.length ? `<button class="btn pri" data-act="applyRenumber">Áp dụng (${r.changed})</button>` : ''}</div>`, true);
-}
-async function applyRenumber() {
-  const r = await guard(() => API.renumberContracts(false));
-  await refreshCache(); closeModal(); toast(`Đã đánh số ${r.changed} hợp đồng`); if (ST.view === 'students') viewStudents();
+  if (r && r.contract_no) { el('ap_cno').value = r.contract_no; toast('Số HĐ gợi ý: ' + r.contract_no); }
 }
 async function studentDetail(id) {
   const s = await guard(() => API.student(id));
