@@ -95,11 +95,14 @@ function applyRowFilters(table) {
   const head = table.tHead && table.tHead.rows[0]; const nCol = head ? head.cells.length : 0;
   const body = table.tBodies && table.tBodies[0]; if (!body) return;
   let n = 0;
+  // BL-56: bảng bật numWord + query SỐ thuần -> khớp nguyên token (gõ "301" ra đúng phòng 301, không lẫn
+  // mã/SĐT chứa "301"). Query có chữ (tên/mã) -> vẫn khớp chứa-chuỗi như cũ.
+  let qre = null; if (st.q && st.numWord && /^\d+$/.test(st.q)) qre = new RegExp('(?:^|\\D)' + st.q + '(?:\\D|$)');
   for (const tr of body.rows) {
     if (tr.classList.contains('no-result')) continue;
     if (nCol && tr.cells.length !== nCol) continue; // hàng tổng/đặc biệt (colspan) -> để yên
     let show = true;
-    if (st.q) { const ds = tr.getAttribute('data-s'); if (ds != null && ds.indexOf(st.q) === -1) show = false; }
+    if (st.q) { const ds = tr.getAttribute('data-s'); if (ds != null && (qre ? !qre.test(ds) : ds.indexOf(st.q) === -1)) show = false; }
     if (show) for (const [idx, f] of st.cols) {
       const v = _cellText(tr.cells[idx]);
       if (f.type === 'set') { if (f.set.size && !f.set.has(v)) { show = false; break; } }
@@ -117,11 +120,12 @@ function applyRowFilters(table) {
 }
 
 // Tìm kiếm tức thì (ô search) — nay đi qua applyRowFilters để HỢP với lọc cột.
-function attachRowSearch(input, countId) {
+function attachRowSearch(input, countId, opts) {
   if (!input) return;
   const panel = input.closest('.panel') || document;
   const table = panel.querySelector('table'); if (!table) return;
   const st = _tableState(table); st.countId = countId;
+  if (opts && opts.numWord) st.numWord = true; else delete st.numWord;   // BL-56: query thuần số -> khớp nguyên token
   const run = () => { st.q = input.value.trim().toLowerCase(); applyRowFilters(table); };
   input.addEventListener('input', run);
   if (input.value) run(); else applyRowFilters(table);
