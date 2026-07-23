@@ -108,7 +108,12 @@ function invActions(i) {
 }
 async function setInvStatus(id, status) { await guard(() => API.setInvoiceStatus(id, status)); await refreshCache(); viewInvoices(); }
 async function recalcInv(id) { const r = await guard(() => API.recalcInvoice(id)); toast(`Đã tính lại: ${r.days_stayed} ngày ở → ${money(r.total)}`); viewInvoices(); }
-async function delInvoice(id) { if (!confirm('Xóa hóa đơn này?')) return; await guard(() => API.deleteInvoice(id)); await refreshCache(); toast('Đã xóa'); viewInvoices(); }
+async function delInvoice(id) {
+  const i = (_invAll || []).find(x => x.id === id) || {};   // BL-30: nêu tên/tổng để tránh xóa nhầm
+  const who = [i.student_name, i.room_name].filter(Boolean).join(' · ');
+  if (!confirm(`Xóa hóa đơn${who ? ' của ' + who : ''}${i.total != null ? ' (tổng ' + money(i.total) + ')' : ''}?`)) return;
+  await guard(() => API.deleteInvoice(id)); await refreshCache(); toast('Đã xóa'); viewInvoices();
+}
 
 /* Tạo hóa đơn tự tính cho 1 học viên (VD học viên mới vào giữa tháng) */
 function oneInvoiceForm() {
@@ -949,7 +954,11 @@ async function saveFacility(id) {
   await guard(() => id ? API.updateFacility(id, body) : API.createFacility(body));
   await refreshCache(); closeModal(); toast('Đã lưu cơ sở'); viewSettings();
 }
-async function delFacility(id) { if (!confirm('Xóa cơ sở này?')) return; await guard(() => API.deleteFacility(id)); await refreshCache(); toast('Đã xóa'); viewSettings(); }
+async function delFacility(id) {
+  const f = (ST.facilities || []).find(x => x.id === id) || {};   // BL-30 + BL-35[11a]: nêu tên + cảnh báo dây chuyền
+  if (!confirm(`Xóa cơ sở "${f.name || ''}"${f.room_count ? ` — đang có ${f.room_count} phòng, xóa có thể ảnh hưởng dữ liệu liên quan` : ''}?`)) return;
+  await guard(() => API.deleteFacility(id)); await refreshCache(); toast('Đã xóa'); viewSettings();
+}
 
 /* ---------- ĐỔI MẬT KHẨU ---------- */
 function changePwd() {

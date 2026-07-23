@@ -18,6 +18,19 @@ function toast(msg, type = 'ok') {
   clearTimeout(t._t);
   t._t = setTimeout(() => (t.className = 'toast'), 2800);
 }
+// BL-30: sao chép văn bản vào clipboard (credential HV, SĐT, số HĐ...). navigator.clipboard chạy ở HTTPS/localhost;
+// execCommand là dự phòng cho ngữ cảnh không an toàn.
+function copyToClipboard(text) {
+  const ok = () => toast('Đã sao chép');
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok).catch(() => _copyFallback(text, ok));
+  else _copyFallback(text, ok);
+}
+function _copyFallback(text, ok) {
+  const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); ok(); } catch { toast('Không sao chép được — chọn và Ctrl+C thủ công', 'err'); }
+  document.body.removeChild(ta);
+}
 
 /* ---- Bảo vệ công sức nhập liệu ----
    Form học viên có ~20 ô. Điền dở rồi lỡ bấm X / Esc / bấm ra nền / đổi menu là MẤT SẠCH,

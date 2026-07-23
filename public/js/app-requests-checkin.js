@@ -252,10 +252,26 @@ async function doApprove(id) {
   if (r === null) return; // đã có hồ sơ / người dùng huỷ — modal kia đã chỉ đường
   if (r === null) return; // hủy ở hộp xác nhận quá tải
   await refreshCache(); closeModal();
-  if (r.account) alert(`Đã thêm học viên & tạo tài khoản:\n\nTên đăng nhập: ${r.account.username}\nMật khẩu: ${r.account.password}\n\nGửi thông tin này cho học viên để đăng nhập.`);
-  else toast('Đã thêm học viên vào phòng');
-  viewRequests();
+  if (r.account) { viewRequests(); credentialModal(r.account.username, r.account.password); }
+  else { toast('Đã thêm học viên vào phòng'); viewRequests(); }
 }
+// BL-30: hộp tài khoản có nút Sao chép thay alert() (alert không copy được, dễ gõ sai khi gửi HV).
+function credentialModal(username, password) {
+  openModal(`
+    <div class="mh"><h3>${IC.key} Tài khoản đăng nhập học viên</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mb">
+      <div class="hint">${IC.checkCircle} Đã thêm học viên & tạo tài khoản. Gửi thông tin này cho học viên — <strong>đóng hộp là không xem lại được</strong> (phải vào Sửa hồ sơ để đặt lại mật khẩu).</div>
+      <div class="field"><label>Tên đăng nhập</label>
+        <div class="flex" style="gap:6px"><input id="cred_user" value="${esc(username)}" readonly style="flex:1">
+        <button type="button" class="btn sm" data-act="copyCred" data-args='["cred_user"]'>${IC.clipboard} Sao chép</button></div></div>
+      <div class="field" style="margin-bottom:0"><label>Mật khẩu</label>
+        <div class="flex" style="gap:6px"><input id="cred_pass" value="${esc(password)}" readonly style="flex:1">
+        <button type="button" class="btn sm" data-act="copyCred" data-args='["cred_pass"]'>${IC.clipboard} Sao chép</button></div></div>
+    </div>
+    <div class="mf"><button class="btn pri" data-act="copyCredBoth">${IC.clipboard} Sao chép cả hai</button><button class="btn" data-act="closeModal">Đóng</button></div>`);
+}
+function copyCred(inputId) { const inp = el(inputId); if (inp) copyToClipboard(inp.value); }
+function copyCredBoth() { copyToClipboard(`Tên đăng nhập: ${el('cred_user').value}\nMật khẩu: ${el('cred_pass').value}`); }
 async function rejectApp(id) { if (!confirm('Từ chối đơn này?')) return; await guard(() => API.rejectApplication(id)); toast('Đã từ chối'); viewRequests(); }
 async function delApp(id) { if (!confirm('Xóa đơn này?')) return; await guard(() => API.deleteApplication(id)); toast('Đã xóa'); viewRequests(); }
 async function setDamage(id, status) { await guard(() => API.updateDamage(id, { status })); toast('Đã cập nhật'); viewRequests(); }
