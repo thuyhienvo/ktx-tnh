@@ -209,7 +209,12 @@ function toggleNotif(e) {
   document.body.appendChild(p);
   const r = el('notifBell').getBoundingClientRect();
   p.style.top = (r.bottom + 8) + 'px';
-  p.style.right = Math.max(10, window.innerWidth - r.right) + 'px';
+  // BL-52: kẹp panel TRONG màn dù chuông nằm trái hay phải. Neo mép phải panel vào mép phải chuông
+  // (r.right - pw) rồi giới hạn left trong [8, innerWidth - pw - 8] → không bao giờ tràn khỏi mép.
+  // (Cách cũ neo `right = innerWidth - bell.right` giả định chuông ở bên phải — sai sau BL-46 đẩy chuông sang trái.)
+  const pw = p.offsetWidth;
+  p.style.left = Math.min(Math.max(8, r.right - pw), window.innerWidth - pw - 8) + 'px';
+  p.style.right = 'auto';
   const b = el('notifBell'); if (b) b.setAttribute('aria-expanded', 'true');
   // Đóng khi: bấm/chạm ra ngoài (cả touchstart — iOS không phát mousedown khi chạm vùng trống),
   // và khi bấm Esc (trước đây không có handler bàn phím nào -> mở panel bằng phím là kẹt luôn).
