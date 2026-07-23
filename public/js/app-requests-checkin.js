@@ -1,5 +1,6 @@
 // === app-requests-checkin.js — tach tu app.js (CHANG 4 refactor). Classic script, GIU global scope cho onclick. ===
 // KHONG doi thu tu nap trong index.html; boot()/chong-bam/click-listener nam o app-portals-boot.js (cuoi).
+let regFilter = 'pending';   // BL-59: màn Đăng ký mặc định chỉ hiện đơn CẦN XỬ LÝ (Chờ duyệt)
 async function viewRequests() {
   const view = ST.view;
   el('content').innerHTML = '<div class="spinner"></div>';
@@ -13,11 +14,22 @@ async function viewRequests() {
   // Không lặp lại tiêu đề/mô tả đã có ở thanh trên.
   let body = '', hd = '', actions = '', note = '', banner = '';
   if (view === 'reg') {
+    // BL-59: mặc định chỉ hiện đơn CẦN XỬ LÝ (Chờ duyệt) — đơn đã thêm/từ chối không nằm lại làm rối màn duyệt.
+    // Pill để xem các trạng thái khác khi cần (giữ được bản ghi mà không lộn xộn).
+    const counts = { pending: 0, approved: 0, rejected: 0 };
+    apps.forEach(a => { counts[a.status] = (counts[a.status] || 0) + 1; });
+    const shown = regFilter === 'all' ? apps : apps.filter(a => a.status === regFilter);
     hd = `${IC.filePen} Đơn đăng ký (${apps.length})`;
     actions = `<button class="btn sm pri" data-act="appForm">${IC.plus} Tạo đơn đăng ký</button>`;
     note = `${IC.info} Mọi học viên đều vào qua đơn đăng ký rồi duyệt. Học viên tự đăng ký tại trang công khai, hoặc admin tạo đơn hộ tại đây.`;
-    body = (apps.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày gửi</th><th>Họ tên</th><th>SĐT</th><th>GT</th><th>Hình thức</th><th>Nguyện vọng</th><th>Trạng thái</th><th></th></tr></thead><tbody>
-      ${apps.map(a => `<tr>
+    const pill = (f, tx, n) => `<button class="btn sm ${regFilter === f ? 'pri' : ''}" data-act="regGo" data-args='["${f}"]'>${tx} (${n})</button>`;
+    const pills = `<div class="pill-row" style="padding:12px 14px 0">${pill('pending', 'Chờ duyệt', counts.pending)}${pill('approved', 'Đã thêm', counts.approved)}${pill('rejected', 'Từ chối', counts.rejected)}${pill('all', 'Tất cả', apps.length)}</div>`;
+    const emptyTx = !apps.length ? 'Chưa có đơn đăng ký nào.'
+      : regFilter === 'pending' ? 'Không có đơn nào đang chờ duyệt.'
+        : regFilter === 'approved' ? 'Chưa có đơn nào đã thêm vào phòng.'
+          : regFilter === 'rejected' ? 'Chưa có đơn nào bị từ chối.' : 'Không có đơn phù hợp.';
+    body = pills + (shown.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày gửi</th><th>Họ tên</th><th>SĐT</th><th>GT</th><th>Hình thức</th><th>Nguyện vọng</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+      ${shown.map(a => `<tr>
         <td>${fmtDate(String(a.created_at).slice(0, 10))}</td>
         <td><strong>${esc(a.name)}</strong>${a.class_name ? `<div class="muted" style="font-size:11px">${esc(a.class_name)}</div>` : ''}${a.facility_name ? `<div class="sub2">${IC.building} ${esc(a.facility_name)}</div>` : ''}</td>
         <td>${esc(a.phone)}</td><td>${genderLabel(a.gender)}</td>
@@ -29,7 +41,7 @@ async function viewRequests() {
           <button class="btn sm ghost" title="Ghi chú" data-act="noteForm" data-args='["app", ${a.id}]'>${IC.filePen}</button>
           <button class="btn sm ghost" data-act="delApp" data-args='[${a.id}]'>${IC.trash}</button>
         </div></td></tr>`).join('')}
-    </tbody></table></div>` : '<div class="empty">Chưa có đơn đăng ký nào.</div>');
+    </tbody></table></div>` : `<div class="empty">${emptyTx}</div>`);
   } else if (view === 'checkout') {
     hd = `${IC.logOut} Đơn trả phòng (${couts.length})`;
     body = couts.length ? `<div class="table-wrap"><table><thead><tr><th>Ngày gửi</th><th>Học viên</th><th>Phòng</th><th>Ngày muốn trả</th><th>Lý do</th><th>Trạng thái</th><th></th></tr></thead><tbody>
@@ -102,6 +114,7 @@ async function viewRequests() {
   }
   el('content').innerHTML = `${banner}<div class="panel"><div class="hd"><h2>${hd}</h2>${actions ? `<div class="toolbar">${actions}</div>` : ''}</div>${note ? `<div class="pad muted" style="font-size:12.5px">${note}</div>` : ''}${body}</div>`;
 }
+function regGo(f) { regFilter = f; viewRequests(); }   // BL-59: đổi bộ lọc trạng thái đơn đăng ký
 /* ---- Ghi chú xử lý cho đơn hỗ trợ ---- */
 function noteForm(type, id) {
   const cur = (type === 'app' ? (ST.applications.find(a => a.id === id) || {}).admin_note
