@@ -236,8 +236,8 @@ async function viewAudit() {
     <div class="panel"><div class="hd"><h2>${IC.history} Nhật ký thao tác</h2>
       <div class="flex" style="gap:8px;flex-wrap:wrap">
         <div class="search"><span class="i">${IC.search}</span><input id="auUser" placeholder="Lọc theo người dùng..." value="${esc(auditFilter.user)}"></div>
-        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">Từ <input type="date" id="auFrom" value="${esc(auditFilter.from)}" style="padding:5px"></label>
-        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">Đến <input type="date" id="auTo" value="${esc(auditFilter.to)}" style="padding:5px"></label>
+        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">Từ <input id="auFrom" style="padding:5px;width:118px"></label>
+        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">Đến <input id="auTo" style="padding:5px;width:118px"></label>
         <button class="btn sm" id="auApply">${IC.search} Lọc</button>
         ${dangLoc ? `<button class="btn sm ghost" id="auClear">Bỏ lọc</button>` : ''}
         <select id="auLimit" style="padding:6px 8px;font-size:13px">
@@ -257,7 +257,9 @@ async function viewAudit() {
       </div>
       <div class="pad muted" style="font-size:12px">${IC.info} Nhật ký ghi lại đăng nhập, mọi thao tác thêm/sửa/xóa, và các lần bị từ chối. Mật khẩu, CCCD, ảnh được ẩn tự động.</div>
     </div>`;
-  const apply = () => { auditFilter = { user: el('auUser').value.trim(), from: el('auFrom').value, to: el('auTo').value, offset: 0 }; viewAudit(); };
+  attachDate(el('auFrom'), auditFilter.from);   // BL-50: lịch VN dd/mm/yyyy thay input type=date native (mm/dd/yyyy Mỹ)
+  attachDate(el('auTo'), auditFilter.to);
+  const apply = () => { auditFilter = { user: el('auUser').value.trim(), from: el('auFrom').dataset.iso || '', to: el('auTo').dataset.iso || '', offset: 0 }; viewAudit(); };
   el('auApply').onclick = apply;
   el('auUser').addEventListener('keydown', e => { if (e.key === 'Enter') apply(); });
   if (el('auClear')) el('auClear').onclick = () => { auditFilter = { user: '', from: '', to: '', offset: 0 }; viewAudit(); };
