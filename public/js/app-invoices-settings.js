@@ -142,6 +142,7 @@ async function generateForm() {
   await renderGenerateForm(invMonth);
 }
 async function renderGenerateForm(month) {
+  el('modal').innerHTML = `<div class="mb"><div class="spinner"></div></div>`;   // BL-34: spinner khi đổi kỳ
   const rooms = await guard(() => API.electric(month));
   el('modal').innerHTML = `
     <div class="mh"><h3>${IC.receipt} Tạo hóa đơn tháng</h3><button class="x" data-act="closeModal">×</button></div>
@@ -155,22 +156,29 @@ async function renderGenerateForm(month) {
 }
 // Bảng nhập chỉ số điện (số đầu + số cuối đều sửa được)
 function electricTable(rooms) {
-  return `<div class="table-wrap" style="max-height:340px;overflow:auto"><table><thead><tr><th>Phòng</th><th class="num">Đang ở</th><th class="num">Số đầu</th><th class="num">Số cuối</th><th class="num">Tiêu thụ</th><th class="num">Tiền điện</th></tr></thead><tbody>
-    ${rooms.map(r => { const st = +r.reading_start || 0, en = +r.reading_end || 0; return `<tr>
+  if (!rooms.length) return `<div class="empty">${IC.zap} Chưa có phòng nào để nhập chỉ số điện cho kỳ này.</div>`;
+  return `<div class="table-wrap" style="max-height:min(560px,62vh);overflow:auto"><table><thead><tr><th>Phòng</th><th class="num">Đang ở</th><th class="num">Số đầu</th><th class="num">Số cuối</th><th class="num">Tiêu thụ</th><th class="num">Tiền điện</th></tr></thead><tbody>
+    ${rooms.map(r => { const st = +r.reading_start || 0, en = +r.reading_end || 0; const bad = en > 0 && en < st; const kwh = Math.max(0, en - st); return `<tr>
       <td><strong>${esc(r.room_name)}</strong> <span class="muted">${r.gender === 'female' ? 'Nữ' : 'Nam'}</span></td>
       <td class="num">${r.occupancy}</td>
       <td class="num"><input type="number" min="0" step="0.1" data-estart="${r.room_id}" value="${st || ''}" placeholder="0" style="width:90px;text-align:right" data-input="ecalc" data-args='[${r.room_id}]'></td>
-      <td class="num"><input type="number" min="0" step="0.1" data-room="${r.room_id}" value="${en || ''}" placeholder="0" style="width:90px;text-align:right" data-input="ecalc" data-args='[${r.room_id}]'></td>
-      <td class="num" id="ek_${r.room_id}">${Math.max(0, en - st)}</td>
-      <td class="num" id="em_${r.room_id}">${money(Math.max(0, en - st) * (+ST.settings.electric_unit || 0))}</td></tr>`; }).join('')}
+      <td class="num"><input type="number" min="0" step="0.1" data-room="${r.room_id}" value="${en || ''}" placeholder="0" style="width:90px;text-align:right${bad ? ';border-color:var(--red);background:var(--red-bg)' : ''}" data-input="ecalc" data-args='[${r.room_id}]'></td>
+      <td class="num" id="ek_${r.room_id}">${bad ? '<span class="err-inline" title="Số cuối nhỏ hơn số đầu — sửa lại">Số cuối &lt; số đầu</span>' : kwh}</td>
+      <td class="num" id="em_${r.room_id}">${bad ? '—' : money(kwh * (+ST.settings.electric_unit || 0))}</td></tr>`; }).join('')}
   </tbody></table></div>`;
 }
 function ecalc(rid) {
+  const enInp = document.querySelector(`[data-room="${rid}"]`);
   const st = +document.querySelector(`[data-estart="${rid}"]`).value || 0;
-  const en = +document.querySelector(`[data-room="${rid}"]`).value || 0;
+  const en = +enInp.value || 0;
+  const bad = en > 0 && en < st;   // BL-34: số cuối < số đầu -> báo lỗi thay vì nắn ngầm về 0
+  enInp.style.borderColor = bad ? 'var(--red)' : '';
+  enInp.style.background = bad ? 'var(--red-bg)' : '';
+  const ek = el('ek_' + rid), em = el('em_' + rid);
+  if (bad) { ek.innerHTML = '<span class="err-inline" title="Số cuối nhỏ hơn số đầu — sửa lại">Số cuối &lt; số đầu</span>'; em.textContent = '—'; return; }
   const kwh = Math.max(0, en - st);
-  el('ek_' + rid).textContent = kwh;
-  el('em_' + rid).textContent = money(kwh * (+ST.settings.electric_unit || 0));
+  ek.textContent = kwh;
+  em.textContent = money(kwh * (+ST.settings.electric_unit || 0));
 }
 function readElectricInputs() {
   return [...document.querySelectorAll('#modal input[data-room]')].map(inp => ({
@@ -178,6 +186,14 @@ function readElectricInputs() {
     reading_end: +inp.value || 0,
     reading_start: +(document.querySelector(`[data-estart="${inp.dataset.room}"]`)?.value) || 0,
   }));
+}
+// BL-34: phòng có "số cuối < số đầu" (chỉ số điện sai) -> chặn lưu/lập hóa đơn tới khi sửa
+function badElectricRooms() {
+  return [...document.querySelectorAll('#modal input[data-room]')].filter(inp => {
+    const en = +inp.value || 0;
+    const st = +(document.querySelector(`[data-estart="${inp.dataset.room}"]`)?.value) || 0;
+    return en > 0 && en < st;
+  });
 }
 /* Màn hình nhập chỉ số điện độc lập (lưu, không tạo hóa đơn) */
 let elecMonth = curMonth();
@@ -188,6 +204,7 @@ async function electricForm() {
 }
 async function renderElectricForm(month) {
   elecMonth = month;
+  el('modal').innerHTML = `<div class="mb"><div class="spinner"></div></div>`;   // BL-34: spinner khi đổi kỳ
   const rooms = await guard(() => API.electric(month));
   el('modal').innerHTML = `
     <div class="mh"><h3>${IC.zap} Chỉ số điện theo tháng</h3><button class="x" data-act="closeModal">×</button></div>
@@ -199,12 +216,14 @@ async function renderElectricForm(month) {
     <div class="mf"><button class="btn" data-act="closeModal">Đóng</button><button class="btn pri" data-act="saveElectric">Lưu chỉ số điện</button></div>`;
 }
 async function saveElectric() {
+  if (badElectricRooms().length) return toast('Có phòng "số cuối < số đầu" — sửa lại chỉ số điện trước khi lưu', 'err');
   const readings = readElectricInputs();
   await guard(() => API.saveElectric({ month: el('e_month').value, readings }));
   closeModal(); toast('Đã lưu chỉ số điện');
 }
 async function runGenerate() {
   const month = el('g_month').value; if (!month) return toast('Chọn kỳ', 'err');
+  if (badElectricRooms().length) return toast('Có phòng "số cuối < số đầu" — sửa lại chỉ số điện trước khi lập hóa đơn', 'err');
   const readings = readElectricInputs();
   // Bước 1: xem trước (dry-run) — tính nhưng KHÔNG lưu
   const pv = await guard(() => API.generateInvoices({ month, readings, preview: true }));
