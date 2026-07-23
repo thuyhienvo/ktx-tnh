@@ -28,7 +28,16 @@ async function viewInvoices() {
   el('topActions').innerHTML = `<button class="btn" data-act="electricForm">${IC.zap} Chỉ số điện</button><button class="btn" data-act="oneInvoiceForm">${IC.plus} HĐ cho 1 HV</button><button class="btn pri" data-act="generateForm">${IC.receipt} Tạo hóa đơn theo tháng</button>`;
   el('content').innerHTML = '<div class="spinner"></div>';
   const months = await guard(() => API.invoiceMonths());
-  if (months.length && !months.includes(invMonth)) invMonth = months[0];
+  // Chỉ tự nhảy tới kỳ CÓ hóa đơn khi đang ở kỳ MẶC ĐỊNH (tháng hiện tại) mà nó chưa có hóa đơn.
+  // Không ép nữa khi người dùng đã chọn kỳ khác — để chọn được cả kỳ chưa có hóa đơn (BL-53).
+  if (months.length && invMonth === curMonth() && !months.includes(invMonth)) invMonth = months[0];
+  // Dải kỳ cho dropdown: gộp tháng đã có hóa đơn + kỳ đang xem + 24 tháng gần nhất, bỏ trùng, mới nhất trước.
+  const imMonths = (() => {
+    const set = new Set(months); set.add(invMonth);
+    let [y, mo] = curMonth().split('-').map(Number);
+    for (let k = 0; k < 24; k++) { set.add(`${y}-${String(mo).padStart(2, '0')}`); if (--mo === 0) { mo = 12; y--; } }
+    return [...set].sort().reverse();
+  })();
   const all = await guard(() => API.invoices(invMonth));
   _invAll = all;
   let ehist = { months: [], rooms: [] };
@@ -52,7 +61,7 @@ async function viewInvoices() {
 
   el('content').innerHTML = `
     <div class="cards">
-      <div class="stat"><div class="l">${IC.calendar} Kỳ</div><div class="v sm"><select id="im" style="font-size:15px;font-weight:600;padding:6px 8px">${(months.length ? months : [invMonth]).map(m => `<option value="${m}" ${m === invMonth ? 'selected' : ''}>${monthLabel(m)}</option>`).join('')}</select></div></div>
+      <div class="stat"><div class="l">${IC.calendar} Kỳ</div><div class="v sm"><select id="im" style="font-size:15px;font-weight:600;padding:6px 8px">${imMonths.map(m => `<option value="${m}" ${m === invMonth ? 'selected' : ''}>${monthLabel(m)}</option>`).join('')}</select></div></div>
       <div class="stat"><div class="l">${IC.receipt} Số phiếu</div><div class="v sm">${all.length}</div></div>
       <div class="stat"><div class="l">Tổng tiền phiếu (dự báo)</div><div class="v sm">${money(total)}</div></div>
     </div>
