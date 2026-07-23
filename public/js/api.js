@@ -76,7 +76,7 @@ const API = {
   ssoVerify: idToken => api('/auth/sso/verify', { method: 'POST', body: { id_token: idToken } }),
   logout: () => api('/auth/logout', { method: 'POST' }),
   me: () => api('/auth/me'),
-  changePassword: (oldPassword, newPassword) => api('/auth/change-password', { method: 'POST', body: { oldPassword, newPassword } }),
+  changePassword: (newPassword) => api('/auth/change-password', { method: 'POST', body: { newPassword } }),
 
   settings: () => api('/settings'),
   updateSettings: b => api('/settings', { method: 'PUT', body: b }),

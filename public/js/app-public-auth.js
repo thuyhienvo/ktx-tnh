@@ -380,8 +380,7 @@ function renderForceChangePw() {
           <h2>Đổi mật khẩu</h2>
           <p class="sub">Xin chào <strong>${esc(u.full_name || u.username || '')}</strong> — hãy tạo mật khẩu mới (tối thiểu 6 ký tự).</p>
           <form id="fcpForm">
-            <div class="field"><label>Mật khẩu hiện tại</label><input id="fcp_old" type="password" autocomplete="current-password" placeholder="Mật khẩu khởi tạo" autofocus></div>
-            <div class="field"><label>Mật khẩu mới</label><input id="fcp_new" type="password" autocomplete="new-password" placeholder="Tối thiểu 6 ký tự"></div>
+            <div class="field"><label>Mật khẩu mới</label><input id="fcp_new" type="password" autocomplete="new-password" placeholder="Tối thiểu 6 ký tự" autofocus></div>
             <div class="field"><label>Nhập lại mật khẩu mới</label><input id="fcp_new2" type="password" autocomplete="new-password" placeholder="Nhập lại"></div>
             <button class="btn pri lg auth-btn" type="submit">Cập nhật mật khẩu →</button>
           </form>
@@ -392,12 +391,12 @@ function renderForceChangePw() {
     </div>`;
   el('fcpForm').addEventListener('submit', async e => {
     e.preventDefault();
-    const oldP = el('fcp_old').value, n1 = el('fcp_new').value, n2 = el('fcp_new2').value;
+    const n1 = el('fcp_new').value, n2 = el('fcp_new2').value;
     if (n1.length < 6) return toast('Mật khẩu mới tối thiểu 6 ký tự', 'err');
     if (n1 !== n2) return toast('Hai mật khẩu mới không khớp', 'err');
     const btn = e.submitter; btn.disabled = true; btn.textContent = 'Đang cập nhật...';
     try {
-      await API.changePassword(oldP, n1);
+      await API.changePassword(n1);
       Auth.user = { ...Auth.user, must_change_password: false };
       toast('Đã đổi mật khẩu, chào mừng bạn!');
       boot();

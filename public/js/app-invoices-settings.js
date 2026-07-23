@@ -638,7 +638,7 @@ function userForm(id) {
         <option value="">Tất cả cơ sở (điều hành)</option>
         ${(ST.facilities || []).map(f => `<option value="${f.id}" ${u.facility_id === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}
       </select><div class="sub2" style="margin-top:4px">Để "Tất cả cơ sở" = điều hành, thấy &amp; quản lý mọi cơ sở. Chọn một cơ sở = chỉ thấy dữ liệu cơ sở đó.</div></div>
-      ${id ? '' : `<div class="field"><label>Mật khẩu *</label><input id="u_pass" type="text" placeholder="Tối thiểu 4 ký tự"></div>`}
+      ${id ? '' : `<div class="field"><label>Mật khẩu *</label><input id="u_pass" type="text" placeholder="Tối thiểu 6 ký tự"></div>`}
       ${id === Auth.user.id ? `<div class="hint">${IC.info} Bạn không thể tự hạ quyền chính mình.</div>` : ''}
     </div>
     <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveUser" data-args='[${id || 0}]'>Lưu</button></div>`);
@@ -655,13 +655,13 @@ function resetUserPwForm(id) {
     <div class="mh"><h3>Đặt lại mật khẩu</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted" style="margin-top:0">Tài khoản: <strong>${esc(u ? u.username : '')}</strong></p>
-      <div class="field"><label>Mật khẩu mới *</label><input id="u_newpass" type="text" placeholder="Tối thiểu 4 ký tự"></div>
+      <div class="field"><label>Mật khẩu mới *</label><input id="u_newpass" type="text" placeholder="Tối thiểu 6 ký tự"></div>
     </div>
     <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="doResetUserPw" data-args='[${id}]'>Đổi mật khẩu</button></div>`);
 }
 async function doResetUserPw(id) {
   const pw = el('u_newpass').value.trim();
-  if (pw.length < 4) return toast('Mật khẩu tối thiểu 4 ký tự', 'err');
+  if (pw.length < 6) return toast('Mật khẩu tối thiểu 6 ký tự', 'err');
   await guard(() => API.resetUserPw(id, pw));
   closeModal(); toast('Đã đổi mật khẩu');
 }
@@ -928,18 +928,16 @@ function changePwd() {
   openModal(`
     <div class="mh"><h3>${IC.key} Đổi mật khẩu</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
-      <div class="field"><label>Mật khẩu hiện tại</label><input id="cp_old" type="password"></div>
       <div class="field"><label>Mật khẩu mới <span class="opt">(tối thiểu 6 ký tự)</span></label><input id="cp_new" type="password"></div>
       <div class="field"><label>Nhập lại mật khẩu mới</label><input id="cp_new2" type="password"></div>
     </div>
     <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="doChangePwd">Đổi mật khẩu</button></div>`);
 }
 async function doChangePwd() {
-  const oldP = el('cp_old').value, n1 = el('cp_new').value, n2 = el('cp_new2').value;
-  if (!oldP) return toast('Nhập mật khẩu hiện tại', 'err');
+  const n1 = el('cp_new').value, n2 = el('cp_new2').value;
   if (n1.length < 6) return toast('Mật khẩu mới tối thiểu 6 ký tự', 'err');
   if (n1 !== n2) return toast('Nhập lại mật khẩu không khớp', 'err');
-  await guard(() => API.changePassword(oldP, n1));
+  await guard(() => API.changePassword(n1));
   closeModal(); toast('Đã đổi mật khẩu');
 }
 

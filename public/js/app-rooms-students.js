@@ -309,7 +309,7 @@ async function studentForm(id) {
       <div id="loginBox" style="display:none;background:var(--bg2);padding:12px;border-radius:10px;margin-top:8px">
         <div class="grid2">
           <div class="field" style="margin:0"><label>Tên đăng nhập <span class="opt">(trống = mã HV)</span></label><input id="f_luser"></div>
-          <div class="field" style="margin:0"><label>Mật khẩu</label><input id="f_lpass" type="text" placeholder="tối thiểu 4 ký tự"></div>
+          <div class="field" style="margin:0"><label>Mật khẩu</label><input id="f_lpass" type="text" placeholder="tối thiểu 6 ký tự"></div>
         </div>
       </div>` : ''}
     </div>
@@ -700,7 +700,7 @@ function accountForm(id, code) {
     <div class="mh"><h3>Tài khoản đăng nhập học viên</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên đăng nhập <span class="opt">(bỏ trống nếu đã có)</span></label><input id="a_user" value="${esc(code || '')}"></div>
-      <div class="field"><label>Mật khẩu mới</label><input id="a_pass" type="text" placeholder="tối thiểu 4 ký tự"></div>
+      <div class="field"><label>Mật khẩu mới</label><input id="a_pass" type="text" placeholder="tối thiểu 6 ký tự"></div>
     </div>
     <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveAccount" data-args='[${id}]'>Lưu</button></div>`);
   setTimeout(() => el('a_pass').focus(), 50);

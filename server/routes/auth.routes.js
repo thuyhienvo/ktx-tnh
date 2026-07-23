@@ -104,15 +104,14 @@ router.get('/me', requireAuth, async (req, res, next) => {
 // Đổi mật khẩu (chính mình) — xóa cờ bắt buộc đổi mật khẩu sau khi thành công
 router.post('/change-password', requireAuth, async (req, res, next) => {
   try {
-    const { oldPassword, newPassword } = req.body;
+    // NỚI LỎNG 23/07/2026: bỏ yêu cầu mật khẩu cũ (đã xác thực bằng cookie; lần đổi bắt buộc vừa
+    // đăng nhập bằng mật khẩu khởi tạo xong). Vẫn chặn đặt lại y hệt mật khẩu hiện tại.
+    const { newPassword } = req.body;
     const { rows } = await query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     const user = rows[0];
-    const loiMk = checkPassword(newPassword, [user.username, user.full_name]);
-    if (loiMk) return res.status(400).json({ error: 'Mật khẩu mới: ' + loiMk.charAt(0).toLowerCase() + loiMk.slice(1) });
-    if (!bcrypt.compareSync(oldPassword || '', user.password_hash)) {
-      return res.status(400).json({ error: 'Mật khẩu hiện tại không đúng' });
-    }
-    if (bcrypt.compareSync(newPassword, user.password_hash)) {
+    const loiMk = checkPassword(newPassword, []);
+    if (loiMk) return res.status(400).json({ error: loiMk });
+    if (user.password_hash && bcrypt.compareSync(newPassword, user.password_hash)) {
       return res.status(400).json({ error: 'Mật khẩu mới phải khác mật khẩu hiện tại' });
     }
     await query('UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2',

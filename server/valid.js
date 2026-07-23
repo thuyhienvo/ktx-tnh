@@ -80,18 +80,15 @@ const MAT_KHAU_PHO_BIEN = new Set([
   'abc12345', '11111111', '00000000', 'iloveyou', 'admin123', 'esuhai123', '88888888',
   '12341234', 'aa123456', 'a1234567', 'matkhau', 'ktx12345',
 ]);
+// NỚI LỎNG 23/07/2026 (chốt owner) — xem chú thích ở internal/valid/valid.go CheckPassword.
+// Mật khẩu local chỉ là TẠM (SSO Microsoft sẽ là chính, vẫn chấp nhận mật khẩu local). Chỉ giữ
+// 2 ràng buộc kỹ thuật: tối thiểu 6 ký tự, tối đa 72 (trần bcrypt). Bỏ hết ràng buộc "đoán được"
+// — rào bảo mật thật là khoá-tài-khoản-khi-sai-nhiều + nhật ký đăng nhập, không ở độ phức tạp.
+// (context giữ trong chữ ký cho tương thích nơi gọi; hiện không dùng.)
 function checkPassword(pw, context = []) {
   const s = String(pw == null ? '' : pw);
-  if (s.length < 8) return 'Mật khẩu tối thiểu 8 ký tự';
+  if (s.length < 6) return 'Mật khẩu tối thiểu 6 ký tự';
   if (s.length > 72) return 'Mật khẩu tối đa 72 ký tự';   // trần của bcrypt
-  if (!/[a-zA-Z]/.test(s) || !/\d/.test(s)) return 'Mật khẩu cần có cả chữ và số';
-  const low = s.toLowerCase();
-  if (MAT_KHAU_PHO_BIEN.has(low)) return 'Mật khẩu quá dễ đoán, vui lòng chọn mật khẩu khác';
-  if (/^(.)\1+$/.test(s)) return 'Mật khẩu không được chỉ gồm một ký tự lặp lại';
-  for (const c of context) {
-    const cc = String(c || '').toLowerCase().trim();
-    if (cc.length >= 3 && low.includes(cc)) return 'Mật khẩu không được chứa tên đăng nhập hoặc tên của bạn';
-  }
   return null;
 }
 

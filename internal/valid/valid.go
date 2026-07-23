@@ -12,8 +12,6 @@ var (
 	reYmd     = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 	reMonth   = regexp.MustCompile(`^\d{4}-\d{2}$`)
 	reNum     = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
-	reLetter  = regexp.MustCompile(`[a-zA-Z]`)
-	reDigit   = regexp.MustCompile(`\d`)
 	reEmail   = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
 	reNonDig  = regexp.MustCompile(`\D`)
 	rePrivA   = regexp.MustCompile(`^127\.`)
@@ -112,53 +110,22 @@ func CheckSetting(key, raw string) string {
 
 func trimFloat(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
 
-// CheckPassword: chính sách mật khẩu chung. server/valid.js:83-96
-var matKhauPhoBien = map[string]bool{
-	"12345678": true, "123456789": true, "1234567890": true, "password": true, "password1": true,
-	"qwerty": true, "qwertyuiop": true, "abc12345": true, "11111111": true, "00000000": true,
-	"iloveyou": true, "admin123": true, "esuhai123": true, "88888888": true, "12341234": true,
-	"aa123456": true, "a1234567": true, "matkhau": true, "ktx12345": true,
-}
-
+// CheckPassword: chính sách mật khẩu (NỚI LỎNG 23/07/2026 theo chốt owner).
+// Mật khẩu local chỉ là TẠM THỜI — về sau đăng nhập chính bằng Microsoft SSO (vẫn chấp nhận
+// mật khẩu local). Vì vậy chỉ giữ 2 ràng buộc KỸ THUẬT, bỏ hết ràng buộc "đoán được":
+//   - tối thiểu 6 ký tự (khớp mật khẩu khởi tạo InitialPasswordMin và mọi form)
+//   - tối đa 72 BYTE (trần cứng của bcrypt — vượt là hàm băm lỗi)
+// Không còn bắt cả-chữ-và-số / danh sách đen / chặn trùng tên. Rào bảo mật thật nằm ở
+// khoá-tài-khoản-khi-sai-nhiều (loginguard) + nhật ký đăng nhập, không ở độ phức tạp mật khẩu.
+// Tham số context giữ trong chữ ký cho tương thích nơi gọi; hiện không dùng.
 func CheckPassword(pw string, context []string) string {
-	s := pw
-	if len(s) < 8 {
-		return "Mật khẩu tối thiểu 8 ký tự"
+	if len([]rune(pw)) < 6 {
+		return "Mật khẩu tối thiểu 6 ký tự"
 	}
-	if len(s) > 72 {
+	if len(pw) > 72 {
 		return "Mật khẩu tối đa 72 ký tự"
 	}
-	if !reLetter.MatchString(s) || !reDigit.MatchString(s) {
-		return "Mật khẩu cần có cả chữ và số"
-	}
-	low := strings.ToLower(s)
-	if matKhauPhoBien[low] {
-		return "Mật khẩu quá dễ đoán, vui lòng chọn mật khẩu khác"
-	}
-	if allSameRune(s) {
-		return "Mật khẩu không được chỉ gồm một ký tự lặp lại"
-	}
-	for _, c := range context {
-		cc := strings.ToLower(strings.TrimSpace(c))
-		if len(cc) >= 3 && strings.Contains(low, cc) {
-			return "Mật khẩu không được chứa tên đăng nhập hoặc tên của bạn"
-		}
-	}
 	return ""
-}
-
-// allSameRune tương đương regex ^(.)\1+$ (JS backreference — Go RE2 không có).
-func allSameRune(s string) bool {
-	rs := []rune(s)
-	if len(rs) < 2 {
-		return false
-	}
-	for _, r := range rs[1:] {
-		if r != rs[0] {
-			return false
-		}
-	}
-	return true
 }
 
 // IsValidEmail. server/valid.js:99-102

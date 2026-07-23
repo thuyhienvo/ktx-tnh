@@ -188,31 +188,28 @@ func publicUser(id int, username, role, fullName string, studentID, facID *int, 
 }
 
 // ChangePassword: POST /api/auth/change-password. server/routes/auth.routes.js:105-126
+// NỚI LỎNG 23/07/2026 (chốt owner): KHÔNG còn đòi mật khẩu cũ. Người gọi đã xác thực bằng cookie
+// ktx_token; lần đổi BẮT BUỘC thì vừa đăng nhập bằng mật khẩu khởi tạo xong nên hỏi lại là thừa.
+// Vẫn chặn đặt LẠI y hệt mật khẩu hiện tại để lần đổi bắt buộc thực sự thay đổi (chỉ khi có mật khẩu).
 func (h *Handlers) ChangePassword(c *gin.Context) {
 	u := auth.CurrentUser(c)
 	var body struct {
-		OldPassword string `json:"oldPassword"`
 		NewPassword string `json:"newPassword"`
 	}
 	_ = c.ShouldBindJSON(&body)
 
-	var username, fullName string
-	var hash *string
+	if loiMk := valid.CheckPassword(body.NewPassword, nil); loiMk != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": loiMk})
+		return
+	}
+
+	var curHash *string
 	if err := h.pool().QueryRow(c.Request.Context(),
-		"SELECT username, full_name, password_hash FROM users WHERE id = $1", u.ID).
-		Scan(&username, &fullName, &hash); err != nil {
+		"SELECT password_hash FROM users WHERE id = $1", u.ID).Scan(&curHash); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi máy chủ"})
 		return
 	}
-	if loiMk := valid.CheckPassword(body.NewPassword, []string{username, fullName}); loiMk != "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Mật khẩu mới: " + lowerFirst(loiMk)})
-		return
-	}
-	if hash == nil || bcrypt.CompareHashAndPassword([]byte(*hash), []byte(body.OldPassword)) != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Mật khẩu hiện tại không đúng"})
-		return
-	}
-	if bcrypt.CompareHashAndPassword([]byte(*hash), []byte(body.NewPassword)) == nil {
+	if curHash != nil && bcrypt.CompareHashAndPassword([]byte(*curHash), []byte(body.NewPassword)) == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Mật khẩu mới phải khác mật khẩu hiện tại"})
 		return
 	}
