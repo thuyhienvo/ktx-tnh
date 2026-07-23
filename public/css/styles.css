@@ -228,6 +228,18 @@ td.num,th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-n
 .receipt .rc-total td{font-weight:800;font-size:15px;color:var(--brand-d)}
 .receipt .rc-note{font-size:12.5px;color:#6a6055;margin-top:14px;border-top:1px dashed #d8cdbd;padding-top:10px}
 .print-only{display:none}
+/* BL-54: phiếu báo (chứng từ khổ ~620px) trên modal điện thoại ~370px bị tràn khỏi màn — cột
+   "Khoản thu"/"Thành tiền" bị cắt 2 bên. Trên màn hẹp: co chữ/đệm cho vừa, và cho phiếu CUỘN NGANG
+   TRONG modal (#receiptArea) nếu bảng vẫn rộng, thay vì lú ra khỏi màn. KHÔNG đụng bản in (@media print). */
+@media(max-width:620px){
+  #receiptArea{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .receipt{max-width:100%}
+  .receipt .rc-head h2{font-size:19px}
+  .receipt .rc-info{font-size:12.5px;line-height:1.8}
+  .receipt .rc-info b{min-width:84px}
+  .receipt table{font-size:11.5px}
+  .receipt th,.receipt td{padding:6px 7px}
+}
 @media print{
   body{background:#fff}
   body *{visibility:hidden}
