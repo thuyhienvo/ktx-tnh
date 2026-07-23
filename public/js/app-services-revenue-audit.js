@@ -49,7 +49,7 @@ function addWashingForm() {
   if (!avail.length) return toast('Mọi học viên đang ở đều đã dùng máy giặt', 'err');
   const opts = avail.map(s => `<option value="${s.id}">${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}${s.room_name ? ' — ' + esc(s.room_name) : ''}</option>`).join('');
   openModal(`
-    <div class="mh"><h3>${IC.washer} Thêm HV dùng máy giặt</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.washer} Thêm HV dùng máy giặt</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Chọn học viên</label><select id="wash_stu">${opts}</select></div>
       <div class="hint">${IC.info} Phí máy giặt ${money(+ST.settings.washing_fee || 0)}/tháng sẽ được tính vào hóa đơn từ kỳ kế tiếp.</div>

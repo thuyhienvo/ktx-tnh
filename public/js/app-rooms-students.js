@@ -43,7 +43,7 @@ function leaderForm(roomId) {
   const cur = leaderOf(roomId);
   const inRoom = ST.students.filter(s => s.room_id === roomId && isOccupying(s));
   openModal(`
-    <div class="mh"><h3>${IC.star} Phòng trưởng: ${esc(r.name || '')}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.star} Phòng trưởng: ${esc(r.name || '')}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       ${!inRoom.length ? '<p class="muted">Phòng này chưa có ai ở — chưa cử phòng trưởng được.</p>' : `
       <div class="field"><label>Chọn phòng trưởng</label><select id="l_stu">
@@ -84,7 +84,7 @@ function facilityOptions(sel) {
 function roomForm(id) {
   const r = id ? roomById(id) : { name: '', floor: 1, gender: 'female', hang: 'B', capacity: HANG_CAP.B, monthly_fee: ST.settings.room_fee || 1200000, note: '', facility_id: (ST.facilities[0] || {}).id };
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa phòng' : 'Thêm phòng'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa phòng' : 'Thêm phòng'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Tên / số phòng *</label><input id="f_name" value="${esc(r.name)}" placeholder="VD: 104" data-input="onFloorDisp"></div>
@@ -246,7 +246,7 @@ async function studentForm(id) {
   _cccdData = s.cccd_image || null; _cccdChanged = false;
   const opt = (val, cur, label) => `<option value="${val}" ${cur === val ? 'selected' : ''}>${label}</option>`;
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa học viên' : 'Thêm học viên'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa học viên' : 'Thêm học viên'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Họ tên *</label><input id="f_name" value="${esc(s.name)}" placeholder="Nguyễn Văn A"></div>
@@ -369,7 +369,7 @@ async function renumberContractsModal() {
   if (!r) return;
   const rows = r.plan.filter(p => p.changed);
   openModal(`
-    <div class="mh"><h3>${IC.fileText} Đánh số hợp đồng theo ngày ký</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.fileText} Đánh số hợp đồng theo ngày ký</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">${IC.info} Số HĐ chạy tự động theo <strong>pháp nhân</strong> (${legalEntity('female')} · ${legalEntity('male')}) và <strong>ngày ký</strong>, đánh lại từ đầu mỗi năm. Tổng ${r.total} HĐ đã ký · <strong>${r.changed}</strong> sẽ thay đổi số.</div>
       ${rows.length ? `<div class="table-wrap" style="max-height:50vh;overflow:auto"><table><thead><tr><th>Học viên</th><th>Ngày ký</th><th>Số cũ</th><th>Số mới</th></tr></thead><tbody>
@@ -393,7 +393,7 @@ async function studentDetail(id) {
   const vios = s.violations || [];
   const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
   openModal(`
-    <div class="mh"><h3>${esc(s.name)} <span class="badge ${s.gender === 'female' ? 'sage' : 'blue'}">${genderLabel(s.gender)}</span> ${statusBadge(s)}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${esc(s.name)} <span class="badge ${s.gender === 'female' ? 'sage' : 'blue'}">${genderLabel(s.gender)}</span> ${statusBadge(s)}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="cards" style="margin-bottom:16px">
         <div class="stat"><div class="l">Phòng</div><div class="v sm">${esc(s.room_name || '—')}${s.room_hang ? ` <span class="badge gray">${s.room_hang}</span>` : ''}</div></div>
@@ -498,7 +498,7 @@ function duplicateModal(d) {
   const s = d.existing || {};
   const dangO = s.status === 'in';
   openModal(`
-    <div class="mh"><h3>${IC.alert} Bạn này đã có hồ sơ</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.alert} Bạn này đã có hồ sơ</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint" style="margin:0 0 16px"><span>${esc(d.error)}</span></div>
       <div class="asset-item" style="padding:14px">
@@ -531,7 +531,7 @@ function meterField(id, roomName, verb) {
 function transferForm(id) {
   const s = studentById(id);
   openModal(`
-    <div class="mh"><h3>${IC.transfer} Chuyển phòng: ${esc(s.name)}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.transfer} Chuyển phòng: ${esc(s.name)}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted">Phòng hiện tại: <strong>${esc(s.room_name || '—')}</strong></p>
       <div class="grid2">
@@ -567,7 +567,7 @@ function refundForm(id) {
   const person = ST.assets.filter(a => a.category === 'person');
   const fixed = ST.assets.filter(a => a.category === 'fixed');
   openModal(`
-    <div class="mh"><h3>${IC.handCoins} Hoàn cọc: ${esc(s.name || '')}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.handCoins} Hoàn cọc: ${esc(s.name || '')}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">Tick số lượng tài sản <strong>hư hao / mất / không vệ sinh</strong> để khấu trừ vào cọc. Có thể sửa đơn giá bồi hoàn.</div>
       <div class="table-wrap" style="max-height:280px;overflow:auto"><table><thead><tr><th>Tài sản</th><th class="num">SL hư/mất</th><th class="num">Đơn giá</th><th class="num">Thành tiền</th></tr></thead><tbody>
@@ -633,7 +633,7 @@ async function delStudent(id) {
 async function showDeletedStudents() {
   const list = await guard(() => API.students(true));
   openModal(`
-    <div class="mh"><h3>${IC.trash} Học viên đã xóa (${list.length})</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.trash} Học viên đã xóa (${list.length})</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Học viên</th><th>Mã</th><th>Phòng</th><th></th></tr></thead><tbody>
         ${list.map(s => `<tr>
@@ -654,7 +654,7 @@ async function restoreStudentAndReload(id) {
 function appForm() {
   const facOpts = (ST.facilities || []).map(f => `<option value="${f.id}">${esc(f.name)}</option>`).join('');
   openModal(`
-    <div class="mh"><h3>${IC.filePen} Tạo đơn đăng ký</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.filePen} Tạo đơn đăng ký</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">${IC.info} Đơn tạo ở đây vào danh sách <strong>Đăng ký ở nội trú</strong> ở trạng thái <strong>Chờ duyệt</strong>. Bấm <strong>“Thêm vào phòng”</strong> để duyệt & tạo học viên.</div>
       <div class="grid2">
@@ -698,7 +698,7 @@ async function saveApp() {
 }
 function accountForm(id, code) {
   openModal(`
-    <div class="mh"><h3>Tài khoản đăng nhập học viên</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>Tài khoản đăng nhập học viên</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên đăng nhập <span class="opt">(bỏ trống nếu đã có)</span></label><input id="a_user" value="${esc(code || '')}"></div>
       <div class="field"><label>Mật khẩu mới</label><input id="a_pass" type="text" placeholder="tối thiểu 6 ký tự"></div>
@@ -714,7 +714,7 @@ async function saveAccount(id) {
 function depositForm(id) {
   const s = studentById(id) || {};
   openModal(`
-    <div class="mh"><h3>${IC.lock} Ghi nhận đóng cọc</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.lock} Ghi nhận đóng cọc</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Số tiền cọc</label><input id="d_amt" type="number" min="0" value="${esc(s.deposit_amount || ST.settings.deposit_fee || 1200000)}"></div>
@@ -749,7 +749,7 @@ function quyCoc() {
     <td class="num">${liveStatus(s) === 'left' ? `<button class="btn sm green" data-close data-act="refundForm" data-args='[${s.id}]'>Hoàn cọc</button>` : ''}</td>
   </tr>`;
   openModal(`
-    <div class="mh"><h3>${IC.lock} Quỹ cọc</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.lock} Quỹ cọc</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="kpis" style="margin-bottom:16px">
         <div class="kpi"><span class="ic ic-brand">${IC.lock}</span><div><div class="v">${money(total)}</div><div class="l">Tổng quỹ cọc đang giữ</div></div></div>

@@ -37,7 +37,7 @@ function renderAdmin() {
       <div class="side-backdrop" id="sideBackdrop" data-act="toggleSide"></div>
       <div class="main">
         <div class="top">
-          <button class="hamburger" data-act="toggleSide" aria-label="Menu">${IC.menu}</button>
+          <button class="hamburger" data-act="toggleSide" aria-label="Menu" aria-expanded="false">${IC.menu}</button>
           <button class="hamburger" id="backBtn" data-act="goBack" aria-label="Quay lại" title="Quay lại" style="display:none">${IC.arrowLeft}</button>
           <div style="flex:1;min-width:0"><h1 id="pgTitle">Tổng quan</h1><div class="sub" id="pgSub"></div></div>
           <div class="flex" style="gap:10px">
@@ -50,6 +50,7 @@ function renderAdmin() {
       </div>
     </div>`;
   document.querySelectorAll('#nav button').forEach(b => b.addEventListener('click', () => adminGo(b.dataset.v)));
+  document.addEventListener('keydown', _escDrawer);   // BL-31: Esc đóng drawer (dedup nhờ named fn)
   startTableResize();
   // Màn ban đầu: ƯU TIÊN đường dẫn (deep-link /hoc-vien...), rồi tới ?view= cũ (giữ tương thích link cũ),
   // cuối cùng mặc định Tổng quan. adminGo lần đầu dùng {replace} để không tạo bước lịch sử thừa.
@@ -199,7 +200,7 @@ async function refreshNotifCounts() {
     if (el('notifPanel')) {                      // panel đang mở -> vẽ lại nội dung cho khớp
       const items = notifItems();
       const inner = el('notifPanel');
-      inner.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" data-closenotif ${i.act}>${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
+      inner.innerHTML = `<div class="notif-hd" id="notifHd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" data-closenotif ${i.act}>${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
     }
   } catch (e) { /* lỗi mạng tạm -> lần poll sau thử lại, không quấy người dùng */ }
 }
@@ -222,8 +223,8 @@ function toggleNotif(e) {
   if (el('notifPanel')) { closeNotif(); return; }
   const items = notifItems();
   const p = document.createElement('div'); p.className = 'notif-panel'; p.id = 'notifPanel';
-  p.setAttribute('role', 'dialog');
-  p.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" data-closenotif ${i.act}>${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
+  p.setAttribute('role', 'dialog'); p.setAttribute('aria-labelledby', 'notifHd'); p.tabIndex = -1;   // BL-31: a11y dialog
+  p.innerHTML = `<div class="notif-hd" id="notifHd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" data-closenotif ${i.act}>${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
   document.body.appendChild(p);
   const r = el('notifBell').getBoundingClientRect();
   p.style.top = (r.bottom + 8) + 'px';
@@ -234,6 +235,7 @@ function toggleNotif(e) {
   p.style.left = Math.min(Math.max(8, r.right - pw), window.innerWidth - pw - 8) + 'px';
   p.style.right = 'auto';
   const b = el('notifBell'); if (b) b.setAttribute('aria-expanded', 'true');
+  const _f = p.querySelector('.notif-item'); (_f || p).focus();   // BL-31: đưa focus vào panel khi mở
   // Đóng khi: bấm/chạm ra ngoài (cả touchstart — iOS không phát mousedown khi chạm vùng trống),
   // và khi bấm Esc (trước đây không có handler bàn phím nào -> mở panel bằng phím là kẹt luôn).
   setTimeout(() => {
@@ -246,19 +248,26 @@ function _notifOutside(e) {
   const p = el('notifPanel');
   if (p && !p.contains(e.target) && !e.target.closest('#notifBell')) closeNotif();
 }
-function _notifKey(e) { if (e.key === 'Escape') closeNotif(); }
+function _notifKey(e) { if (e.key === 'Escape') { closeNotif(); const b = el('notifBell'); if (b) b.focus(); } }   // BL-31: Esc trả focus về chuông
 /* ---- Menu trượt trên mobile ---- */
 function toggleSide() {
   const s = document.querySelector('.side'), b = el('sideBackdrop');
   const open = s && s.classList.toggle('open');
   if (b) b.classList.toggle('show', !!open);
   document.body.classList.toggle('drawer-open', !!open);   // BL-55: khoá cuộn trang nền khi drawer mở
+  const h = document.querySelector('button.hamburger[data-act="toggleSide"]');   // BL-31: a11y (KHÔNG khớp #backBtn/backdrop)
+  if (h) h.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) { const fb = el('nav') && el('nav').querySelector('button'); if (fb) fb.focus(); }
 }
 function closeSide() {
   const s = document.querySelector('.side'), b = el('sideBackdrop');
   if (s) s.classList.remove('open'); if (b) b.classList.remove('show');
   document.body.classList.remove('drawer-open');
+  const h = document.querySelector('button.hamburger[data-act="toggleSide"]');   // BL-31: a11y
+  if (h) h.setAttribute('aria-expanded', 'false');
 }
+// BL-31: Esc đóng drawer + trả focus về nút Menu. Named function -> addEventListener dedup nếu renderAdmin chạy lại.
+function _escDrawer(e) { if (e.key === 'Escape' && document.querySelector('.side.open')) { closeSide(); const h = document.querySelector('button.hamburger[data-act="toggleSide"]'); if (h) h.focus(); } }
 /* ================= ĐỊNH TUYẾN (BL-10) =================
    Trước đây mọi màn quản trị dùng chung URL '/': Back thoát app, F5 mất chỗ, không gửi link được.
    Mỗi màn nay có đường dẫn riêng (/students, /rooms...). Server đã trả index.html cho mọi path

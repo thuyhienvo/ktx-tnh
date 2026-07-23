@@ -120,7 +120,7 @@ function oneInvoiceForm() {
   const opts = ST.students.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'))
     .map(s => `<option value="${s.id}">${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}${s.room_name ? ' · ' + esc(s.room_name) : ''}</option>`).join('');
   openModal(`
-    <div class="mh"><h3>${IC.plus} Tạo hóa đơn cho 1 học viên</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.plus} Tạo hóa đơn cho 1 học viên</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">${IC.info} Dùng khi có học viên mới vào giữa tháng. Hệ thống <strong>tự tính</strong> theo phòng, số ngày ở và chỉ số điện đã lưu — không ảnh hưởng hóa đơn người khác (người đã đóng sẽ bị khóa).</div>
       <div class="grid2">
@@ -150,7 +150,7 @@ async function renderGenerateForm(month) {
   el('modal').innerHTML = `<div class="mb"><div class="spinner"></div></div>`;   // BL-34: spinner khi đổi kỳ
   const rooms = await guard(() => API.electric(month));
   el('modal').innerHTML = `
-    <div class="mh"><h3>${IC.receipt} Tạo hóa đơn tháng</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.receipt} Tạo hóa đơn tháng</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Kỳ (tháng)</label><input id="g_month" type="month" value="${month}" data-change="onGenMonth"></div>
       <div class="hint">${IC.bulb} Nhập <strong>số cuối công-tơ</strong>. Số đầu tự lấy = số cuối tháng trước (sửa được để test). Tiền điện = (cuối − đầu) × ${money(ST.settings.electric_unit)}, chia đều theo số người ở.</div>
@@ -212,7 +212,7 @@ async function renderElectricForm(month) {
   el('modal').innerHTML = `<div class="mb"><div class="spinner"></div></div>`;   // BL-34: spinner khi đổi kỳ
   const rooms = await guard(() => API.electric(month));
   el('modal').innerHTML = `
-    <div class="mh"><h3>${IC.zap} Chỉ số điện theo tháng</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.zap} Chỉ số điện theo tháng</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Kỳ (tháng)</label><input id="e_month" type="month" value="${month}" data-change="onElecMonth"></div>
       <div class="hint">Nhập số đầu (lần đầu để test) và số cuối. Tháng sau số đầu sẽ tự nối tiếp. Bấm Lưu để ghi lại — dùng khi tạo hóa đơn.</div>
@@ -249,7 +249,7 @@ function invoiceForm(id) {
   const opts = ST.students.map(s => `<option value="${s.id}" ${i.student_id === s.id ? 'selected' : ''}>${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}</option>`).join('');
   const f = (lbl, key, extra = '') => `<div class="field"><label>${lbl}</label><input id="i_${key}" type="number" min="0" value="${esc(i[key] || 0)}" ${extra}></div>`;
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa hóa đơn' : 'Thêm hóa đơn lẻ'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa hóa đơn' : 'Thêm hóa đơn lẻ'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Học viên *</label><select id="i_stu" ${id ? 'disabled' : ''}>${opts}</select></div>
@@ -299,7 +299,7 @@ async function phieuBao(inv) {
   if (+inv.leader_discount) row('Giảm phòng trưởng', 'Miễn tiền nước + phí dịch vụ', -inv.leader_discount);
 
   openModal(`
-    <div class="mh rc-noprint"><h3>${IC.fileText} Phiếu báo tiền phòng</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh rc-noprint"><h3>${IC.fileText} Phiếu báo tiền phòng</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb"><div id="receiptArea"><div class="receipt">
       <div class="rc-head">
         <h2>${esc(set.dorm_name || 'Ký túc xá')}</h2>
@@ -662,7 +662,7 @@ function userForm(id) {
   if (id && !u) return;
   const roleOpt = (v, l) => `<option value="${v}" ${u.role === v ? 'selected' : ''}>${l}</option>`;
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa tài khoản' : 'Thêm nhân viên'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa tài khoản' : 'Thêm nhân viên'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên đăng nhập *</label><input id="u_username" value="${esc(u.username)}" ${id ? 'disabled' : ''} placeholder="vd: nhanvien01"></div>
       <div class="field"><label>Họ tên</label><input id="u_full" value="${esc(u.full_name || '')}" placeholder="Nguyễn Văn A"></div>
@@ -685,7 +685,7 @@ async function saveUser(id) {
 function resetUserPwForm(id) {
   const u = (window._usrCache || []).find(x => x.id === id);
   openModal(`
-    <div class="mh"><h3>Đặt lại mật khẩu</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>Đặt lại mật khẩu</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted" style="margin-top:0">Tài khoản: <strong>${esc(u ? u.username : '')}</strong></p>
       <div class="field"><label>Mật khẩu mới *</label><input id="u_newpass" type="text" placeholder="Tối thiểu 6 ký tự"></div>
@@ -819,7 +819,7 @@ function vtypeForm(id) {
   const t = id ? (ST.vtypes || []).find(x => x.id === id) : { name: '', severity: 'minor', active: true };
   const sevOpt = (v, l) => `<option value="${v}" ${t.severity === v ? 'selected' : ''}>${l}</option>`;
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa loại vi phạm' : 'Thêm loại vi phạm'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa loại vi phạm' : 'Thêm loại vi phạm'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên loại vi phạm *</label><input id="vt_name" value="${esc(t.name)}" placeholder="VD: Về trễ giờ quy định"></div>
       <div class="grid2">
@@ -892,7 +892,7 @@ async function testSmtpConnection() {
 function assetForm(id) {
   const a = id ? ST.assets.find(x => x.id === id) : { name: '', unit: 'Cái', category: 'fixed', quantity: 1, fee: 0, note: '' };
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa tài sản' : 'Thêm tài sản'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa tài sản' : 'Thêm tài sản'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên tài sản *</label><input id="as_name" value="${esc(a.name)}" placeholder="VD: Remote máy lạnh"></div>
       <div class="grid2">
@@ -940,7 +940,7 @@ async function saveSettings() {
 function facilityForm(id) {
   const f = id ? ST.facilities.find(x => x.id === id) : { name: '', address: '' };
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa cơ sở' : 'Thêm cơ sở'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa cơ sở' : 'Thêm cơ sở'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên cơ sở *</label><input id="fc_name" value="${esc(f.name)}" placeholder="VD: Cơ sở 2"></div>
       <div class="field"><label>Địa chỉ</label><input id="fc_addr" value="${esc(f.address || '')}"></div>
@@ -963,7 +963,7 @@ async function delFacility(id) {
 /* ---------- ĐỔI MẬT KHẨU ---------- */
 function changePwd() {
   openModal(`
-    <div class="mh"><h3>${IC.key} Đổi mật khẩu</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.key} Đổi mật khẩu</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Mật khẩu mới <span class="opt">(tối thiểu 6 ký tự)</span></label><input id="cp_new" type="password"></div>
       <div class="field"><label>Nhập lại mật khẩu mới</label><input id="cp_new2" type="password"></div>

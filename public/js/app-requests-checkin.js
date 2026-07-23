@@ -122,7 +122,7 @@ function noteForm(type, id) {
     : type === 'cout' ? (ST.couts.find(c => c.id === id) || {}).admin_note
       : (ST.damage.find(d => d.id === id) || {}).admin_note) || '';
   openModal(`
-    <div class="mh"><h3>${IC.filePen} Ghi chú xử lý</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.filePen} Ghi chú xử lý</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb"><div class="field"><label>Ghi chú nội bộ <span class="opt">(chỉ quản lý thấy)</span></label><textarea id="nf_note" rows="4" placeholder="VD: đã gọi điện, hẹn xử lý...">${esc(cur || '')}</textarea></div></div>
     <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveNote" data-args='["${type}", ${id}]'>Lưu ghi chú</button></div>`);
   setTimeout(() => el('nf_note').focus(), 50);
@@ -153,7 +153,7 @@ function violationForm(studentId) {
   const tOpts = types.map(t => `<option value="${t.id}">${esc(t.name)} — ${VIO_SEV[t.severity] ? VIO_SEV[t.severity][0] : ''}</option>`).join('');
   const thr = (ST.settings && ST.settings.violation_mail_threshold) || 3;
   openModal(`
-    <div class="mh"><h3>${IC.alert} Ghi nhận vi phạm</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.alert} Ghi nhận vi phạm</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Học viên *</label><select id="vf_stu" ${studentId ? 'disabled' : ''}>${sOpts}</select></div>
       <div class="grid2">
@@ -194,7 +194,7 @@ async function violationStatsModal() {
   const st = await guard(() => API.violationStats(curMonth().slice(0, 4)));
   const sev = k => (st.bySeverity.find(x => x.severity === k) || { c: 0 }).c;
   openModal(`
-    <div class="mh"><h3>${IC.trendingUp} Thống kê vi phạm</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.trendingUp} Thống kê vi phạm</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="kpis" style="margin-bottom:16px">
         <div class="kpi"><span class="ic ic-gray">${IC.alert}</span><div><div class="v">${st.total}</div><div class="l">Tổng lượt vi phạm</div></div></div>
@@ -217,7 +217,7 @@ function approveForm(id) {
   const a = (ST.applications || []).find(x => x.id === id);   // viewRequests da dong bo ST.applications
   if (!a) return toast('Không tìm thấy đơn', 'err');
   openModal(`
-    <div class="mh"><h3>${IC.plus} Thêm vào phòng: ${esc(a.name)}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.plus} Thêm vào phòng: ${esc(a.name)}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted">${esc(a.phone)} · ${genderLabel(a.gender)} · ${RENTAL_LABEL[a.rental_type] || 'Thuê ghép'}${a.pref ? ' · NV: ' + esc(a.pref) : ''}</p>
       ${a.wants_washing || a.wants_parking || a.plate ? `<div class="hint">Dịch vụ đăng ký: ${a.wants_washing ? `${IC.washer} Máy giặt ` : ''}${a.wants_parking || a.plate ? `${IC.bike} Gửi xe${a.plate ? ' (' + esc(a.plate) + ')' : ''}` : ''} — sẽ tự thêm khi duyệt.</div>` : ''}
@@ -268,7 +268,7 @@ async function doApprove(id) {
 // BL-30: hộp tài khoản có nút Sao chép thay alert() (alert không copy được, dễ gõ sai khi gửi HV).
 function credentialModal(username, password) {
   openModal(`
-    <div class="mh"><h3>${IC.key} Tài khoản đăng nhập học viên</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.key} Tài khoản đăng nhập học viên</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">${IC.checkCircle} Đã thêm học viên & tạo tài khoản. Gửi thông tin này cho học viên — <strong>đóng hộp là không xem lại được</strong> (phải vào Sửa hồ sơ để đặt lại mật khẩu).</div>
       <div class="field"><label>Tên đăng nhập</label>
@@ -298,7 +298,7 @@ function confirmCout(id) {
   const roomName = (s && s.room_name) || cr.room_name || '';
   const hasRoom = !!((s && s.room_id) || roomName);
   openModal(`
-    <div class="mh"><h3>${IC.doorOpen} Duyệt trả phòng: ${esc(cr.student_name || (s && s.name) || '')}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.doorOpen} Duyệt trả phòng: ${esc(cr.student_name || (s && s.name) || '')}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Ngày rời thực tế</label><input id="cc_date" type="date" value="${esc(cr.desired_date ? String(cr.desired_date).slice(0, 10) : today())}"></div>
       ${hasRoom ? meterField('cc_meter', roomName, 'rời phòng') : ''}
@@ -322,7 +322,7 @@ async function rejectCout(id) { if (!confirm('Từ chối đơn trả phòng?'))
 function checkInForm(id) {
   const s = studentById(id);
   openModal(`
-    <div class="mh"><h3>${IC.key} Check-in: ${esc(s.name)}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.key} Check-in: ${esc(s.name)}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Ngày vào</label><input id="c_date" type="date" value="${today()}"></div>
@@ -341,7 +341,7 @@ async function doCheckIn(id) {
 function checkOutForm(id) {
   const s = studentById(id);
   openModal(`
-    <div class="mh"><h3>${IC.doorOpen} Check-out: ${esc(s.name)}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.doorOpen} Check-out: ${esc(s.name)}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Ngày báo trả phòng</label><input id="c_notice" type="date" value="${today()}"></div>
@@ -407,7 +407,7 @@ function quickPick(type) {
   const pool = type === 'in' ? ST.students.filter(s => s.status !== 'in') : ST.students.filter(isOccupying);
   if (!pool.length) return toast(type === 'in' ? 'Không có học viên nào đang ở ngoài' : 'Không có học viên nào đang ở', 'err');
   openModal(`
-    <div class="mh"><h3>${type === 'in' ? IC.check+' Check-in nhanh' : IC.undo+' Check-out nhanh'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${type === 'in' ? IC.check+' Check-in nhanh' : IC.undo+' Check-out nhanh'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb"><div class="field"><label>Chọn học viên</label>
       <select id="q_stu">${pool.map(s => `<option value="${s.id}">${esc(s.name)} ${s.code ? '(' + esc(s.code) + ')' : ''}</option>`).join('')}</select></div></div>
     <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="quickPickGo" data-args='["${type}"]'>Tiếp tục</button></div>`);
