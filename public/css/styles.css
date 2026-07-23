@@ -274,6 +274,7 @@ td.num,th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-n
 .badge.amber{background:var(--amber-bg);color:var(--amber-ink)}
 .badge.blue{background:var(--blue-bg);color:var(--blue-ink)}
 .badge.gray{background:var(--gray-bg);color:var(--gray-ink)}
+.badge.sage{background:var(--sage-bg);color:var(--sage-ink)}
 
 /* ---------- Form ---------- */
 .field{margin-bottom:16px}

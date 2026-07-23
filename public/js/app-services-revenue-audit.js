@@ -166,6 +166,7 @@ function auditLabel(method, pathStr) {
   return verb + ' · ' + res;
 }
 const AUDIT_MCLR = { POST: 'green', PUT: 'amber', PATCH: 'amber', DELETE: 'red' };
+const AUDIT_MVERB = { POST: 'Thêm', PUT: 'Sửa', PATCH: 'Sửa', DELETE: 'Xóa' };  // BL-32: bỏ jargon HTTP method
 // Tên trường hiển thị trong nhật ký (thay vì JSON thô của lập trình viên)
 const AUDIT_FIELD = {
   name: 'Họ tên', code: 'Mã HV', phone: 'SĐT', parent_phone: 'SĐT phụ huynh', gender: 'Giới tính',
@@ -219,7 +220,7 @@ async function viewAudit() {
     return `<tr data-s="${esc(s)}">
       <td style="white-space:nowrap">${fmtDT(r.at)}</td>
       <td><strong>${esc(r.username || '—')}</strong> <span class="badge ${r.role === 'admin' ? 'gray' : 'blue'}" style="font-size:10px">${r.role === 'admin' ? 'QTV' : 'NV'}</span></td>
-      <td><span class="badge ${AUDIT_MCLR[r.method] || 'gray'}" style="font-size:10px">${r.method}</span> ${esc(label)}</td>
+      <td><span class="badge ${AUDIT_MCLR[r.method] || 'gray'}" style="font-size:10px">${AUDIT_MVERB[r.method] || r.method}</span> ${esc(label)}</td>
       <td class="muted" style="font-size:12px;max-width:420px">${auditDetail(r.detail)}</td>
     </tr>`;
   }).join('');

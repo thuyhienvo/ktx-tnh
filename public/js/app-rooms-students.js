@@ -17,8 +17,8 @@ async function viewRooms() {
       ${list.length ? `<table><thead><tr><th>Phòng</th><th>Loại</th><th class="num">Đang ở</th><th>${IC.star} Phòng trưởng</th><th class="num">Giá thuê</th><th></th></tr></thead><tbody>
       ${list.map(r => { const full = r.occupancy >= r.capacity && r.capacity > 0; return `<tr data-s="${esc((r.name + ' ' + genderLabel(r.gender) + ' tầng' + r.floor + ' hạng' + (r.hang || 'b')).toLowerCase())}">
         <td><strong>${esc(r.name)}</strong>${r.upcoming ? ` <span class="badge blue" title="Sắp vào">+${r.upcoming}</span>` : ''}<div class="sub2">Tầng ${r.floor || '—'} · ${esc(legalEntity(r.gender))}</div>${r.note ? `<div class="sub2" style="white-space:pre-wrap;margin-top:3px">${esc(r.note)}</div>` : ''}</td>
-        <td>${r.gender === 'female' ? '<span class="badge red">Nữ</span>' : '<span class="badge blue">Nam</span>'} <span class="badge gray">Hạng ${esc(r.hang || 'B')}</span>${!roomIsShared(r) ? ' ' + roomTypeBadge(r) : ''}</td>
-        <td class="num">${roomIsShared(r) ? `<span class="badge ${full ? 'red' : r.occupancy ? 'green' : 'gray'}">${r.occupancy}/${r.capacity || 0}</span>` : `<span class="badge gray">${r.occupancy} người</span>`}</td>
+        <td>${r.gender === 'female' ? '<span class="badge sage">Nữ</span>' : '<span class="badge blue">Nam</span>'} <span class="badge gray">Hạng ${esc(r.hang || 'B')}</span>${!roomIsShared(r) ? ' ' + roomTypeBadge(r) : ''}</td>
+        <td class="num">${roomIsShared(r) ? `<span class="badge ${full ? 'amber' : r.occupancy ? 'green' : 'gray'}">${r.occupancy}/${r.capacity || 0}</span>` : `<span class="badge gray">${r.occupancy} người</span>`}</td>
         <td>${leaderCell(r)}</td>
         <td class="num">${money(+r.monthly_fee > 0 ? r.monthly_fee : ST.settings.room_fee)}<span class="muted">/người</span><div class="sub2">Nguyên phòng: ${money(ST.settings['room_price_' + (r.hang || 'B')])}</div></td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
@@ -187,11 +187,11 @@ function viewStudents() {
     </div><div class="table-wrap card-tbl">
       ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}${hasXC ? '<th>Dự kiến XC</th>' : ''}${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
       ${list.map(s => {
-        const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.alert}</span>` : ''}${contractOverdue(s) ? `<span title="Thuê ghép >${overdueDays()} ngày chưa ký HĐ" style="color:var(--red-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
+        const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.flag}</span>` : ''}${contractOverdue(s) ? `<span title="Thuê ghép >${overdueDays()} ngày chưa ký HĐ" style="color:var(--red-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
         const ds = esc((s.name + ' ' + (s.code || '') + ' ' + (s.phone || '') + ' ' + (s.class_name || '') + ' ' + (s.room_name || '')).toLowerCase());
         return `<tr data-s="${ds}">
         <td><div class="flex"><span class="avatar">${esc(initials(s.name))}</span><div>
-          <strong>${esc(s.name)}</strong> <span class="badge ${s.gender === 'female' ? 'red' : 'blue'}" style="font-size:10px">${genderLabel(s.gender)}</span>${s.login_username ? ` <span title="Có tài khoản">${IC.key}</span>` : ''}
+          <strong>${esc(s.name)}</strong> <span class="badge ${s.gender === 'female' ? 'sage' : 'blue'}">${genderLabel(s.gender)}</span>${s.login_username ? ` <span title="Có tài khoản">${IC.key}</span>` : ''}
           <div class="sub2">${esc(s.code || '—')}${s.class_name ? ' · ' + esc(s.class_name) : ''}${showFacilityUI() && s.facility_id ? ` · <span class="badge gray" style="font-size:10px">${esc(facilityName(s.facility_id))}</span>` : ''}${flags}</div>
         </div></div></td>
         <td data-label="Phòng">${s.room_name ? `<strong>${esc(s.room_name)}</strong>` : '<span class="muted">Chưa xếp</span>'}<div class="sub2">${RENTAL_LABEL[s.rental_type] || 'Thuê ghép'}</div></td>
@@ -394,7 +394,7 @@ async function studentDetail(id) {
   const vios = s.violations || [];
   const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
   openModal(`
-    <div class="mh"><h3>${esc(s.name)} <span class="badge ${s.gender === 'female' ? 'red' : 'blue'}">${genderLabel(s.gender)}</span> ${statusBadge(s)}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${esc(s.name)} <span class="badge ${s.gender === 'female' ? 'sage' : 'blue'}">${genderLabel(s.gender)}</span> ${statusBadge(s)}</h3><button class="x" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="cards" style="margin-bottom:16px">
         <div class="stat"><div class="l">Phòng</div><div class="v sm">${esc(s.room_name || '—')}${s.room_hang ? ` <span class="badge gray">${s.room_hang}</span>` : ''}</div></div>
