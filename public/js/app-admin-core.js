@@ -105,11 +105,21 @@ function renderViewError(view, e) {
 }
 
 async function refreshCache() {
+  // BL-19: 4 API lõi (rooms/students/facilities/settings) GIỮ tiên quyết — hỏng thì reject -> renderBootError (BL-13).
+  // 7 API phụ: hỏng thì ghi vết vào ST.cacheErrors (báo qua chuông) thay vì nuốt im -> hiện số 0 giả.
+  const failed = [];
+  const soft = (p, label, dflt) => p.catch(() => { failed.push(label); return dflt; });
   const [rooms, students, facilities, settings, applications, damage, couts, logs, assets, vtypes, vstats] = await Promise.all([
     API.rooms(), API.students(), API.facilities(), API.settings(),
-    API.applications().catch(() => []), API.damageAll().catch(() => []), API.checkoutReqs().catch(() => []), API.logs().catch(() => []), API.assets().catch(() => []),
-    API.violationTypes().catch(() => []), API.violationStats().catch(() => ({ byStudent: [], needMail: 0, threshold: 3 })),
+    soft(API.applications(), 'đơn đăng ký', []),
+    soft(API.damageAll(), 'hỗ trợ / hư hỏng', []),
+    soft(API.checkoutReqs(), 'đơn trả phòng', []),
+    soft(API.logs(), 'lịch sử', []),
+    soft(API.assets(), 'tài sản', []),
+    soft(API.violationTypes(), 'loại vi phạm', []),
+    soft(API.violationStats(), 'vi phạm', { byStudent: [], needMail: 0, threshold: 3 }),
   ]);
+  ST.cacheErrors = failed;
   Object.assign(ST, { rooms, students, facilities, settings, applications, damage, couts, logs, assets, vtypes, vstats });
   // Admin: đếm tài khoản chờ duyệt (SSO tự tạo role='pending') để BÁO qua chuông + badge Cài đặt.
   // Staff không có quyền endpoint này -> bỏ qua.
@@ -149,6 +159,8 @@ function updateNavBadges() {
 /* ---- Trung tâm thông báo (chuông) ---- */
 function notifItems() {
   const items = [];
+  // BL-19: dataset phụ tải hỏng -> cảnh báo trên chuông + nút Thử lại, thay vì để badge/số về 0 giả im lặng.
+  if (ST.cacheErrors && ST.cacheErrors.length) items.push({ n: ST.cacheErrors.length, ic: IC.alert, tx: `Chưa tải được: ${ST.cacheErrors.join(', ')} — số liệu có thể chưa đầy đủ. Bấm để thử lại`, act: actAttr('retryCache') });
   const pApps = ST.applications.filter(a => a.status === 'pending').length;
   const pDmg = ST.damage.filter(d => (d.category || 'damage') === 'damage' && d.status !== 'done').length;
   const pCout = ST.couts.filter(c => c.status === 'pending').length;
@@ -166,6 +178,11 @@ function notifItems() {
 function updateNotif() {
   const total = notifItems().reduce((a, i) => a + i.n, 0);
   const d = el('notifDot'); if (d) { d.textContent = total > 99 ? '99+' : total; d.style.display = total ? '' : 'none'; }
+}
+// BL-19: thử tải lại các dataset phụ bị hỏng rồi vẽ lại màn hiện tại (cảnh báo tự mất khi thành công).
+async function retryCache() {
+  try { await refreshCache(); adminGo(ST.view || 'dashboard'); }
+  catch (e) { toast((e && e.message) || 'Lỗi kết nối', 'err'); }
 }
 // TỰ hỏi server định kỳ. Trước đây chuông chỉ đếm lại từ ST (nạp 1 lần lúc mở trang) và chỉ đổi
 // khi CHÍNH MÌNH bấm một nút có sửa dữ liệu -> việc mới từ máy khác nằm im, phải tự F5 mới thấy (V2-77).
