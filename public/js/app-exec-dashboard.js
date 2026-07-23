@@ -26,7 +26,12 @@ async function viewExec() {
     ['Máy giặt', sum(rev, 'washing'), '#9a7bb0'], ['Gửi xe', sum(rev, 'parking'), '#c25545'], ['Khác', sum(rev, 'other'), '#8a8172'],
   ].filter(x => x[1] > 0);
   const svcTotal = svcs.reduce((a, s) => a + s[1], 0) || 1;
-  const chartRows = rev.map(m => ({ month: m.month, label: m.month.slice(5), total: +m.total || 0, paid: +m.total || 0 })); // paid=total: chỉ hiển thị tiền phiếu báo (không track thu)
+  // BL-49: dựng đủ 12 khe tháng (Th1…Th12) của năm để cột nằm trong ngữ cảnh trục, không lơ lửng giữa vùng trắng.
+  const revByMonth = new Map(rev.map(m => [m.month, +m.total || 0]));
+  const chartRows = Array.from({ length: 12 }, (_, i) => {
+    const month = `${year}-${String(i + 1).padStart(2, '0')}`;
+    return { month, label: 'Th' + (i + 1), total: revByMonth.get(month) || 0 };
+  });
   const female = ST.students.filter(s => isOccupying(s) && s.gender === 'female').length;
   const male = occ - female;
   // --- Vận hành & tuân thủ (điểm 3): máy giặt · hợp đồng · hư hỏng · vi phạm ---

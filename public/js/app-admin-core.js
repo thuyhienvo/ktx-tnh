@@ -431,18 +431,17 @@ const studentById = id => ST.students.find(s => s.id === id);
 const facilityName = id => { const f = ST.facilities.find(x => x.id === id); return f ? f.name : '—'; };
 
 /* ---------- ĐIỀU HÀNH (DASHBOARD LÃNH ĐẠO) ---------- */
-// Biểu đồ cột: tổng (xám) + đã thu (vàng) chồng lên
+// Biểu đồ cột doanh thu dự báo theo tháng (BL-49: caller truyền đủ 12 khe tháng -> cột đầy chiều ngang)
 function svgBars(rows) {
   const n = rows.length || 1;
-  // Khung hẹp lại khi ít cột (1 cột không nằm lọt thỏm giữa vùng trắng mênh mông)
   const W = Math.max(260, Math.min(720, n * 60)), H = 240, pt = 16, pb = 30, pl = 6, pr = 6;
   const max = Math.max(1, ...rows.map(r => r.total));
   const cw = (W - pl - pr) / n, bw = Math.min(34, cw * 0.5), ch = H - pt - pb;
   const yOf = v => pt + ch - (v / max) * ch;
+  // BL-49: 1 cột/tháng (bỏ lớp 2 màu vô nghĩa vì paid=total); tháng chưa có -> height 0, chỉ còn nhãn trục.
   const g = rows.map((r, i) => {
-    const x = pl + cw * i + (cw - bw) / 2, yt = yOf(r.total), yp = yOf(r.paid);
-    return `<g><rect x="${x}" y="${yt}" width="${bw}" height="${(pt + ch - yt).toFixed(1)}" rx="3" fill="var(--line2)"><title>${monthLabel(r.month)} · Tổng ${money(r.total)}</title></rect>` +
-      `<rect x="${x}" y="${yp}" width="${bw}" height="${(pt + ch - yp).toFixed(1)}" rx="3" fill="var(--brand)"><title>${monthLabel(r.month)} · Dự báo ${money(r.paid)}</title></rect>` +
+    const x = pl + cw * i + (cw - bw) / 2, yt = yOf(r.total);
+    return `<g><rect x="${x}" y="${yt}" width="${bw}" height="${(pt + ch - yt).toFixed(1)}" rx="3" fill="var(--brand)"><title>${monthLabel(r.month)} · Dự báo ${money(r.total)}</title></rect>` +
       `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${r.label}</text></g>`;
   }).join('');
   // Khoá chiều cao ${H}px: trước đây width:100% làm SVG phóng to theo bề ngang -> cao ~450px, nhìn như hỏng
