@@ -227,8 +227,10 @@ function roomOptions(sel, gender) {
   // Chỉ xếp học viên vào phòng CHO THUÊ GHÉP (giữ lại phòng đang chọn nếu là phòng đặc biệt)
   const rooms = ST.rooms.filter(r => (!gender || r.gender === gender) && (roomIsShared(r) || r.id === sel));
   return `<option value="">— Chưa xếp phòng —</option>` + rooms.map(r => {
+    // Phòng đầy KHÔNG bị khoá: vượt sức chứa là CỐ Ý (HV vào chờ bạn xuất cảnh) — chỉ ghi nhãn "đầy",
+    // cảnh báo + xác nhận khi LƯU qua withOverloadConfirm (doApprove/doCheckIn/studentForm). Xem BL-61.
     const full = r.occupancy >= r.capacity && sel !== r.id;
-    return `<option value="${r.id}" ${sel === r.id ? 'selected' : ''} ${full ? 'disabled' : ''}>${esc(r.name)} · Tầng ${r.floor} (${r.occupancy}/${r.capacity || 0})${full ? ' - đầy' : ''}</option>`;
+    return `<option value="${r.id}" ${sel === r.id ? 'selected' : ''}>${esc(r.name)} · Tầng ${r.floor} (${r.occupancy}/${r.capacity || 0})${full ? ' - đầy' : ''}</option>`;
   }).join('');
 }
 let _cccdData = null, _cccdChanged = false;
