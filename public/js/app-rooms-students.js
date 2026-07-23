@@ -190,10 +190,10 @@ function viewStudents() {
         const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.flag}</span>` : ''}${contractOverdue(s) ? `<span title="Thuê ghép >${overdueDays()} ngày chưa ký HĐ" style="color:var(--red-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
         const ds = esc((s.name + ' ' + (s.code || '') + ' ' + (s.phone || '') + ' ' + (s.class_name || '') + ' ' + (s.room_name || '')).toLowerCase());
         return `<tr data-s="${ds}">
-        <td><div class="flex"><span class="avatar">${esc(initials(s.name))}</span><div>
+        <td><div class="flex stu-name" data-act="studentDetail" data-args='[${s.id}]' role="button" tabindex="0" title="Xem chi tiết học viên"><span class="avatar">${esc(initials(s.name))}</span><div>
           <strong>${esc(s.name)}</strong> <span class="badge ${s.gender === 'female' ? 'sage' : 'blue'}">${genderLabel(s.gender)}</span>${s.login_username ? ` <span title="Có tài khoản">${IC.key}</span>` : ''}
           <div class="sub2">${esc(s.code || '—')}${s.class_name ? ' · ' + esc(s.class_name) : ''}${showFacilityUI() && s.facility_id ? ` · <span class="badge gray" style="font-size:10px">${esc(facilityName(s.facility_id))}</span>` : ''}${flags}</div>
-        </div></div></td>
+        </div><span class="row-chev" aria-hidden="true">${IC.chevronRight}</span></div></td>
         <td data-label="Phòng">${s.room_name ? `<strong>${esc(s.room_name)}</strong>` : '<span class="muted">Chưa xếp</span>'}<div class="sub2">${RENTAL_LABEL[s.rental_type] || 'Thuê ghép'}</div></td>
         <td data-label="Hợp đồng"><span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span>${s.contract_no ? `<div class="sub2">${esc(s.contract_no)}</div>` : ''}</td>
         <td data-label="Cọc">${depositBadge(s)}${s.deposit_status === 'none' && isOccupying(s) ? ` <button class="btn sm ghost" style="white-space:nowrap" title="Ghi nhận đóng cọc" data-act="depositForm" data-args='[${s.id}]'>＋ Thu cọc</button>` : ''}</td>
@@ -201,7 +201,6 @@ function viewStudents() {
         <td data-label="Trạng thái">${statusBadge(s)}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${isOccupying(s) ? `<button class="btn sm danger" data-act="checkOutForm" data-args='[${s.id}]'>Check-out</button>` : `<button class="btn sm" title="Nhận lại học viên đã trả phòng" data-act="checkInForm" data-args='[${s.id}]'>Check-in</button>`}
-          <button class="btn sm pri" data-act="studentDetail" data-args='[${s.id}]'>Chi tiết</button>
         </div></td></tr>`; }).join('')}
       <tr class="no-result" style="display:none"><td colspan="${nCols}"><div class="empty">Không tìm thấy học viên phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có học viên phù hợp.</div>`}

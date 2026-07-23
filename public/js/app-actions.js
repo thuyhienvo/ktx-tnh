@@ -37,6 +37,15 @@ document.addEventListener('click', e => {
   if (t.hasAttribute('data-closenotif')) closeNotif();
   _actRun(t.dataset.act, t, e, t.dataset.args);
 });
+// BL-63/BL-31: Enter/Space kích hoạt phần tử role="button" gắn data-act (div/td/tr KHÔNG tự kích hoạt như <button>).
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+  const t = e.target;
+  if (!t || !t.matches || !t.matches('[data-act][role="button"]')) return;
+  if (['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(t.tagName)) return; // control gốc tự xử lý -> tránh chạy 2 lần
+  e.preventDefault();   // Space không cuộn trang
+  t.click();            // tổng hợp click -> chạy qua listener click ở trên
+});
 document.addEventListener('change', e => {
   const t = e.target.closest && e.target.closest('[data-change]');
   if (t) _actRun(t.dataset.change, t, e, t.dataset.args);
