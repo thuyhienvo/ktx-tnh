@@ -49,7 +49,7 @@ function addWashingForm() {
   if (!avail.length) return toast('Mọi học viên đang ở đều đã dùng máy giặt', 'err');
   const opts = avail.map(s => `<option value="${s.id}">${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}${s.room_name ? ' — ' + esc(s.room_name) : ''}</option>`).join('');
   openModal(`
-    <div class="mh"><h3>${IC.washer} Thêm HV dùng máy giặt</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.washer} Thêm HV dùng máy giặt</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Chọn học viên</label><select id="wash_stu">${opts}</select></div>
       <div class="hint">${IC.info} Phí máy giặt ${money(+ST.settings.washing_fee || 0)}/tháng sẽ được tính vào hóa đơn từ kỳ kế tiếp.</div>
@@ -106,7 +106,7 @@ async function viewRevenue() {
         ${REV_SERVICES.filter(x => x[0] !== 'other' || sum('other')).map(([, l]) => `<th class="num">${l.replace('Phí ', '').replace(' sinh hoạt', '').replace(' (tiền phòng)', '')}</th>`).join('')}
         <th class="num">Tổng</th></tr></thead>
         <tbody>${monthRows}
-          <tr style="background:#faf6f2"><td><strong>Cả năm</strong></td>
+          <tr style="background:var(--bg2)"><td><strong>Cả năm</strong></td>
           ${REV_SERVICES.filter(x => x[0] !== 'other' || sum('other')).map(([k]) => `<td class="num"><strong>${money(sum(k))}</strong></td>`).join('')}
           <td class="num"><strong>${money(grand)}</strong></td></tr>
         </tbody></table>` : '<div class="empty">Chưa có phiếu báo trong năm này.</div>'}
@@ -119,7 +119,7 @@ async function viewRevenue() {
           <td><strong>${esc(ST.settings[codeKey] || '—')}</strong></td>
           <td class="muted">${esc(ST.settings.bravo_fee_type || '')}</td>
           <td>${l}</td><td class="num">${money(v)}</td></tr>`; }).join('')}
-        <tr style="background:#faf6f2"><td colspan="3"><strong>TỔNG TIỀN PHIẾU</strong></td><td class="num"><strong>${money(grand)}</strong></td></tr>
+        <tr style="background:var(--bg2)"><td colspan="3"><strong>TỔNG TIỀN PHIẾU</strong></td><td class="num"><strong>${money(grand)}</strong></td></tr>
       </tbody></table></div>
       <div class="pad muted" style="font-size:12.5px">${IC.bulb} Mã sản phẩm Bravo chỉnh trong <a href="#" data-act="adminGo" data-args='["settings"]'>Cài đặt</a>. Số liệu = tổng tiền đã lập phiếu báo (chưa gồm cọc). Thu tiền thực tế do Bravo quản lý. Số HV xuất cảnh xem ở <a href="#" data-act="adminGo" data-args='["exec"]'>Điều hành</a>.</div>
     </div>`;
@@ -132,7 +132,7 @@ function exportRevenue() {
   const head = ['Thang', ...cols, 'Tong'];
   const rows = data.map(m => [m.month, ...REV_SERVICES.map(([k]) => +m[k] || 0), +m.total || 0]);
   const sum = k => data.reduce((a, m) => a + (+m[k] || 0), 0);
-  rows.push(['Ca nam', ...REV_SERVICES.map(([k]) => sum(k)), sum('total'), sum('paid')]);
+  rows.push(['Ca nam', ...REV_SERVICES.map(([k]) => sum(k)), sum('total')]);  // BL-29: bỏ cột paid thừa (head/data không có) -> dòng tổng khớp cột
   const csv = '﻿' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -166,6 +166,7 @@ function auditLabel(method, pathStr) {
   return verb + ' · ' + res;
 }
 const AUDIT_MCLR = { POST: 'green', PUT: 'amber', PATCH: 'amber', DELETE: 'red' };
+const AUDIT_MVERB = { POST: 'Thêm', PUT: 'Sửa', PATCH: 'Sửa', DELETE: 'Xóa' };  // BL-32: bỏ jargon HTTP method
 // Tên trường hiển thị trong nhật ký (thay vì JSON thô của lập trình viên)
 const AUDIT_FIELD = {
   name: 'Họ tên', code: 'Mã HV', phone: 'SĐT', parent_phone: 'SĐT phụ huynh', gender: 'Giới tính',
@@ -219,7 +220,7 @@ async function viewAudit() {
     return `<tr data-s="${esc(s)}">
       <td style="white-space:nowrap">${fmtDT(r.at)}</td>
       <td><strong>${esc(r.username || '—')}</strong> <span class="badge ${r.role === 'admin' ? 'gray' : 'blue'}" style="font-size:10px">${r.role === 'admin' ? 'QTV' : 'NV'}</span></td>
-      <td><span class="badge ${AUDIT_MCLR[r.method] || 'gray'}" style="font-size:10px">${r.method}</span> ${esc(label)}</td>
+      <td><span class="badge ${AUDIT_MCLR[r.method] || 'gray'}" style="font-size:10px">${AUDIT_MVERB[r.method] || r.method}</span> ${esc(label)}</td>
       <td class="muted" style="font-size:12px;max-width:420px">${auditDetail(r.detail)}</td>
     </tr>`;
   }).join('');
@@ -229,14 +230,14 @@ async function viewAudit() {
   el('content').innerHTML = `
     <div class="cards">
       <div class="stat"><div class="l">${IC.history} Tổng bản ghi ${dangLoc ? '(theo bộ lọc)' : ''}</div><div class="v sm">${total.toLocaleString('vi-VN')}</div></div>
-      <div class="stat"><div class="l">${IC.calendar} Thao tác hôm nay</div><div class="v sm">${todayCnt}</div></div>
+      <div class="stat"><div class="l">${IC.calendar} Thao tác hôm nay (trang này)</div><div class="v sm">${todayCnt}</div></div>
       <div class="stat"><div class="l">${IC.users} Người thao tác (trang này)</div><div class="v sm">${users}</div></div>
     </div>
     <div class="panel"><div class="hd"><h2>${IC.history} Nhật ký thao tác</h2>
       <div class="flex" style="gap:8px;flex-wrap:wrap">
         <div class="search"><span class="i">${IC.search}</span><input id="auUser" placeholder="Lọc theo người dùng..." value="${esc(auditFilter.user)}"></div>
-        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">Từ <input type="date" id="auFrom" value="${esc(auditFilter.from)}" style="padding:5px"></label>
-        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">Đến <input type="date" id="auTo" value="${esc(auditFilter.to)}" style="padding:5px"></label>
+        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">Từ <input id="auFrom" style="padding:5px;width:118px"></label>
+        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">Đến <input id="auTo" style="padding:5px;width:118px"></label>
         <button class="btn sm" id="auApply">${IC.search} Lọc</button>
         ${dangLoc ? `<button class="btn sm ghost" id="auClear">Bỏ lọc</button>` : ''}
         <select id="auLimit" style="padding:6px 8px;font-size:13px">
@@ -256,7 +257,9 @@ async function viewAudit() {
       </div>
       <div class="pad muted" style="font-size:12px">${IC.info} Nhật ký ghi lại đăng nhập, mọi thao tác thêm/sửa/xóa, và các lần bị từ chối. Mật khẩu, CCCD, ảnh được ẩn tự động.</div>
     </div>`;
-  const apply = () => { auditFilter = { user: el('auUser').value.trim(), from: el('auFrom').value, to: el('auTo').value, offset: 0 }; viewAudit(); };
+  attachDate(el('auFrom'), auditFilter.from);   // BL-50: lịch VN dd/mm/yyyy thay input type=date native (mm/dd/yyyy Mỹ)
+  attachDate(el('auTo'), auditFilter.to);
+  const apply = () => { auditFilter = { user: el('auUser').value.trim(), from: el('auFrom').dataset.iso || '', to: el('auTo').dataset.iso || '', offset: 0 }; viewAudit(); };
   el('auApply').onclick = apply;
   el('auUser').addEventListener('keydown', e => { if (e.key === 'Enter') apply(); });
   if (el('auClear')) el('auClear').onclick = () => { auditFilter = { user: '', from: '', to: '', offset: 0 }; viewAudit(); };

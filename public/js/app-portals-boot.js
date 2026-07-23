@@ -25,7 +25,7 @@ function myInvoiceDetail(id) {
   const opt = (label, val, sub) => (+val) ? line(label, val, sub) : '';
   const leaderD = +i.leader_discount || 0, roomD = +i.room_discount || 0;
   openModal(`
-    <div class="mh"><h3>${IC.receipt} Chi tiết phiếu ${monthLabel(i.month)}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.receipt} Chi tiết phiếu ${monthLabel(i.month)}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted" style="margin:0 0 12px">Số ngày ở trong kỳ: <strong>${i.days_stayed || 0}</strong> ngày</p>
       <div class="table-wrap"><table><tbody>
@@ -45,8 +45,8 @@ function myInvoiceDetail(id) {
     <div class="mf"><button class="btn" data-act="closeModal">Đóng</button></div>`);
 }
 async function loadStudentPortal() {
-  let profile, invs, damage, coutReqs, myVios = [], mates = [], assets = [], chores = [];
-  try { [profile, invs, damage, coutReqs, myVios, mates, assets, chores] = await Promise.all([API.meProfile(), API.meInvoices(), API.meDamage(), API.meCheckoutReq(), API.meViolations().catch(() => []), API.meRoommates().catch(() => []), API.meAssets().catch(() => []), API.meChores().catch(() => [])]); }
+  let profile, invs, damage, coutReqs, myVios = [], mates = [], assets = [], chores = [], myLogs = [];
+  try { [profile, invs, damage, coutReqs, myVios, mates, assets, chores, myLogs] = await Promise.all([API.meProfile(), API.meInvoices(), API.meDamage(), API.meCheckoutReq(), API.meViolations().catch(() => []), API.meRoommates().catch(() => []), API.meAssets().catch(() => []), API.meChores().catch(() => []), API.meLogs().catch(() => [])]); }
   catch (e) { el('content').innerHTML = `<div class="hint">${IC.alert} ${esc(e.message)}</div>`; return; }
   window._myInvs = invs; // BL-16: để myInvoiceDetail() tra cứu chi tiết khi bấm hàng
   const billNow = invs.filter(i => i.month === curMonth()).reduce((a, i) => a + (+i.total || 0), 0);
@@ -61,7 +61,7 @@ async function loadStudentPortal() {
       <div class="stat"><div class="l">${IC.lock} Cọc</div><div class="v sm">${depTxt}</div></div>
     </div>
     <div class="panel"><div class="hd"><h2>${IC.user} Thông tin của tôi</h2></div><div class="pad">
-      <p><strong>Họ tên:</strong> ${esc(profile.name)} · <span class="badge ${profile.gender === 'female' ? 'red' : 'blue'}">${genderLabel(profile.gender)}</span></p>
+      <p><strong>Họ tên:</strong> ${esc(profile.name)} · <span class="badge ${profile.gender === 'female' ? 'sage' : 'blue'}">${genderLabel(profile.gender)}</span></p>
       <p><strong>Mã HV:</strong> ${esc(profile.code || '—')} &nbsp;•&nbsp; <strong>Lớp:</strong> ${esc(profile.class_name || '—')} &nbsp;•&nbsp; <strong>SĐT:</strong> ${esc(profile.phone || '—')}</p>
       <p><strong>Ngày vào:</strong> ${fmtDate(profile.check_in_date)} ${profile.check_out_date ? `&nbsp;•&nbsp; <strong>Ngày trả:</strong> ${fmtDate(profile.check_out_date)}` : ''}</p>
     </div></div>
@@ -111,7 +111,7 @@ async function loadStudentPortal() {
 
     <div class="panel"><div class="hd"><h2>${IC.handCoins} Hỗ trợ học viên</h2><button class="btn sm pri" data-act="damageForm">${IC.plus} Gửi yêu cầu hỗ trợ</button></div><div class="table-wrap">
       ${damage.length ? `<table><thead><tr><th>Ngày</th><th>Loại</th><th>Nội dung</th><th>Trạng thái</th></tr></thead><tbody>
-        ${damage.map(d => `<tr><td>${fmtDate(String(d.created_at).slice(0, 10))}</td><td>${supCatBadge(d.category)}</td><td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}${d.admin_note ? `<div style="font-size:12px;color:${d.status === 'blocked' ? 'var(--red-ink)' : 'var(--green)'}">${d.status === 'blocked' ? 'Lý do' : 'Phản hồi'}: ${esc(d.admin_note)}</div>` : ''}</td><td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>' : d.status === 'blocked' ? '<span class="badge red">Chưa xử lý được</span>' : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td></tr>`).join('')}
+        ${damage.map(d => `<tr><td>${fmtDate(String(d.created_at).slice(0, 10))}</td><td>${supCatBadge(d.category)}</td><td><strong>${esc(d.title)}</strong>${d.description ? `<div class="muted" style="font-size:12px">${esc(d.description)}</div>` : ''}</td><td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>' : d.status === 'blocked' ? '<span class="badge red">Chưa xử lý được — liên hệ quản lý</span>' : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td></tr>`).join('')}
       </tbody></table>` : '<div class="empty">Chưa có yêu cầu nào.</div>'}
     </div></div>
 
@@ -123,6 +123,15 @@ async function loadStudentPortal() {
       ${coutReqs.filter(c => c.status !== 'pending').length ? `<div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Ngày gửi</th><th>Ngày muốn trả</th><th>Trạng thái</th></tr></thead><tbody>
         ${coutReqs.filter(c => c.status !== 'pending').map(c => `<tr><td>${fmtDate(String(c.created_at).slice(0, 10))}</td><td>${fmtDate(c.desired_date)}</td><td>${c.status === 'done' ? '<span class="badge green">Đã duyệt</span>' : '<span class="badge gray">Từ chối</span>'}</td></tr>`).join('')}
       </tbody></table></div>` : ''}
+    </div></div>
+
+    <div class="panel"><div class="hd"><h2>${IC.history} Lịch sử ra / vào của tôi</h2></div><div class="table-wrap">
+      ${myLogs.length ? `<table><thead><tr><th>Ngày</th><th>Hoạt động</th><th>Nguồn</th><th>Ghi chú</th></tr></thead><tbody>
+        ${myLogs.map(l => `<tr><td>${fmtDate(l.date)}</td>
+          <td>${l.type === 'in' ? '<span class="badge green">Nhận phòng</span>' : '<span class="badge red">Trả phòng</span>'}</td>
+          <td>${l.source === 'self' ? '<span class="badge blue">Bạn tự thao tác</span>' : '<span class="badge gray">Quản lý</span>'}</td>
+          <td class="muted">${esc(l.note || '')}</td></tr>`).join('')}
+      </tbody></table>` : '<div class="empty">Chưa có lịch sử ra / vào.</div>'}
     </div></div>`;
 
 }
@@ -130,7 +139,7 @@ function damageForm(cat) {
   const sel = v => cat === v ? ' selected' : '';
   const tieuDe = cat === 'damage' ? `${IC.wrench} Báo hư hỏng trong phòng` : `${IC.handCoins} Gửi yêu cầu hỗ trợ`;
   openModal(`
-    <div class="mh"><h3>${tieuDe}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${tieuDe}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Loại yêu cầu *</label><select id="dm_cat" data-change="dmCatHint">
         <option value="damage"${sel('damage')}>Báo hư hỏng trong phòng</option>
@@ -159,7 +168,7 @@ async function submitDamage() {
 }
 function checkoutReqForm() {
   openModal(`
-    <div class="mh"><h3>${IC.logOut} Đăng ký trả phòng</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.logOut} Đăng ký trả phòng</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Ngày dự kiến trả phòng</label><input id="co_date"></div>
       <div class="field"><label>Lý do</label><select id="co_reason">
@@ -169,7 +178,7 @@ function checkoutReqForm() {
       <div class="hint">${IC.info} Đơn sẽ được gửi tới quản lý để duyệt. Cần báo trước 1 tháng để được hoàn cọc.</div>
     </div>
     <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn danger" data-act="submitCheckoutReq">Gửi đơn</button></div>`);
-  attachDate(el('co_date'), today());
+  attachDate(el('co_date'), today(), { min: today() });   // BL-35[6]: không cho chọn ngày trả trong quá khứ
 }
 async function submitCheckoutReq() {
   const d = el('co_date').dataset.iso;
@@ -254,7 +263,7 @@ function myAssetsPanel(assets, profile) {
 }
 
 async function toggleMyWashing(on) {
-  if (!on && !confirm('Hủy đăng ký máy giặt? Phí máy giặt sẽ không còn tính từ kỳ sau.')) return;
+  if (!confirm(on ? 'Đăng ký dùng máy giặt? Phí sẽ tính vào phiếu báo từ kỳ sau.' : 'Hủy đăng ký máy giặt? Phí máy giặt sẽ không còn tính từ kỳ sau.')) return;
   await guard(() => API.meWashing(on));
   toast(on ? 'Đã đăng ký máy giặt' : 'Đã hủy máy giặt'); loadStudentPortal();
 }
@@ -362,7 +371,7 @@ async function loadHandovers(month) {
 }
 function handoverCheckinForm(id, name) {
   openModal(`
-    <div class="mh"><h3>${IC.check} Xác nhận đã nhận phòng</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.check} Xác nhận đã nhận phòng</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted" style="margin:0 0 10px">Học viên: <strong>${esc(name)}</strong></p>
       <div class="field"><label>Ghi chú bàn giao <span class="opt">(tình trạng phòng, đã giao chìa khóa...)</span></label><textarea id="ho_note" rows="3" placeholder="VD: Phòng sạch, đã giao 1 chìa khóa phòng + 1 chìa tủ locker..."></textarea></div>
@@ -375,7 +384,7 @@ async function submitHandoverCheckin(id) {
 }
 function handoverCheckoutForm(id, name, planDate) {
   openModal(`
-    <div class="mh"><h3>${IC.check} Xác nhận đã trả phòng</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.check} Xác nhận đã trả phòng</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted" style="margin:0 0 10px">Học viên: <strong>${esc(name)}</strong>${planDate ? ` · đăng ký trả: ${fmtDate(planDate)}` : ''}</p>
       <div class="field"><label>Ngày trả phòng THỰC TẾ *</label><input id="ho_date"></div>
@@ -394,7 +403,7 @@ async function submitHandoverCheckout(id) {
 async function maintDo(id, status) { await guard(() => API.maintenanceTaskStatus(id, status)); toast('Đã cập nhật'); loadMaintenance(); }
 function maintDoneForm(id) {
   openModal(`
-    <div class="mh"><h3>${IC.check} Hoàn thành công việc</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.check} Hoàn thành công việc</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb"><div class="field"><label>Ghi chú bảo trì (đã làm gì)</label><textarea id="mt_note" rows="3" placeholder="VD: Đã thay vòi nước mới, kiểm tra lại..."></textarea></div></div>
     <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="submitMaintDone" data-args='[${id}]'>Xác nhận đã xong</button></div>`);
 }
@@ -404,7 +413,7 @@ async function submitMaintDone(id) {
 }
 function maintBlockForm(id) {
   openModal(`
-    <div class="mh"><h3>${IC.alert} Chưa xử lý được</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.alert} Chưa xử lý được</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb"><div class="field"><label>Lý do chưa xử lý được *</label>
       <textarea id="mt_reason" rows="3" placeholder="VD: Cần thay linh kiện, đang đặt hàng · Ngoài khả năng, cần thợ ngoài · Chờ học viên có mặt..."></textarea></div>
       <div class="hint" style="font-size:12px">${IC.info} Công việc vẫn nằm trong danh sách "Cần xử lý"; quản lý & học viên sẽ thấy lý do này.</div>

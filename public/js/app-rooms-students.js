@@ -17,8 +17,8 @@ async function viewRooms() {
       ${list.length ? `<table><thead><tr><th>Phòng</th><th>Loại</th><th class="num">Đang ở</th><th>${IC.star} Phòng trưởng</th><th class="num">Giá thuê</th><th></th></tr></thead><tbody>
       ${list.map(r => { const full = r.occupancy >= r.capacity && r.capacity > 0; return `<tr data-s="${esc((r.name + ' ' + genderLabel(r.gender) + ' tầng' + r.floor + ' hạng' + (r.hang || 'b')).toLowerCase())}">
         <td><strong>${esc(r.name)}</strong>${r.upcoming ? ` <span class="badge blue" title="Sắp vào">+${r.upcoming}</span>` : ''}<div class="sub2">Tầng ${r.floor || '—'} · ${esc(legalEntity(r.gender))}</div>${r.note ? `<div class="sub2" style="white-space:pre-wrap;margin-top:3px">${esc(r.note)}</div>` : ''}</td>
-        <td>${r.gender === 'female' ? '<span class="badge red">Nữ</span>' : '<span class="badge blue">Nam</span>'} <span class="badge gray">Hạng ${esc(r.hang || 'B')}</span>${!roomIsShared(r) ? ' ' + roomTypeBadge(r) : ''}</td>
-        <td class="num">${roomIsShared(r) ? `<span class="badge ${full ? 'red' : r.occupancy ? 'green' : 'gray'}">${r.occupancy}/${r.capacity || 0}</span>` : `<span class="badge gray">${r.occupancy} người</span>`}</td>
+        <td>${r.gender === 'female' ? '<span class="badge sage">Nữ</span>' : '<span class="badge blue">Nam</span>'} <span class="badge gray">Hạng ${esc(r.hang || 'B')}</span>${!roomIsShared(r) ? ' ' + roomTypeBadge(r) : ''}</td>
+        <td class="num">${roomIsShared(r) ? `<span class="badge ${full ? 'amber' : r.occupancy ? 'green' : 'gray'}">${r.occupancy}/${r.capacity || 0}</span>` : `<span class="badge gray">${r.occupancy} người</span>`}</td>
         <td>${leaderCell(r)}</td>
         <td class="num">${money(+r.monthly_fee > 0 ? r.monthly_fee : ST.settings.room_fee)}<span class="muted">/người</span><div class="sub2">Nguyên phòng: ${money(ST.settings['room_price_' + (r.hang || 'B')])}</div></td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
@@ -43,7 +43,7 @@ function leaderForm(roomId) {
   const cur = leaderOf(roomId);
   const inRoom = ST.students.filter(s => s.room_id === roomId && isOccupying(s));
   openModal(`
-    <div class="mh"><h3>${IC.star} Phòng trưởng: ${esc(r.name || '')}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.star} Phòng trưởng: ${esc(r.name || '')}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       ${!inRoom.length ? '<p class="muted">Phòng này chưa có ai ở — chưa cử phòng trưởng được.</p>' : `
       <div class="field"><label>Chọn phòng trưởng</label><select id="l_stu">
@@ -84,7 +84,7 @@ function facilityOptions(sel) {
 function roomForm(id) {
   const r = id ? roomById(id) : { name: '', floor: 1, gender: 'female', hang: 'B', capacity: HANG_CAP.B, monthly_fee: ST.settings.room_fee || 1200000, note: '', facility_id: (ST.facilities[0] || {}).id };
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa phòng' : 'Thêm phòng'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa phòng' : 'Thêm phòng'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Tên / số phòng *</label><input id="f_name" value="${esc(r.name)}" placeholder="VD: 104" data-input="onFloorDisp"></div>
@@ -187,13 +187,13 @@ function viewStudents() {
     </div><div class="table-wrap card-tbl">
       ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}${hasXC ? '<th>Dự kiến XC</th>' : ''}${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
       ${list.map(s => {
-        const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.alert}</span>` : ''}${contractOverdue(s) ? `<span title="Thuê ghép >${overdueDays()} ngày chưa ký HĐ" style="color:var(--red-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
+        const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.flag}</span>` : ''}${contractOverdue(s) ? `<span title="Thuê ghép >${overdueDays()} ngày chưa ký HĐ" style="color:var(--red-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
         const ds = esc((s.name + ' ' + (s.code || '') + ' ' + (s.phone || '') + ' ' + (s.class_name || '') + ' ' + (s.room_name || '')).toLowerCase());
         return `<tr data-s="${ds}">
-        <td><div class="flex"><span class="avatar">${esc(initials(s.name))}</span><div>
-          <strong>${esc(s.name)}</strong> <span class="badge ${s.gender === 'female' ? 'red' : 'blue'}" style="font-size:10px">${genderLabel(s.gender)}</span>${s.login_username ? ` <span title="Có tài khoản">${IC.key}</span>` : ''}
+        <td><div class="flex stu-name" data-act="studentDetail" data-args='[${s.id}]' role="button" tabindex="0" title="Xem chi tiết học viên"><span class="avatar">${esc(initials(s.name))}</span><div>
+          <strong>${esc(s.name)}</strong> <span class="badge ${s.gender === 'female' ? 'sage' : 'blue'}">${genderLabel(s.gender)}</span>${s.login_username ? ` <span title="Có tài khoản">${IC.key}</span>` : ''}
           <div class="sub2">${esc(s.code || '—')}${s.class_name ? ' · ' + esc(s.class_name) : ''}${showFacilityUI() && s.facility_id ? ` · <span class="badge gray" style="font-size:10px">${esc(facilityName(s.facility_id))}</span>` : ''}${flags}</div>
-        </div></div></td>
+        </div><span class="row-chev" aria-hidden="true">${IC.chevronRight}</span></div></td>
         <td data-label="Phòng">${s.room_name ? `<strong>${esc(s.room_name)}</strong>` : '<span class="muted">Chưa xếp</span>'}<div class="sub2">${RENTAL_LABEL[s.rental_type] || 'Thuê ghép'}</div></td>
         <td data-label="Hợp đồng"><span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span>${s.contract_no ? `<div class="sub2">${esc(s.contract_no)}</div>` : ''}</td>
         <td data-label="Cọc">${depositBadge(s)}${s.deposit_status === 'none' && isOccupying(s) ? ` <button class="btn sm ghost" style="white-space:nowrap" title="Ghi nhận đóng cọc" data-act="depositForm" data-args='[${s.id}]'>＋ Thu cọc</button>` : ''}</td>
@@ -201,12 +201,11 @@ function viewStudents() {
         <td data-label="Trạng thái">${statusBadge(s)}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${isOccupying(s) ? `<button class="btn sm danger" data-act="checkOutForm" data-args='[${s.id}]'>Check-out</button>` : `<button class="btn sm" title="Nhận lại học viên đã trả phòng" data-act="checkInForm" data-args='[${s.id}]'>Check-in</button>`}
-          <button class="btn sm pri" data-act="studentDetail" data-args='[${s.id}]'>Chi tiết</button>
         </div></td></tr>`; }).join('')}
       <tr class="no-result" style="display:none"><td colspan="${nCols}"><div class="empty">Không tìm thấy học viên phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có học viên phù hợp.</div>`}
     </div></div>`;
-  const ss = el('ss'); if (ss) { ss.addEventListener('input', () => { stuSearch = ss.value; syncFilterUrl(); }); attachRowSearch(ss, 'stuCount'); }
+  const ss = el('ss'); if (ss) { ss.addEventListener('input', () => { stuSearch = ss.value; syncFilterUrl(); }); attachRowSearch(ss, 'stuCount', { numWord: true }); }  // BL-56: gõ số phòng ra đúng phòng
   document.querySelectorAll('#content th.sortable').forEach(th => {
     th.onclick = e => {
       if (e.target.classList.contains('rz-handle')) return; // đang kéo giãn cột
@@ -247,7 +246,7 @@ async function studentForm(id) {
   _cccdData = s.cccd_image || null; _cccdChanged = false;
   const opt = (val, cur, label) => `<option value="${val}" ${cur === val ? 'selected' : ''}>${label}</option>`;
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa học viên' : 'Thêm học viên'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa học viên' : 'Thêm học viên'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Họ tên *</label><input id="f_name" value="${esc(s.name)}" placeholder="Nguyễn Văn A"></div>
@@ -370,7 +369,7 @@ async function renumberContractsModal() {
   if (!r) return;
   const rows = r.plan.filter(p => p.changed);
   openModal(`
-    <div class="mh"><h3>${IC.fileText} Đánh số hợp đồng theo ngày ký</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.fileText} Đánh số hợp đồng theo ngày ký</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">${IC.info} Số HĐ chạy tự động theo <strong>pháp nhân</strong> (${legalEntity('female')} · ${legalEntity('male')}) và <strong>ngày ký</strong>, đánh lại từ đầu mỗi năm. Tổng ${r.total} HĐ đã ký · <strong>${r.changed}</strong> sẽ thay đổi số.</div>
       ${rows.length ? `<div class="table-wrap" style="max-height:50vh;overflow:auto"><table><thead><tr><th>Học viên</th><th>Ngày ký</th><th>Số cũ</th><th>Số mới</th></tr></thead><tbody>
@@ -394,7 +393,7 @@ async function studentDetail(id) {
   const vios = s.violations || [];
   const vthr = (ST.settings && +ST.settings.violation_mail_threshold) || 3;
   openModal(`
-    <div class="mh"><h3>${esc(s.name)} <span class="badge ${s.gender === 'female' ? 'red' : 'blue'}">${genderLabel(s.gender)}</span> ${statusBadge(s)}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${esc(s.name)} <span class="badge ${s.gender === 'female' ? 'sage' : 'blue'}">${genderLabel(s.gender)}</span> ${statusBadge(s)}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="cards" style="margin-bottom:16px">
         <div class="stat"><div class="l">Phòng</div><div class="v sm">${esc(s.room_name || '—')}${s.room_hang ? ` <span class="badge gray">${s.room_hang}</span>` : ''}</div></div>
@@ -499,7 +498,7 @@ function duplicateModal(d) {
   const s = d.existing || {};
   const dangO = s.status === 'in';
   openModal(`
-    <div class="mh"><h3>${IC.alert} Bạn này đã có hồ sơ</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.alert} Bạn này đã có hồ sơ</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint" style="margin:0 0 16px"><span>${esc(d.error)}</span></div>
       <div class="asset-item" style="padding:14px">
@@ -532,7 +531,7 @@ function meterField(id, roomName, verb) {
 function transferForm(id) {
   const s = studentById(id);
   openModal(`
-    <div class="mh"><h3>${IC.transfer} Chuyển phòng: ${esc(s.name)}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.transfer} Chuyển phòng: ${esc(s.name)}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted">Phòng hiện tại: <strong>${esc(s.room_name || '—')}</strong></p>
       <div class="grid2">
@@ -568,7 +567,7 @@ function refundForm(id) {
   const person = ST.assets.filter(a => a.category === 'person');
   const fixed = ST.assets.filter(a => a.category === 'fixed');
   openModal(`
-    <div class="mh"><h3>${IC.handCoins} Hoàn cọc: ${esc(s.name || '')}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.handCoins} Hoàn cọc: ${esc(s.name || '')}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">Tick số lượng tài sản <strong>hư hao / mất / không vệ sinh</strong> để khấu trừ vào cọc. Có thể sửa đơn giá bồi hoàn.</div>
       <div class="table-wrap" style="max-height:280px;overflow:auto"><table><thead><tr><th>Tài sản</th><th class="num">SL hư/mất</th><th class="num">Đơn giá</th><th class="num">Thành tiền</th></tr></thead><tbody>
@@ -634,7 +633,7 @@ async function delStudent(id) {
 async function showDeletedStudents() {
   const list = await guard(() => API.students(true));
   openModal(`
-    <div class="mh"><h3>${IC.trash} Học viên đã xóa (${list.length})</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.trash} Học viên đã xóa (${list.length})</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Học viên</th><th>Mã</th><th>Phòng</th><th></th></tr></thead><tbody>
         ${list.map(s => `<tr>
@@ -655,7 +654,7 @@ async function restoreStudentAndReload(id) {
 function appForm() {
   const facOpts = (ST.facilities || []).map(f => `<option value="${f.id}">${esc(f.name)}</option>`).join('');
   openModal(`
-    <div class="mh"><h3>${IC.filePen} Tạo đơn đăng ký</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.filePen} Tạo đơn đăng ký</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">${IC.info} Đơn tạo ở đây vào danh sách <strong>Đăng ký ở nội trú</strong> ở trạng thái <strong>Chờ duyệt</strong>. Bấm <strong>“Thêm vào phòng”</strong> để duyệt & tạo học viên.</div>
       <div class="grid2">
@@ -699,7 +698,7 @@ async function saveApp() {
 }
 function accountForm(id, code) {
   openModal(`
-    <div class="mh"><h3>Tài khoản đăng nhập học viên</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>Tài khoản đăng nhập học viên</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên đăng nhập <span class="opt">(bỏ trống nếu đã có)</span></label><input id="a_user" value="${esc(code || '')}"></div>
       <div class="field"><label>Mật khẩu mới</label><input id="a_pass" type="text" placeholder="tối thiểu 6 ký tự"></div>
@@ -715,7 +714,7 @@ async function saveAccount(id) {
 function depositForm(id) {
   const s = studentById(id) || {};
   openModal(`
-    <div class="mh"><h3>${IC.lock} Ghi nhận đóng cọc</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.lock} Ghi nhận đóng cọc</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Số tiền cọc</label><input id="d_amt" type="number" min="0" value="${esc(s.deposit_amount || ST.settings.deposit_fee || 1200000)}"></div>
@@ -750,7 +749,7 @@ function quyCoc() {
     <td class="num">${liveStatus(s) === 'left' ? `<button class="btn sm green" data-close data-act="refundForm" data-args='[${s.id}]'>Hoàn cọc</button>` : ''}</td>
   </tr>`;
   openModal(`
-    <div class="mh"><h3>${IC.lock} Quỹ cọc</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.lock} Quỹ cọc</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="kpis" style="margin-bottom:16px">
         <div class="kpi"><span class="ic ic-brand">${IC.lock}</span><div><div class="v">${money(total)}</div><div class="l">Tổng quỹ cọc đang giữ</div></div></div>

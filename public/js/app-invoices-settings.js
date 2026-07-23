@@ -108,14 +108,19 @@ function invActions(i) {
 }
 async function setInvStatus(id, status) { await guard(() => API.setInvoiceStatus(id, status)); await refreshCache(); viewInvoices(); }
 async function recalcInv(id) { const r = await guard(() => API.recalcInvoice(id)); toast(`Đã tính lại: ${r.days_stayed} ngày ở → ${money(r.total)}`); viewInvoices(); }
-async function delInvoice(id) { if (!confirm('Xóa hóa đơn này?')) return; await guard(() => API.deleteInvoice(id)); await refreshCache(); toast('Đã xóa'); viewInvoices(); }
+async function delInvoice(id) {
+  const i = (_invAll || []).find(x => x.id === id) || {};   // BL-30: nêu tên/tổng để tránh xóa nhầm
+  const who = [i.student_name, i.room_name].filter(Boolean).join(' · ');
+  if (!confirm(`Xóa hóa đơn${who ? ' của ' + who : ''}${i.total != null ? ' (tổng ' + money(i.total) + ')' : ''}?`)) return;
+  await guard(() => API.deleteInvoice(id)); await refreshCache(); toast('Đã xóa'); viewInvoices();
+}
 
 /* Tạo hóa đơn tự tính cho 1 học viên (VD học viên mới vào giữa tháng) */
 function oneInvoiceForm() {
   const opts = ST.students.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'))
     .map(s => `<option value="${s.id}">${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}${s.room_name ? ' · ' + esc(s.room_name) : ''}</option>`).join('');
   openModal(`
-    <div class="mh"><h3>${IC.plus} Tạo hóa đơn cho 1 học viên</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.plus} Tạo hóa đơn cho 1 học viên</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="hint">${IC.info} Dùng khi có học viên mới vào giữa tháng. Hệ thống <strong>tự tính</strong> theo phòng, số ngày ở và chỉ số điện đã lưu — không ảnh hưởng hóa đơn người khác (người đã đóng sẽ bị khóa).</div>
       <div class="grid2">
@@ -142,9 +147,10 @@ async function generateForm() {
   await renderGenerateForm(invMonth);
 }
 async function renderGenerateForm(month) {
+  el('modal').innerHTML = `<div class="mb"><div class="spinner"></div></div>`;   // BL-34: spinner khi đổi kỳ
   const rooms = await guard(() => API.electric(month));
   el('modal').innerHTML = `
-    <div class="mh"><h3>${IC.receipt} Tạo hóa đơn tháng</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.receipt} Tạo hóa đơn tháng</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Kỳ (tháng)</label><input id="g_month" type="month" value="${month}" data-change="onGenMonth"></div>
       <div class="hint">${IC.bulb} Nhập <strong>số cuối công-tơ</strong>. Số đầu tự lấy = số cuối tháng trước (sửa được để test). Tiền điện = (cuối − đầu) × ${money(ST.settings.electric_unit)}, chia đều theo số người ở.</div>
@@ -155,22 +161,29 @@ async function renderGenerateForm(month) {
 }
 // Bảng nhập chỉ số điện (số đầu + số cuối đều sửa được)
 function electricTable(rooms) {
-  return `<div class="table-wrap" style="max-height:340px;overflow:auto"><table><thead><tr><th>Phòng</th><th class="num">Đang ở</th><th class="num">Số đầu</th><th class="num">Số cuối</th><th class="num">Tiêu thụ</th><th class="num">Tiền điện</th></tr></thead><tbody>
-    ${rooms.map(r => { const st = +r.reading_start || 0, en = +r.reading_end || 0; return `<tr>
+  if (!rooms.length) return `<div class="empty">Chưa có phòng nào để nhập chỉ số điện cho kỳ này.</div>`;
+  return `<div class="table-wrap" style="max-height:min(560px,62vh);overflow:auto"><table><thead><tr><th>Phòng</th><th class="num">Đang ở</th><th class="num">Số đầu</th><th class="num">Số cuối</th><th class="num">Tiêu thụ</th><th class="num">Tiền điện</th></tr></thead><tbody>
+    ${rooms.map(r => { const st = +r.reading_start || 0, en = +r.reading_end || 0; const bad = en > 0 && en < st; const kwh = Math.max(0, en - st); return `<tr>
       <td><strong>${esc(r.room_name)}</strong> <span class="muted">${r.gender === 'female' ? 'Nữ' : 'Nam'}</span></td>
       <td class="num">${r.occupancy}</td>
       <td class="num"><input type="number" min="0" step="0.1" data-estart="${r.room_id}" value="${st || ''}" placeholder="0" style="width:90px;text-align:right" data-input="ecalc" data-args='[${r.room_id}]'></td>
-      <td class="num"><input type="number" min="0" step="0.1" data-room="${r.room_id}" value="${en || ''}" placeholder="0" style="width:90px;text-align:right" data-input="ecalc" data-args='[${r.room_id}]'></td>
-      <td class="num" id="ek_${r.room_id}">${Math.max(0, en - st)}</td>
-      <td class="num" id="em_${r.room_id}">${money(Math.max(0, en - st) * (+ST.settings.electric_unit || 0))}</td></tr>`; }).join('')}
+      <td class="num"><input type="number" min="0" step="0.1" data-room="${r.room_id}" value="${en || ''}" placeholder="0" style="width:90px;text-align:right${bad ? ';border-color:var(--red);background:var(--red-bg)' : ''}" data-input="ecalc" data-args='[${r.room_id}]'></td>
+      <td class="num" id="ek_${r.room_id}">${bad ? '<span class="err-inline" title="Số cuối nhỏ hơn số đầu — sửa lại">Số cuối &lt; số đầu</span>' : kwh}</td>
+      <td class="num" id="em_${r.room_id}">${bad ? '—' : money(kwh * (+ST.settings.electric_unit || 0))}</td></tr>`; }).join('')}
   </tbody></table></div>`;
 }
 function ecalc(rid) {
+  const enInp = document.querySelector(`[data-room="${rid}"]`);
   const st = +document.querySelector(`[data-estart="${rid}"]`).value || 0;
-  const en = +document.querySelector(`[data-room="${rid}"]`).value || 0;
+  const en = +enInp.value || 0;
+  const bad = en > 0 && en < st;   // BL-34: số cuối < số đầu -> báo lỗi thay vì nắn ngầm về 0
+  enInp.style.borderColor = bad ? 'var(--red)' : '';
+  enInp.style.background = bad ? 'var(--red-bg)' : '';
+  const ek = el('ek_' + rid), em = el('em_' + rid);
+  if (bad) { ek.innerHTML = '<span class="err-inline" title="Số cuối nhỏ hơn số đầu — sửa lại">Số cuối &lt; số đầu</span>'; em.textContent = '—'; return; }
   const kwh = Math.max(0, en - st);
-  el('ek_' + rid).textContent = kwh;
-  el('em_' + rid).textContent = money(kwh * (+ST.settings.electric_unit || 0));
+  ek.textContent = kwh;
+  em.textContent = money(kwh * (+ST.settings.electric_unit || 0));
 }
 function readElectricInputs() {
   return [...document.querySelectorAll('#modal input[data-room]')].map(inp => ({
@@ -178,6 +191,14 @@ function readElectricInputs() {
     reading_end: +inp.value || 0,
     reading_start: +(document.querySelector(`[data-estart="${inp.dataset.room}"]`)?.value) || 0,
   }));
+}
+// BL-34: phòng có "số cuối < số đầu" (chỉ số điện sai) -> chặn lưu/lập hóa đơn tới khi sửa
+function badElectricRooms() {
+  return [...document.querySelectorAll('#modal input[data-room]')].filter(inp => {
+    const en = +inp.value || 0;
+    const st = +(document.querySelector(`[data-estart="${inp.dataset.room}"]`)?.value) || 0;
+    return en > 0 && en < st;
+  });
 }
 /* Màn hình nhập chỉ số điện độc lập (lưu, không tạo hóa đơn) */
 let elecMonth = curMonth();
@@ -188,9 +209,10 @@ async function electricForm() {
 }
 async function renderElectricForm(month) {
   elecMonth = month;
+  el('modal').innerHTML = `<div class="mb"><div class="spinner"></div></div>`;   // BL-34: spinner khi đổi kỳ
   const rooms = await guard(() => API.electric(month));
   el('modal').innerHTML = `
-    <div class="mh"><h3>${IC.zap} Chỉ số điện theo tháng</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.zap} Chỉ số điện theo tháng</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Kỳ (tháng)</label><input id="e_month" type="month" value="${month}" data-change="onElecMonth"></div>
       <div class="hint">Nhập số đầu (lần đầu để test) và số cuối. Tháng sau số đầu sẽ tự nối tiếp. Bấm Lưu để ghi lại — dùng khi tạo hóa đơn.</div>
@@ -199,12 +221,14 @@ async function renderElectricForm(month) {
     <div class="mf"><button class="btn" data-act="closeModal">Đóng</button><button class="btn pri" data-act="saveElectric">Lưu chỉ số điện</button></div>`;
 }
 async function saveElectric() {
+  if (badElectricRooms().length) return toast('Có phòng "số cuối < số đầu" — sửa lại chỉ số điện trước khi lưu', 'err');
   const readings = readElectricInputs();
   await guard(() => API.saveElectric({ month: el('e_month').value, readings }));
   closeModal(); toast('Đã lưu chỉ số điện');
 }
 async function runGenerate() {
   const month = el('g_month').value; if (!month) return toast('Chọn kỳ', 'err');
+  if (badElectricRooms().length) return toast('Có phòng "số cuối < số đầu" — sửa lại chỉ số điện trước khi lập hóa đơn', 'err');
   const readings = readElectricInputs();
   // Bước 1: xem trước (dry-run) — tính nhưng KHÔNG lưu
   const pv = await guard(() => API.generateInvoices({ month, readings, preview: true }));
@@ -225,7 +249,7 @@ function invoiceForm(id) {
   const opts = ST.students.map(s => `<option value="${s.id}" ${i.student_id === s.id ? 'selected' : ''}>${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}</option>`).join('');
   const f = (lbl, key, extra = '') => `<div class="field"><label>${lbl}</label><input id="i_${key}" type="number" min="0" value="${esc(i[key] || 0)}" ${extra}></div>`;
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa hóa đơn' : 'Thêm hóa đơn lẻ'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa hóa đơn' : 'Thêm hóa đơn lẻ'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Học viên *</label><select id="i_stu" ${id ? 'disabled' : ''}>${opts}</select></div>
@@ -275,7 +299,7 @@ async function phieuBao(inv) {
   if (+inv.leader_discount) row('Giảm phòng trưởng', 'Miễn tiền nước + phí dịch vụ', -inv.leader_discount);
 
   openModal(`
-    <div class="mh rc-noprint"><h3>${IC.fileText} Phiếu báo tiền phòng</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh rc-noprint"><h3>${IC.fileText} Phiếu báo tiền phòng</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb"><div id="receiptArea"><div class="receipt">
       <div class="rc-head">
         <h2>${esc(set.dorm_name || 'Ký túc xá')}</h2>
@@ -638,7 +662,7 @@ function userForm(id) {
   if (id && !u) return;
   const roleOpt = (v, l) => `<option value="${v}" ${u.role === v ? 'selected' : ''}>${l}</option>`;
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa tài khoản' : 'Thêm nhân viên'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa tài khoản' : 'Thêm nhân viên'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên đăng nhập *</label><input id="u_username" value="${esc(u.username)}" ${id ? 'disabled' : ''} placeholder="vd: nhanvien01"></div>
       <div class="field"><label>Họ tên</label><input id="u_full" value="${esc(u.full_name || '')}" placeholder="Nguyễn Văn A"></div>
@@ -654,14 +678,14 @@ function userForm(id) {
 }
 async function saveUser(id) {
   const body = { full_name: el('u_full').value.trim(), role: el('u_role').value, facility_id: el('u_facility').value };
-  if (!id) { body.username = el('u_username').value.trim(); body.password = el('u_pass').value.trim(); }
+  if (!id) { body.username = el('u_username').value.trim(); body.password = el('u_pass').value.trim(); if (body.password.length < 6) return toast('Mật khẩu tối thiểu 6 ký tự', 'err'); }
   await guard(() => id ? API.updateUser(id, body) : API.createUser(body));
   closeModal(); toast(id ? 'Đã cập nhật tài khoản' : 'Đã tạo tài khoản'); loadAdminUsers();
 }
 function resetUserPwForm(id) {
   const u = (window._usrCache || []).find(x => x.id === id);
   openModal(`
-    <div class="mh"><h3>Đặt lại mật khẩu</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>Đặt lại mật khẩu</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted" style="margin-top:0">Tài khoản: <strong>${esc(u ? u.username : '')}</strong></p>
       <div class="field"><label>Mật khẩu mới *</label><input id="u_newpass" type="text" placeholder="Tối thiểu 6 ký tự"></div>
@@ -795,7 +819,7 @@ function vtypeForm(id) {
   const t = id ? (ST.vtypes || []).find(x => x.id === id) : { name: '', severity: 'minor', active: true };
   const sevOpt = (v, l) => `<option value="${v}" ${t.severity === v ? 'selected' : ''}>${l}</option>`;
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa loại vi phạm' : 'Thêm loại vi phạm'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa loại vi phạm' : 'Thêm loại vi phạm'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên loại vi phạm *</label><input id="vt_name" value="${esc(t.name)}" placeholder="VD: Về trễ giờ quy định"></div>
       <div class="grid2">
@@ -868,7 +892,7 @@ async function testSmtpConnection() {
 function assetForm(id) {
   const a = id ? ST.assets.find(x => x.id === id) : { name: '', unit: 'Cái', category: 'fixed', quantity: 1, fee: 0, note: '' };
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa tài sản' : 'Thêm tài sản'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa tài sản' : 'Thêm tài sản'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên tài sản *</label><input id="as_name" value="${esc(a.name)}" placeholder="VD: Remote máy lạnh"></div>
       <div class="grid2">
@@ -916,7 +940,7 @@ async function saveSettings() {
 function facilityForm(id) {
   const f = id ? ST.facilities.find(x => x.id === id) : { name: '', address: '' };
   openModal(`
-    <div class="mh"><h3>${id ? 'Sửa cơ sở' : 'Thêm cơ sở'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${id ? 'Sửa cơ sở' : 'Thêm cơ sở'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Tên cơ sở *</label><input id="fc_name" value="${esc(f.name)}" placeholder="VD: Cơ sở 2"></div>
       <div class="field"><label>Địa chỉ</label><input id="fc_addr" value="${esc(f.address || '')}"></div>
@@ -930,12 +954,16 @@ async function saveFacility(id) {
   await guard(() => id ? API.updateFacility(id, body) : API.createFacility(body));
   await refreshCache(); closeModal(); toast('Đã lưu cơ sở'); viewSettings();
 }
-async function delFacility(id) { if (!confirm('Xóa cơ sở này?')) return; await guard(() => API.deleteFacility(id)); await refreshCache(); toast('Đã xóa'); viewSettings(); }
+async function delFacility(id) {
+  const f = (ST.facilities || []).find(x => x.id === id) || {};   // BL-30 + BL-35[11a]: nêu tên + cảnh báo dây chuyền
+  if (!confirm(`Xóa cơ sở "${f.name || ''}"${f.room_count ? ` — đang có ${f.room_count} phòng, xóa có thể ảnh hưởng dữ liệu liên quan` : ''}?`)) return;
+  await guard(() => API.deleteFacility(id)); await refreshCache(); toast('Đã xóa'); viewSettings();
+}
 
 /* ---------- ĐỔI MẬT KHẨU ---------- */
 function changePwd() {
   openModal(`
-    <div class="mh"><h3>${IC.key} Đổi mật khẩu</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.key} Đổi mật khẩu</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Mật khẩu mới <span class="opt">(tối thiểu 6 ký tự)</span></label><input id="cp_new" type="password"></div>
       <div class="field"><label>Nhập lại mật khẩu mới</label><input id="cp_new2" type="password"></div>

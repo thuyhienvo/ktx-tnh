@@ -187,8 +187,24 @@ tbody tr{transition:background .13s}
 tbody tr:hover{background:#faf6ee}
 tbody tr:last-child td{border-bottom:none}
 td.num,th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
-.empty{padding:60px 40px;text-align:center;color:var(--muted)}
+/* BL-51: empty state có icon mờ + căn giữa (scope :not(.cal-d) để KHÔNG đụng ô lịch trống .cal-d.empty).
+   GIỮ block + text-align:center để chữ/<strong>/nút chảy nội tuyến bình thường (không flex-column -> không
+   block-hoá <strong> giữa câu làm vỡ dòng); icon là 1 khối ::before căn giữa phía trên. */
+.empty:not(.cal-d){padding:40px 32px 44px;text-align:center;color:var(--muted)}
+@supports ((-webkit-mask:url("x")) or (mask:url("x"))){
+  .empty:not(.cal-d)::before{content:"";display:block;width:44px;height:44px;margin:0 auto 9px;background:var(--muted);opacity:.3;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='22 12 16 12 14 15 10 15 8 12 2 12'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='22 12 16 12 14 15 10 15 8 12 2 12'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E") center/contain no-repeat}
+}
 .sub2{color:var(--muted);font-size:12px;margin-top:2px}
+/* BL-63: bấm khối tên học viên = mở chi tiết (đã bỏ nút "Chi tiết") */
+.stu-name{cursor:pointer}
+.stu-name .row-chev{margin-left:auto;color:var(--muted);display:inline-flex;flex-shrink:0;transition:color .15s,transform .15s}
+.stu-name .row-chev .ic-svg{width:18px;height:18px}
+.stu-name:hover strong{text-decoration:underline;text-underline-offset:2px}
+.stu-name:hover .row-chev{color:var(--brand-d);transform:translateX(2px)}
+.stu-name:focus-visible{outline:2px solid var(--brand);outline-offset:-2px;border-radius:10px}
+/* BL-35[5]: phản hồi khi chạm hàng bấm được (vd phiếu HV ở cổng học viên) */
+tr[data-act]{cursor:pointer}
+tr[data-act]:active{background:var(--bg2)}
 
 /* ---------- Thẻ KPI ---------- */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(214px,1fr));gap:16px;margin-bottom:26px}
@@ -274,6 +290,7 @@ td.num,th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-n
 .badge.amber{background:var(--amber-bg);color:var(--amber-ink)}
 .badge.blue{background:var(--blue-bg);color:var(--blue-ink)}
 .badge.gray{background:var(--gray-bg);color:var(--gray-ink)}
+.badge.sage{background:var(--sage-bg);color:var(--sage-ink)}
 
 /* ---------- Form ---------- */
 .field{margin-bottom:16px}

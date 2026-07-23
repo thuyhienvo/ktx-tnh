@@ -105,6 +105,7 @@ async function viewRequests() {
         <td>${d.status === 'done' ? '<span class="badge green">Đã xử lý</span>' : d.status === 'processing' ? '<span class="badge blue">Đang xử lý</span>' : '<span class="badge amber">Mới</span>'}</td>
         <td class="num"><div class="rowbtns" style="justify-content:flex-end">
           ${d.status === 'new' ? `<button class="btn sm" data-act="setDamage" data-args='[${d.id},"processing"]'>Đang xử lý</button>` : ''}
+          ${d.category === 'violation' ? `<button class="btn sm" data-act="vioFromFeedback" data-args='[${d.id}]'>${IC.alert} Ghi nhận vi phạm</button>` : ''}
           ${d.status !== 'done' ? `<button class="btn sm green" data-act="setDamage" data-args='[${d.id},"done"]'>${IC.check} Xong</button>` : `<button class="btn sm" data-act="setDamage" data-args='[${d.id},"new"]'>Mở lại</button>`}
           <button class="btn sm ghost" title="Ghi chú" data-act="noteForm" data-args='["damage", ${d.id}]'>${IC.filePen}</button>
         </div></td></tr>`).join('')}
@@ -121,7 +122,7 @@ function noteForm(type, id) {
     : type === 'cout' ? (ST.couts.find(c => c.id === id) || {}).admin_note
       : (ST.damage.find(d => d.id === id) || {}).admin_note) || '';
   openModal(`
-    <div class="mh"><h3>${IC.filePen} Ghi chú xử lý</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.filePen} Ghi chú xử lý</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb"><div class="field"><label>Ghi chú nội bộ <span class="opt">(chỉ quản lý thấy)</span></label><textarea id="nf_note" rows="4" placeholder="VD: đã gọi điện, hẹn xử lý...">${esc(cur || '')}</textarea></div></div>
     <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="saveNote" data-args='["${type}", ${id}]'>Lưu ghi chú</button></div>`);
   setTimeout(() => el('nf_note').focus(), 50);
@@ -136,6 +137,15 @@ async function saveNote(type, id) {
 const noteLine = n => n ? `<div class="sub2" style="color:var(--brand-d);white-space:pre-wrap;margin-top:3px">${IC.filePen} ${esc(n)}</div>` : '';
 
 /* ---- Vi phạm / nhắc nhở ---- */
+// BL-45 #3: nối "phản ánh vi phạm" (góp ý category=violation) sang form ghi nhận vi phạm, chép sẵn nội dung.
+// studentId=0 -> dropdown BẬT để QL tự chọn người BỊ phản ánh (người bị nêu là chữ tự do, tránh gắn sai).
+function vioFromFeedback(id) {
+  const d = (ST.damage || []).find(x => x.id === id) || {};
+  const who = d.student_name ? `${d.student_name}${d.room_name ? ' · ' + d.room_name : ''}` : '';
+  const prefill = `Từ phản ánh${who ? ' của ' + who : ''}: ${d.title || ''}${d.description ? ' — ' + d.description : ''}`;
+  violationForm(0);
+  setTimeout(() => { const n = el('vf_note'); if (n) n.value = prefill; }, 60);
+}
 function violationForm(studentId) {
   const students = ST.students.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'));
   const sOpts = students.map(s => `<option value="${s.id}" ${studentId === s.id ? 'selected' : ''}>${esc(s.name)}${s.code ? ' (' + esc(s.code) + ')' : ''}</option>`).join('');
@@ -143,7 +153,7 @@ function violationForm(studentId) {
   const tOpts = types.map(t => `<option value="${t.id}">${esc(t.name)} — ${VIO_SEV[t.severity] ? VIO_SEV[t.severity][0] : ''}</option>`).join('');
   const thr = (ST.settings && ST.settings.violation_mail_threshold) || 3;
   openModal(`
-    <div class="mh"><h3>${IC.alert} Ghi nhận vi phạm</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.alert} Ghi nhận vi phạm</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Học viên *</label><select id="vf_stu" ${studentId ? 'disabled' : ''}>${sOpts}</select></div>
       <div class="grid2">
@@ -184,7 +194,7 @@ async function violationStatsModal() {
   const st = await guard(() => API.violationStats(curMonth().slice(0, 4)));
   const sev = k => (st.bySeverity.find(x => x.severity === k) || { c: 0 }).c;
   openModal(`
-    <div class="mh"><h3>${IC.trendingUp} Thống kê vi phạm</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.trendingUp} Thống kê vi phạm</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="kpis" style="margin-bottom:16px">
         <div class="kpi"><span class="ic ic-gray">${IC.alert}</span><div><div class="v">${st.total}</div><div class="l">Tổng lượt vi phạm</div></div></div>
@@ -207,7 +217,7 @@ function approveForm(id) {
   const a = (ST.applications || []).find(x => x.id === id);   // viewRequests da dong bo ST.applications
   if (!a) return toast('Không tìm thấy đơn', 'err');
   openModal(`
-    <div class="mh"><h3>${IC.plus} Thêm vào phòng: ${esc(a.name)}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.plus} Thêm vào phòng: ${esc(a.name)}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <p class="muted">${esc(a.phone)} · ${genderLabel(a.gender)} · ${RENTAL_LABEL[a.rental_type] || 'Thuê ghép'}${a.pref ? ' · NV: ' + esc(a.pref) : ''}</p>
       ${a.wants_washing || a.wants_parking || a.plate ? `<div class="hint">Dịch vụ đăng ký: ${a.wants_washing ? `${IC.washer} Máy giặt ` : ''}${a.wants_parking || a.plate ? `${IC.bike} Gửi xe${a.plate ? ' (' + esc(a.plate) + ')' : ''}` : ''} — sẽ tự thêm khi duyệt.</div>` : ''}
@@ -252,10 +262,26 @@ async function doApprove(id) {
   if (r === null) return; // đã có hồ sơ / người dùng huỷ — modal kia đã chỉ đường
   if (r === null) return; // hủy ở hộp xác nhận quá tải
   await refreshCache(); closeModal();
-  if (r.account) alert(`Đã thêm học viên & tạo tài khoản:\n\nTên đăng nhập: ${r.account.username}\nMật khẩu: ${r.account.password}\n\nGửi thông tin này cho học viên để đăng nhập.`);
-  else toast('Đã thêm học viên vào phòng');
-  viewRequests();
+  if (r.account) { viewRequests(); credentialModal(r.account.username, r.account.password); }
+  else { toast('Đã thêm học viên vào phòng'); viewRequests(); }
 }
+// BL-30: hộp tài khoản có nút Sao chép thay alert() (alert không copy được, dễ gõ sai khi gửi HV).
+function credentialModal(username, password) {
+  openModal(`
+    <div class="mh"><h3>${IC.key} Tài khoản đăng nhập học viên</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
+    <div class="mb">
+      <div class="hint">${IC.checkCircle} Đã thêm học viên & tạo tài khoản. Gửi thông tin này cho học viên — <strong>đóng hộp là không xem lại được</strong> (phải vào Sửa hồ sơ để đặt lại mật khẩu).</div>
+      <div class="field"><label>Tên đăng nhập</label>
+        <div class="flex" style="gap:6px"><input id="cred_user" value="${esc(username)}" readonly style="flex:1">
+        <button type="button" class="btn sm" data-act="copyCred" data-args='["cred_user"]'>${IC.clipboard} Sao chép</button></div></div>
+      <div class="field" style="margin-bottom:0"><label>Mật khẩu</label>
+        <div class="flex" style="gap:6px"><input id="cred_pass" value="${esc(password)}" readonly style="flex:1">
+        <button type="button" class="btn sm" data-act="copyCred" data-args='["cred_pass"]'>${IC.clipboard} Sao chép</button></div></div>
+    </div>
+    <div class="mf"><button class="btn pri" data-act="copyCredBoth">${IC.clipboard} Sao chép cả hai</button><button class="btn" data-act="closeModal">Đóng</button></div>`);
+}
+function copyCred(inputId) { const inp = el(inputId); if (inp) copyToClipboard(inp.value); }
+function copyCredBoth() { copyToClipboard(`Tên đăng nhập: ${el('cred_user').value}\nMật khẩu: ${el('cred_pass').value}`); }
 async function rejectApp(id) { if (!confirm('Từ chối đơn này?')) return; await guard(() => API.rejectApplication(id)); toast('Đã từ chối'); viewRequests(); }
 async function delApp(id) { if (!confirm('Xóa đơn này?')) return; await guard(() => API.deleteApplication(id)); toast('Đã xóa'); viewRequests(); }
 async function setDamage(id, status) { await guard(() => API.updateDamage(id, { status })); toast('Đã cập nhật'); viewRequests(); }
@@ -272,7 +298,7 @@ function confirmCout(id) {
   const roomName = (s && s.room_name) || cr.room_name || '';
   const hasRoom = !!((s && s.room_id) || roomName);
   openModal(`
-    <div class="mh"><h3>${IC.doorOpen} Duyệt trả phòng: ${esc(cr.student_name || (s && s.name) || '')}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.doorOpen} Duyệt trả phòng: ${esc(cr.student_name || (s && s.name) || '')}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="field"><label>Ngày rời thực tế</label><input id="cc_date" type="date" value="${esc(cr.desired_date ? String(cr.desired_date).slice(0, 10) : today())}"></div>
       ${hasRoom ? meterField('cc_meter', roomName, 'rời phòng') : ''}
@@ -296,7 +322,7 @@ async function rejectCout(id) { if (!confirm('Từ chối đơn trả phòng?'))
 function checkInForm(id) {
   const s = studentById(id);
   openModal(`
-    <div class="mh"><h3>${IC.key} Check-in: ${esc(s.name)}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.key} Check-in: ${esc(s.name)}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Ngày vào</label><input id="c_date" type="date" value="${today()}"></div>
@@ -315,7 +341,7 @@ async function doCheckIn(id) {
 function checkOutForm(id) {
   const s = studentById(id);
   openModal(`
-    <div class="mh"><h3>${IC.doorOpen} Check-out: ${esc(s.name)}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${IC.doorOpen} Check-out: ${esc(s.name)}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb">
       <div class="grid2">
         <div class="field"><label>Ngày báo trả phòng</label><input id="c_notice" type="date" value="${today()}"></div>
@@ -346,7 +372,7 @@ function depositSettlePrompt(id, refund) {
   openModal(`
     <div class="mh"><h3>${IC.lock} Xử lý tiền cọc</h3><button class="x" data-act="reloadView">×</button></div>
     <div class="mb">
-      <div class="hint" style="background:${refund.eligible ? '#dcfce7' : '#fee2e2'};border-color:${refund.eligible ? '#86efac' : '#fca5a5'};color:${refund.eligible ? '#15803d' : '#b91c1c'}">
+      <div class="hint" style="background:${refund.eligible ? 'var(--green-bg)' : 'var(--red-bg)'};border-color:${refund.eligible ? 'var(--green)' : 'var(--red)'};color:${refund.eligible ? 'var(--green-ink)' : 'var(--red-ink)'}">
         ${refund.eligible ? IC.checkCircle+' Đủ điều kiện hoàn cọc' : IC.alert+' Chưa đủ điều kiện hoàn cọc'} — ${esc(refund.reason)}
       </div>
       <p>Bạn muốn xử lý tiền cọc thế nào?</p>
@@ -381,7 +407,7 @@ function quickPick(type) {
   const pool = type === 'in' ? ST.students.filter(s => s.status !== 'in') : ST.students.filter(isOccupying);
   if (!pool.length) return toast(type === 'in' ? 'Không có học viên nào đang ở ngoài' : 'Không có học viên nào đang ở', 'err');
   openModal(`
-    <div class="mh"><h3>${type === 'in' ? IC.check+' Check-in nhanh' : IC.undo+' Check-out nhanh'}</h3><button class="x" data-act="closeModal">×</button></div>
+    <div class="mh"><h3>${type === 'in' ? IC.check+' Check-in nhanh' : IC.undo+' Check-out nhanh'}</h3><button class="x" aria-label="Đóng" data-act="closeModal">×</button></div>
     <div class="mb"><div class="field"><label>Chọn học viên</label>
       <select id="q_stu">${pool.map(s => `<option value="${s.id}">${esc(s.name)} ${s.code ? '(' + esc(s.code) + ')' : ''}</option>`).join('')}</select></div></div>
     <div class="mf"><button class="btn" data-act="closeModal">Hủy</button><button class="btn pri" data-act="quickPickGo" data-args='["${type}"]'>Tiếp tục</button></div>`);

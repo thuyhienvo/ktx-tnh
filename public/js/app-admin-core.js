@@ -37,7 +37,7 @@ function renderAdmin() {
       <div class="side-backdrop" id="sideBackdrop" data-act="toggleSide"></div>
       <div class="main">
         <div class="top">
-          <button class="hamburger" data-act="toggleSide" aria-label="Menu">${IC.menu}</button>
+          <button class="hamburger" data-act="toggleSide" aria-label="Menu" aria-expanded="false">${IC.menu}</button>
           <button class="hamburger" id="backBtn" data-act="goBack" aria-label="Quay lại" title="Quay lại" style="display:none">${IC.arrowLeft}</button>
           <div style="flex:1;min-width:0"><h1 id="pgTitle">Tổng quan</h1><div class="sub" id="pgSub"></div></div>
           <div class="flex" style="gap:10px">
@@ -50,6 +50,7 @@ function renderAdmin() {
       </div>
     </div>`;
   document.querySelectorAll('#nav button').forEach(b => b.addEventListener('click', () => adminGo(b.dataset.v)));
+  document.addEventListener('keydown', _escDrawer);   // BL-31: Esc đóng drawer (dedup nhờ named fn)
   startTableResize();
   // Màn ban đầu: ƯU TIÊN đường dẫn (deep-link /hoc-vien...), rồi tới ?view= cũ (giữ tương thích link cũ),
   // cuối cùng mặc định Tổng quan. adminGo lần đầu dùng {replace} để không tạo bước lịch sử thừa.
@@ -105,11 +106,21 @@ function renderViewError(view, e) {
 }
 
 async function refreshCache() {
+  // BL-19: 4 API lõi (rooms/students/facilities/settings) GIỮ tiên quyết — hỏng thì reject -> renderBootError (BL-13).
+  // 7 API phụ: hỏng thì ghi vết vào ST.cacheErrors (báo qua chuông) thay vì nuốt im -> hiện số 0 giả.
+  const failed = [];
+  const soft = (p, label, dflt) => p.catch(() => { failed.push(label); return dflt; });
   const [rooms, students, facilities, settings, applications, damage, couts, logs, assets, vtypes, vstats] = await Promise.all([
     API.rooms(), API.students(), API.facilities(), API.settings(),
-    API.applications().catch(() => []), API.damageAll().catch(() => []), API.checkoutReqs().catch(() => []), API.logs().catch(() => []), API.assets().catch(() => []),
-    API.violationTypes().catch(() => []), API.violationStats().catch(() => ({ byStudent: [], needMail: 0, threshold: 3 })),
+    soft(API.applications(), 'đơn đăng ký', []),
+    soft(API.damageAll(), 'hỗ trợ / hư hỏng', []),
+    soft(API.checkoutReqs(), 'đơn trả phòng', []),
+    soft(API.logs(), 'lịch sử', []),
+    soft(API.assets(), 'tài sản', []),
+    soft(API.violationTypes(), 'loại vi phạm', []),
+    soft(API.violationStats(), 'vi phạm', { byStudent: [], needMail: 0, threshold: 3 }),
   ]);
+  ST.cacheErrors = failed;
   Object.assign(ST, { rooms, students, facilities, settings, applications, damage, couts, logs, assets, vtypes, vstats });
   // Admin: đếm tài khoản chờ duyệt (SSO tự tạo role='pending') để BÁO qua chuông + badge Cài đặt.
   // Staff không có quyền endpoint này -> bỏ qua.
@@ -149,6 +160,8 @@ function updateNavBadges() {
 /* ---- Trung tâm thông báo (chuông) ---- */
 function notifItems() {
   const items = [];
+  // BL-19: dataset phụ tải hỏng -> cảnh báo trên chuông + nút Thử lại, thay vì để badge/số về 0 giả im lặng.
+  if (ST.cacheErrors && ST.cacheErrors.length) items.push({ n: ST.cacheErrors.length, ic: IC.alert, tx: `Chưa tải được: ${ST.cacheErrors.join(', ')} — số liệu có thể chưa đầy đủ. Bấm để thử lại`, act: actAttr('retryCache') });
   const pApps = ST.applications.filter(a => a.status === 'pending').length;
   const pDmg = ST.damage.filter(d => (d.category || 'damage') === 'damage' && d.status !== 'done').length;
   const pCout = ST.couts.filter(c => c.status === 'pending').length;
@@ -167,6 +180,11 @@ function updateNotif() {
   const total = notifItems().reduce((a, i) => a + i.n, 0);
   const d = el('notifDot'); if (d) { d.textContent = total > 99 ? '99+' : total; d.style.display = total ? '' : 'none'; }
 }
+// BL-19: thử tải lại các dataset phụ bị hỏng rồi vẽ lại màn hiện tại (cảnh báo tự mất khi thành công).
+async function retryCache() {
+  try { await refreshCache(); adminGo(ST.view || 'dashboard'); }
+  catch (e) { toast((e && e.message) || 'Lỗi kết nối', 'err'); }
+}
 // TỰ hỏi server định kỳ. Trước đây chuông chỉ đếm lại từ ST (nạp 1 lần lúc mở trang) và chỉ đổi
 // khi CHÍNH MÌNH bấm một nút có sửa dữ liệu -> việc mới từ máy khác nằm im, phải tự F5 mới thấy (V2-77).
 let _notifTimer = null;
@@ -182,7 +200,7 @@ async function refreshNotifCounts() {
     if (el('notifPanel')) {                      // panel đang mở -> vẽ lại nội dung cho khớp
       const items = notifItems();
       const inner = el('notifPanel');
-      inner.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" data-closenotif ${i.act}>${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
+      inner.innerHTML = `<div class="notif-hd" id="notifHd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" data-closenotif ${i.act}>${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
     }
   } catch (e) { /* lỗi mạng tạm -> lần poll sau thử lại, không quấy người dùng */ }
 }
@@ -205,8 +223,8 @@ function toggleNotif(e) {
   if (el('notifPanel')) { closeNotif(); return; }
   const items = notifItems();
   const p = document.createElement('div'); p.className = 'notif-panel'; p.id = 'notifPanel';
-  p.setAttribute('role', 'dialog');
-  p.innerHTML = `<div class="notif-hd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" data-closenotif ${i.act}>${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
+  p.setAttribute('role', 'dialog'); p.setAttribute('aria-labelledby', 'notifHd'); p.tabIndex = -1;   // BL-31: a11y dialog
+  p.innerHTML = `<div class="notif-hd" id="notifHd">${IC.bell} Thông báo — cần xử lý</div>${items.length ? items.map(i => `<button class="notif-item" data-closenotif ${i.act}>${i.ic}<span>${i.tx}</span></button>`).join('') : `<div class="notif-empty">${IC.checkCircle} Không có việc cần xử lý</div>`}`;
   document.body.appendChild(p);
   const r = el('notifBell').getBoundingClientRect();
   p.style.top = (r.bottom + 8) + 'px';
@@ -217,6 +235,7 @@ function toggleNotif(e) {
   p.style.left = Math.min(Math.max(8, r.right - pw), window.innerWidth - pw - 8) + 'px';
   p.style.right = 'auto';
   const b = el('notifBell'); if (b) b.setAttribute('aria-expanded', 'true');
+  const _f = p.querySelector('.notif-item'); (_f || p).focus();   // BL-31: đưa focus vào panel khi mở
   // Đóng khi: bấm/chạm ra ngoài (cả touchstart — iOS không phát mousedown khi chạm vùng trống),
   // và khi bấm Esc (trước đây không có handler bàn phím nào -> mở panel bằng phím là kẹt luôn).
   setTimeout(() => {
@@ -229,19 +248,26 @@ function _notifOutside(e) {
   const p = el('notifPanel');
   if (p && !p.contains(e.target) && !e.target.closest('#notifBell')) closeNotif();
 }
-function _notifKey(e) { if (e.key === 'Escape') closeNotif(); }
+function _notifKey(e) { if (e.key === 'Escape') { closeNotif(); const b = el('notifBell'); if (b) b.focus(); } }   // BL-31: Esc trả focus về chuông
 /* ---- Menu trượt trên mobile ---- */
 function toggleSide() {
   const s = document.querySelector('.side'), b = el('sideBackdrop');
   const open = s && s.classList.toggle('open');
   if (b) b.classList.toggle('show', !!open);
   document.body.classList.toggle('drawer-open', !!open);   // BL-55: khoá cuộn trang nền khi drawer mở
+  const h = document.querySelector('button.hamburger[data-act="toggleSide"]');   // BL-31: a11y (KHÔNG khớp #backBtn/backdrop)
+  if (h) h.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) { const fb = el('nav') && el('nav').querySelector('button'); if (fb) fb.focus(); }
 }
 function closeSide() {
   const s = document.querySelector('.side'), b = el('sideBackdrop');
   if (s) s.classList.remove('open'); if (b) b.classList.remove('show');
   document.body.classList.remove('drawer-open');
+  const h = document.querySelector('button.hamburger[data-act="toggleSide"]');   // BL-31: a11y
+  if (h) h.setAttribute('aria-expanded', 'false');
 }
+// BL-31: Esc đóng drawer + trả focus về nút Menu. Named function -> addEventListener dedup nếu renderAdmin chạy lại.
+function _escDrawer(e) { if (e.key === 'Escape' && document.querySelector('.side.open')) { closeSide(); const h = document.querySelector('button.hamburger[data-act="toggleSide"]'); if (h) h.focus(); } }
 /* ================= ĐỊNH TUYẾN (BL-10) =================
    Trước đây mọi màn quản trị dùng chung URL '/': Back thoát app, F5 mất chỗ, không gửi link được.
    Mỗi màn nay có đường dẫn riêng (/students, /rooms...). Server đã trả index.html cho mọi path
@@ -431,18 +457,17 @@ const studentById = id => ST.students.find(s => s.id === id);
 const facilityName = id => { const f = ST.facilities.find(x => x.id === id); return f ? f.name : '—'; };
 
 /* ---------- ĐIỀU HÀNH (DASHBOARD LÃNH ĐẠO) ---------- */
-// Biểu đồ cột: tổng (xám) + đã thu (vàng) chồng lên
+// Biểu đồ cột doanh thu dự báo theo tháng (BL-49: caller truyền đủ 12 khe tháng -> cột đầy chiều ngang)
 function svgBars(rows) {
   const n = rows.length || 1;
-  // Khung hẹp lại khi ít cột (1 cột không nằm lọt thỏm giữa vùng trắng mênh mông)
   const W = Math.max(260, Math.min(720, n * 60)), H = 240, pt = 16, pb = 30, pl = 6, pr = 6;
   const max = Math.max(1, ...rows.map(r => r.total));
   const cw = (W - pl - pr) / n, bw = Math.min(34, cw * 0.5), ch = H - pt - pb;
   const yOf = v => pt + ch - (v / max) * ch;
+  // BL-49: 1 cột/tháng (bỏ lớp 2 màu vô nghĩa vì paid=total); tháng chưa có -> height 0, chỉ còn nhãn trục.
   const g = rows.map((r, i) => {
-    const x = pl + cw * i + (cw - bw) / 2, yt = yOf(r.total), yp = yOf(r.paid);
-    return `<g><rect x="${x}" y="${yt}" width="${bw}" height="${(pt + ch - yt).toFixed(1)}" rx="3" fill="var(--line2)"><title>${monthLabel(r.month)} · Tổng ${money(r.total)}</title></rect>` +
-      `<rect x="${x}" y="${yp}" width="${bw}" height="${(pt + ch - yp).toFixed(1)}" rx="3" fill="var(--brand)"><title>${monthLabel(r.month)} · Dự báo ${money(r.paid)}</title></rect>` +
+    const x = pl + cw * i + (cw - bw) / 2, yt = yOf(r.total);
+    return `<g><rect x="${x}" y="${yt}" width="${bw}" height="${(pt + ch - yt).toFixed(1)}" rx="3" fill="var(--brand)"><title>${monthLabel(r.month)} · Dự báo ${money(r.total)}</title></rect>` +
       `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${r.label}</text></g>`;
   }).join('');
   // Khoá chiều cao ${H}px: trước đây width:100% làm SVG phóng to theo bề ngang -> cao ~450px, nhìn như hỏng
