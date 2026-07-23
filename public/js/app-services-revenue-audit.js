@@ -132,7 +132,7 @@ function exportRevenue() {
   const head = ['Thang', ...cols, 'Tong'];
   const rows = data.map(m => [m.month, ...REV_SERVICES.map(([k]) => +m[k] || 0), +m.total || 0]);
   const sum = k => data.reduce((a, m) => a + (+m[k] || 0), 0);
-  rows.push(['Ca nam', ...REV_SERVICES.map(([k]) => sum(k)), sum('total'), sum('paid')]);
+  rows.push(['Ca nam', ...REV_SERVICES.map(([k]) => sum(k)), sum('total')]);  // BL-29: bỏ cột paid thừa (head/data không có) -> dòng tổng khớp cột
   const csv = '﻿' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -230,7 +230,7 @@ async function viewAudit() {
   el('content').innerHTML = `
     <div class="cards">
       <div class="stat"><div class="l">${IC.history} Tổng bản ghi ${dangLoc ? '(theo bộ lọc)' : ''}</div><div class="v sm">${total.toLocaleString('vi-VN')}</div></div>
-      <div class="stat"><div class="l">${IC.calendar} Thao tác hôm nay</div><div class="v sm">${todayCnt}</div></div>
+      <div class="stat"><div class="l">${IC.calendar} Thao tác hôm nay (trang này)</div><div class="v sm">${todayCnt}</div></div>
       <div class="stat"><div class="l">${IC.users} Người thao tác (trang này)</div><div class="v sm">${users}</div></div>
     </div>
     <div class="panel"><div class="hd"><h2>${IC.history} Nhật ký thao tác</h2>
