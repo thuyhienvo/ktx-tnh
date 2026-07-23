@@ -31,11 +31,17 @@ async function viewInvoices() {
   // Chỉ tự nhảy tới kỳ CÓ hóa đơn khi đang ở kỳ MẶC ĐỊNH (tháng hiện tại) mà nó chưa có hóa đơn.
   // Không ép nữa khi người dùng đã chọn kỳ khác — để chọn được cả kỳ chưa có hóa đơn (BL-53).
   if (months.length && invMonth === curMonth() && !months.includes(invMonth)) invMonth = months[0];
-  // Dải kỳ cho dropdown: gộp tháng đã có hóa đơn + kỳ đang xem + 24 tháng gần nhất, bỏ trùng, mới nhất trước.
+  // Dải kỳ cho dropdown: gộp tháng đã có hóa đơn + kỳ đang xem + cửa sổ 12 tháng TƯƠNG LAI ... 12 quá khứ
+  // (để chọn được cả kỳ sắp tới, không chỉ quá khứ), bỏ trùng, mới nhất trước (tương lai lên đầu).
   const imMonths = (() => {
     const set = new Set(months); set.add(invMonth);
-    let [y, mo] = curMonth().split('-').map(Number);
-    for (let k = 0; k < 24; k++) { set.add(`${y}-${String(mo).padStart(2, '0')}`); if (--mo === 0) { mo = 12; y--; } }
+    const [y, mo] = curMonth().split('-').map(Number);
+    for (let k = 12; k >= -12; k--) {           // +12 (tương lai) -> -12 (quá khứ)
+      let yy = y, mm = mo + k;
+      while (mm > 12) { mm -= 12; yy++; }
+      while (mm < 1) { mm += 12; yy--; }
+      set.add(`${yy}-${String(mm).padStart(2, '0')}`);
+    }
     return [...set].sort().reverse();
   })();
   const all = await guard(() => API.invoices(invMonth));
