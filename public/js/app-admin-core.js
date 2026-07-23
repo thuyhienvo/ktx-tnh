@@ -38,6 +38,7 @@ function renderAdmin() {
       <div class="main">
         <div class="top">
           <button class="hamburger" data-act="toggleSide" aria-label="Menu">${IC.menu}</button>
+          <button class="hamburger" id="backBtn" data-act="goBack" aria-label="Quay lại" title="Quay lại" style="display:none">${IC.arrowLeft}</button>
           <div style="flex:1;min-width:0"><h1 id="pgTitle">Tổng quan</h1><div class="sub" id="pgSub"></div></div>
           <div class="flex" style="gap:10px">
             <span id="facSel"></span>
@@ -364,8 +365,13 @@ function filterUrl(view) {
 function syncFilterUrl() {
   if (!Auth.user || !el('nav')) return;             // chỉ áp cho giao diện quản trị
   const target = filterUrl(ST.view);
-  if (curUrl() !== target) history.replaceState({ view: ST.view }, '', target);
+  if (curUrl() !== target) history.replaceState({ view: ST.view, d: navDepth() }, '', target);
 }
+// BL-58: độ sâu điều hướng TRONG app, lưu ở history.state.d (theo mỗi entry nên Back/Forward khôi phục đúng).
+// Nút "Quay lại" (‹) chỉ hiện khi d>0 → ở màn gốc thì ẩn, không bấm back ra ngoài app.
+const navDepth = () => (history.state && history.state.d) || 0;
+function goBack() { history.back(); }               // routing (BL-10) + onpopstate đã xử lý sẵn
+function updateBackBtn() { const b = el('backBtn'); if (b) b.style.display = navDepth() > 0 ? '' : 'none'; }
 
 // opts.replace: nạp lần đầu (thay URL, không thêm history) · opts.fromPop: đến từ nút Back/Forward
 // (URL đã đổi sẵn, chỉ đồng bộ lại nếu bị nắn view) · mặc định: điều hướng thường -> pushState.
@@ -380,7 +386,7 @@ function adminGo(view, opts) {
     if (!confirm('Bạn có dữ liệu chưa lưu.\n\nRời khỏi và bỏ những gì vừa nhập?')) {
       // Người dùng bấm Back rồi lại Huỷ: trình duyệt ĐÃ lùi URL — kéo lại về màn đang đứng.
       // pushState KHÔNG kích hoạt popstate nên không sinh vòng lặp. Giữ cả bộ lọc đang xem (BL-17).
-      if (opts.fromPop) history.pushState({ view: ST.view }, '', filterUrl(ST.view));
+      if (opts.fromPop) history.pushState({ view: ST.view, d: navDepth() }, '', filterUrl(ST.view));
       return;
     }
     closeModalNgay();
@@ -402,10 +408,12 @@ function adminGo(view, opts) {
   const target = filterUrl(view);   // path màn + query bộ lọc hiện tại (đã bỏ mặc định)
   const cur = curUrl();
   if (opts.replace || opts.fromPop || view === prev) {
-    if (cur !== target) history.replaceState({ view }, '', target); // nạp đầu / Back bị nắn view / vẽ lại cùng màn
+    // nạp đầu (replace) -> gốc d=0; Back/Forward (fromPop) -> giữ d đã khôi phục; vẽ lại cùng màn -> giữ d.
+    if (cur !== target) history.replaceState({ view, d: opts.replace ? 0 : navDepth() }, '', target);
   } else {
-    history.pushState({ view }, '', target);                        // điều hướng thường -> thêm 1 bước lịch sử
+    history.pushState({ view, d: navDepth() + 1 }, '', target);      // điều hướng thường -> sâu thêm 1 bước
   }
+  updateBackBtn();  // BL-58: hiện/ẩn nút Quay lại theo độ sâu điều hướng
   const _vp = ({ exec: viewExec, dashboard: viewDashboard, students: viewStudents, rooms: viewRooms, services: viewServices, checkin: viewCheckin, invoices: viewInvoices, revenue: viewRevenue, reg: viewRequests, checkout: viewRequests, repair: viewRequests, violations: viewRequests, feedback: viewRequests, audit: viewAudit, settings: viewSettings }[view])();
   // BL-21: màn async reject (lỗi tải) -> khối lỗi + Thử lại thay vì kẹt spinner. (Các màn tự bắt lỗi nội bộ thì không reject.)
   if (_vp && _vp.catch) _vp.catch(e => renderViewError(view, e));
