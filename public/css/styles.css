@@ -205,6 +205,17 @@ td.num,th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-n
 /* BL-35[5]: phản hồi khi chạm hàng bấm được (vd phiếu HV ở cổng học viên) */
 tr[data-act]{cursor:pointer}
 tr[data-act]:active{background:var(--bg2)}
+/* Cơ cấu doanh thu (màn Tiền phòng) — thanh ngang, tối ưu web + mobile */
+.rev-comp{display:flex;flex-direction:column;gap:12px}
+.rev-row{display:grid;grid-template-columns:96px 1fr minmax(150px,auto);align-items:center;gap:6px 12px}
+.rev-lbl{font-size:13px;font-weight:600;color:var(--ink)}
+.rev-track{height:12px;background:var(--bg2);border-radius:7px;overflow:hidden}
+.rev-fill{height:100%;border-radius:7px;min-width:3px}
+.rev-amt{font-size:13px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+@media(max-width:560px){
+  .rev-row{grid-template-columns:1fr auto}
+  .rev-lbl{order:1}.rev-amt{order:2;font-size:12px}.rev-track{order:3;grid-column:1 / -1}
+}
 
 /* ---------- Thẻ KPI ---------- */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(214px,1fr));gap:16px;margin-bottom:26px}
