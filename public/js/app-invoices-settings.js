@@ -91,6 +91,18 @@ async function viewInvoices() {
       ${discount ? `<div class="rev-row"><div class="rev-lbl muted">Giảm trừ</div><div class="rev-track"></div><div class="rev-amt muted">−${money(discount)}</div></div>` : ''}
     </div></div>` : '';
 
+  // #2: Tiền phòng theo phòng — tháng này so kỳ trước (dùng lại all + prevAll, không cần backend).
+  const rfCur = {}, rfPrev = {};
+  all.forEach(i => { if (i.room_id) { const b = rfCur[i.room_id] || (rfCur[i.room_id] = { name: i.room_name, amt: 0 }); b.amt += (+i.room_charge || 0); } });
+  prevAll.forEach(i => { if (i.room_id) rfPrev[i.room_id] = (rfPrev[i.room_id] || 0) + (+i.room_charge || 0); });
+  const rfRows = Object.entries(rfCur).map(([rid, v]) => ({ name: v.name, cur: v.amt, prev: rfPrev[rid] || 0 }))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi', { numeric: true }));
+  const moneyDelta = (cur, prev) => { const d = cur - prev; if (d === 0) return `<span class="muted">—</span>`; return `<span class="muted" style="font-weight:600">${d > 0 ? '▲' : '▼'} ${money(Math.abs(d))}</span>`; };
+  const roomFeePanel = rfRows.length ? `<div class="panel"><div class="hd"><h2>${IC.home} Tiền phòng theo phòng — so ${monthLabel(prevInvMonth)}</h2><span class="muted" style="font-size:12px">Tổng tiền phòng kỳ này ${money(sumK(all, 'room_charge'))}</span></div>
+    <div class="table-wrap card-tbl"><table><thead><tr><th>Phòng</th><th class="num">Tháng này</th><th>Chênh lệch</th></tr></thead><tbody>
+      ${rfRows.map(r => `<tr><td data-label="Phòng"><strong>${esc(r.name || '—')}</strong></td><td class="num" data-label="Tháng này">${money(r.cur)}</td><td data-label="Chênh lệch">${moneyDelta(r.cur, r.prev)}</td></tr>`).join('')}
+    </tbody></table></div></div>` : '';
+
   el('content').innerHTML = `
     <div class="cards">
       <div class="stat"><div class="l">${IC.calendar} Kỳ</div><div class="v sm"><select id="im" style="font-size:15px;font-weight:600;padding:6px 8px">${imMonths.map(m => `<option value="${m}" ${m === invMonth ? 'selected' : ''}>${monthLabel(m)}</option>`).join('')}</select></div></div>
@@ -129,6 +141,7 @@ async function viewInvoices() {
         <tr class="no-result" style="display:none"><td colspan="12"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có hóa đơn ${invFilter === 'paid' ? 'đã đóng' : 'chưa đóng'} trong kỳ này.</div>`}
     </div></div>
+    ${roomFeePanel}
     ${elecPanel}`;
   const im = el('im'); if (im) im.onchange = e => { invMonth = e.target.value; viewInvoices(); };
   const iv = el('invs'); if (iv) { iv.addEventListener('input', () => { invSearch = iv.value; syncFilterUrl(); }); attachRowSearch(iv, 'invCount'); }
