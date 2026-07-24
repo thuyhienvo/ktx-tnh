@@ -506,21 +506,27 @@ function stayDays(s) { // số ngày đã vào ở tính đến hôm nay
   const ci = s.check_in_date && s.check_in_date.slice(0, 10); if (!ci) return 0;
   return Math.floor((Date.parse(today()) - Date.parse(ci)) / DAY_MS);
 }
-// Thuê ghép ngắn hạn: có ngày trả & ở dưới ngưỡng ngắn hạn → chỉ cần phiếu bàn giao, không cần HĐ
-function isShortTermGhep(s) {
-  if (s.rental_type !== 'ghep' || !s.check_out_date || !s.check_in_date) return false;
+// Ngắn hạn: có ngày trả & thời gian ở < ngưỡng (mặc định 60 ngày). Không có ngày trả = vô thời hạn = DÀI HẠN.
+// (Quy tắc 24/07: áp cho MỌI hình thức thuê — <60 ngày ký phiếu bàn giao, >60 ngày ký HĐ.)
+function isShortStay(s) {
+  if (!s.check_out_date || !s.check_in_date) return false;
   const d = (Date.parse(s.check_out_date.slice(0, 10)) - Date.parse(s.check_in_date.slice(0, 10))) / DAY_MS;
   return d > 0 && d < shortTermMaxDays();
 }
 const contractSigned = s => ['done', 'scanned'].includes(s.contract_status);
-// HV ở phòng an ninh / nhân viên công tác (không cho thuê) → không cần ký HĐ ghép
-const studentRoomShared = s => { if (!s.room_id) return true; const r = roomById(s.room_id); return r ? roomIsShared(r) : true; };
-// Thuê ghép dài hạn đang ở trong phòng cho thuê ghép → bắt buộc ký HĐ
-const contractRequired = s => isOccupying(s) && s.rental_type === 'ghep' && !isShortTermGhep(s) && studentRoomShared(s);
-// Báo động: bắt buộc HĐ, đã vào ở > 7 ngày mà vẫn chưa ký
-const contractOverdue = s => contractRequired(s) && !contractSigned(s) && stayDays(s) > overdueDays();
-// Ngắn hạn nhưng chưa ký phiếu bàn giao
-const handoverPending = s => isOccupying(s) && isShortTermGhep(s) && !['handover', 'done', 'scanned'].includes(s.contract_status);
+const handoverSigned = s => ['handover', 'done', 'scanned'].includes(s.contract_status);
+// Loại phòng của HV: shared/whole = CHO THUÊ (ghép/nguyên phòng); security = an ninh; staff = nhân viên công tác.
+// Chưa xếp phòng → coi như thuê ghép (cần HĐ). roomType()/ROOM_TYPE khai ở trên.
+const studentRoomKind = s => { if (!s.room_id) return 'shared'; const r = roomById(s.room_id); return r ? roomType(r) : 'shared'; };
+const isRentalRoom = s => { const k = studentRoomKind(s); return k === 'shared' || k === 'whole'; };
+// Quy tắc 24/07 — KÝ HĐ THUÊ PHÒNG: ở phòng cho thuê (ghép hoặc nguyên phòng), thuê >60 ngày (hoặc vô thời hạn).
+const contractRequired = s => isOccupying(s) && isRentalRoom(s) && !isShortStay(s);
+// KÝ PHIẾU ĐĂNG KÝ & BÀN GIAO: nhân viên công tác, HOẶC phòng cho thuê nhưng <60 ngày (cả 2 hình thức).
+// Phòng an ninh (không thu tiền) → không cần ký gì.
+const handoverRequired = s => isOccupying(s) && (studentRoomKind(s) === 'staff' || (isRentalRoom(s) && isShortStay(s)));
+// Chưa hoàn thiện:
+const contractPending = s => contractRequired(s) && !contractSigned(s);
+const handoverPending = s => handoverRequired(s) && !handoverSigned(s);
 
 // ---- Sắp xuất cảnh — điều phối phòng (giường sắp trống) ----
 // Lấy ngày xuất cảnh: ưu tiên ngày dự kiến (Kaizen) + lịch trả phòng do xuất cảnh; chọn ngày TƯƠNG LAI gần nhất.

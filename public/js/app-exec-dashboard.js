@@ -42,9 +42,8 @@ async function viewExec() {
   const cPct = needC.length ? Math.round(cSigned / needC.length * 100) : 0;
   const cSignedF = needC.filter(s => s.gender === 'female' && contractSigned(s)).length;
   const cSignedM = needC.filter(s => s.gender === 'male' && contractSigned(s)).length;
-  const cOverdue = occStu.filter(contractOverdue).length;
-  const shortTerm = occStu.filter(isShortTermGhep).length;    // NHÓM RIÊNG: thuê ngắn hạn (<2 tháng) — chỉ ký phiếu bàn giao, không cần HĐ
-  const shortPending = occStu.filter(handoverPending).length; // ngắn hạn chưa ký phiếu bàn giao
+  const handoverNeed = occStu.filter(handoverRequired).length;   // cần ký phiếu đăng ký & bàn giao (nhân viên / ngắn hạn <60 ngày)
+  const handoverPend = occStu.filter(handoverPending).length;    // trong đó chưa ký phiếu
   const resiReg = occStu.filter(s => s.residency_status === 'registered').length;
   const resiUnreg = occStu.length - resiReg;
   const resiOverdueE = occStu.filter(s => s.residency_status === 'unregistered' && stayDays(s) > overdueDays()).length;
@@ -90,7 +89,7 @@ async function viewExec() {
     <div class="panel"><div class="hd"><h2>${IC.shield} Vận hành &amp; Tuân thủ</h2></div><div class="pad">
       <div class="exec-stats">
         ${es(IC.flag, 'ic-amber', 'Tạm trú', `${resiReg}<span> đã đăng ký</span>`, `${resiUnreg} chưa đăng ký${resiOverdueE ? ` · <strong style="color:var(--red-ink)">${resiOverdueE} quá ${overdueDays()} ngày</strong>` : ''}`, resiPct, actAttr('residencyModal'))}
-        ${es(IC.fileText, 'ic-brand', 'Hợp đồng (ghép dài hạn)', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${cOverdue ? ` · <strong style="color:var(--red-ink)">${cOverdue} ghép quá ${overdueDays()} ngày</strong>` : ''}${shortTerm ? ` · Ngắn hạn: ${shortTerm} bàn giao${shortPending ? ` (<strong style="color:var(--amber-ink)">${shortPending} chưa ký phiếu</strong>)` : ''}` : ''}`, cPct, actAttr('contractIssuesModal'))}
+        ${es(IC.fileText, 'ic-brand', 'Hợp đồng', `${cSigned}<span> đã ký</span>`, `${cUnsigned} chưa ký · ${legalEntity('female')} ${cSignedF} / ${legalEntity('male')} ${cSignedM}${handoverNeed ? ` · Phiếu bàn giao: ${handoverNeed}${handoverPend ? ` (<strong style="color:var(--amber-ink)">${handoverPend} chưa ký</strong>)` : ''}` : ''}`, cPct, actAttr('contractIssuesModal'))}
         ${es(IC.wrench, 'ic-gray', 'Bảo trì', `${dmg.length}<span> lượt báo</span>`, `Đã xử lý ${dmgDone} · đang xử lý ${dmgOpen} · chưa xử lý được ${dmgBlocked}`, dmgPct, actAttr('adminGo', 'repair'))}
         ${es(IC.alert, 'ic-red', 'Vi phạm', `${vioTotal}<span> lượt</span>`, `${vioNeedMail} HV cần báo trường${vioSev ? ' · ' + vioSev : ''}`, null, actAttr('adminGo', 'violations'))}
       </div>
@@ -183,8 +182,8 @@ function tamTruSheet() {
 // Popup gộp "Hợp đồng chưa hoàn thiện": 3 loại cần xử lý, bấm từng loại xem danh sách
 function contractIssuesModal() {
   const occ = ST.students.filter(isOccupying);
-  const nc = occ.filter(s => contractRequired(s) && !contractSigned(s)).length;
-  const ov = occ.filter(contractOverdue).length;
+  const ghepNC = occ.filter(s => contractPending(s) && studentRoomKind(s) === 'shared').length;
+  const phongNC = occ.filter(s => contractPending(s) && studentRoomKind(s) === 'whole').length;
   const ho = occ.filter(handoverPending).length;
   const row = (ico, label, n, filter, cls) => `<div class="todo ${n ? cls : 'calm'}" ${n ? actAttr('stuGoAdmin', filter) : ''}><span class="ic">${ico}</span><span class="tx">${label}</span><span class="n">${n}</span></div>`;
   openModal(`
@@ -192,9 +191,9 @@ function contractIssuesModal() {
     <div class="mb">
       <div class="hint">${IC.info} Các nhóm cần hoàn thiện hợp đồng / bàn giao. Bấm từng nhóm để xem danh sách học viên.</div>
       <div class="todo-grid" style="grid-template-columns:1fr;margin-top:10px">
-        ${row(IC.fileText, 'Hợp đồng chưa ký', nc, 'nocontract', 'warn')}
-        ${row(IC.alert, `Thuê ghép ở >${overdueDays()} ngày chưa ký HĐ (báo động)`, ov, 'contract_overdue', 'bad')}
-        ${row(IC.fileText, 'Ngắn hạn chưa ký bàn giao', ho, 'handover_pending', 'warn')}
+        ${row(IC.fileText, 'Thuê ghép chưa ký HĐ', ghepNC, 'nocontract_ghep', 'warn')}
+        ${row(IC.fileText, 'Thuê nguyên phòng chưa ký HĐ', phongNC, 'nocontract_phong', 'warn')}
+        ${row(IC.fileText, 'Chưa ký phiếu đăng ký & bàn giao', ho, 'handover_pending', 'warn')}
       </div>
     </div>
     <div class="mf"><button class="btn" data-act="closeModal">Đóng</button></div>`);
@@ -225,7 +224,7 @@ async function viewDashboard() {
   const beds = availBedsOf(ST.rooms);             // giường trống: CHỈ phòng cho thuê ghép còn slot
   const resiOverdue = occ.filter(s => s.residency_status === 'unregistered' && stayDays(s) > overdueDays()).length; // chưa ĐK tạm trú, đã ở >7 ngày
   // Gộp 3 loại "hợp đồng chưa hoàn thiện" (đếm không trùng): cần ký chưa ký + ngắn hạn chưa ký bàn giao
-  const contractIncomplete = occ.filter(s => (contractRequired(s) && !contractSigned(s)) || handoverPending(s)).length;
+  const contractIncomplete = occ.filter(s => contractPending(s) || handoverPending(s)).length;
   const depExpected = occ.filter(willDepartSoon).length; // dự kiến xuất cảnh (điều phối phòng)
   const totalVehicles = occ.reduce((a, s) => a + (+s.vehicle_count || 0), 0);
   const refundPending = ST.students.filter(s => liveStatus(s) === 'left' && s.deposit_status === 'held').length;
