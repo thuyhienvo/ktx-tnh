@@ -144,10 +144,11 @@ function viewStudents() {
   if (stuFilter === 'upcoming') list = list.filter(s => liveStatus(s) === 'upcoming');
   if (stuFilter === 'out') list = list.filter(s => liveStatus(s) === 'left');
   if (stuFilter === 'noresi') list = list.filter(s => isOccupying(s) && s.residency_status !== 'registered');
-  if (stuFilter === 'nocontract') list = list.filter(s => contractRequired(s) && !contractSigned(s));
+  if (stuFilter === 'nocontract') list = list.filter(contractPending);
+  if (stuFilter === 'nocontract_ghep') list = list.filter(s => contractPending(s) && studentRoomKind(s) === 'shared');
+  if (stuFilter === 'nocontract_phong') list = list.filter(s => contractPending(s) && studentRoomKind(s) === 'whole');
   if (stuFilter === 'washing') list = list.filter(s => isOccupying(s) && s.uses_washing);
   if (stuFilter === 'nodeposit') list = list.filter(s => isOccupying(s) && s.deposit_status === 'none');
-  if (stuFilter === 'contract_overdue') list = list.filter(contractOverdue);
   if (stuFilter === 'handover_pending') list = list.filter(handoverPending);
   if (stuFilter === 'leaving') list = list.filter(s => liveStatus(s) === 'leaving');
   if (stuFilter === 'departure') list = list.filter(s => s.check_out_date && DEPARTURE_REASONS.includes(s.checkout_reason));
@@ -177,17 +178,17 @@ function viewStudents() {
       <button class="btn sm ${stuFilter === 'departure' ? 'pri' : ''}" data-act="stuGo" data-args='["departure"]'>${IC.planeTakeoff} Xuất cảnh (${cnt(s => s.check_out_date && DEPARTURE_REASONS.includes(s.checkout_reason))})</button>
       <button class="btn sm ${stuFilter === 'departure_expected' ? 'pri' : ''}" data-act="stuGo" data-args='["departure_expected"]'>${IC.planeTakeoff} Dự kiến XC (${cnt(willDepartSoon)})</button>
       <button class="btn sm ${stuFilter === 'noresi' ? 'pri' : ''}" data-act="stuGo" data-args='["noresi"]'>${IC.flag} Chưa tạm trú (${cnt(s => isOccupying(s) && s.residency_status !== 'registered')})</button>
-      <button class="btn sm ${stuFilter === 'nocontract' ? 'pri' : ''}" data-act="stuGo" data-args='["nocontract"]'>${IC.filePen} HĐ chưa ký (${cnt(s => contractRequired(s) && !contractSigned(s))})</button>
+      <button class="btn sm ${stuFilter === 'nocontract' ? 'pri' : ''}" data-act="stuGo" data-args='["nocontract"]'>${IC.filePen} HĐ chưa ký (${cnt(contractPending)})</button>
       <button class="btn sm ${stuFilter === 'washing' ? 'pri' : ''}" data-act="stuGo" data-args='["washing"]'>${IC.washer} Máy giặt (${cnt(s => isOccupying(s) && s.uses_washing)})</button>
       <button class="btn sm ${stuFilter === 'nodeposit' ? 'pri' : ''}" data-act="stuGo" data-args='["nodeposit"]'>${IC.lock} Chưa đóng cọc (${cnt(s => isOccupying(s) && s.deposit_status === 'none')})</button>
-      <button class="btn sm ${stuFilter === 'contract_overdue' ? 'pri' : ''}" data-act="stuGo" data-args='["contract_overdue"]'>${IC.alert} Ghép >${overdueDays()} ngày chưa ký HĐ (${cnt(contractOverdue)})</button>
+      <button class="btn sm ${stuFilter === 'handover_pending' ? 'pri' : ''}" data-act="stuGo" data-args='["handover_pending"]'>${IC.fileText} Chưa ký phiếu bàn giao (${cnt(handoverPending)})</button>
     </div>
     <div class="panel"><div class="hd"><h2>Học viên (<span id="stuCount">${list.length}</span>)</h2>
       <div class="search"><span class="i">${IC.search}</span><input id="ss" placeholder="Tìm tên, mã, lớp, SĐT, số phòng..." value="${esc(stuSearch)}"></div>
     </div><div class="table-wrap card-tbl">
       ${list.length ? `<table><thead><tr>${sTh('name', 'Học viên')}${sTh('room', 'Phòng')}${sTh('contract', 'Hợp đồng')}${sTh('deposit', 'Cọc')}${hasXC ? '<th>Dự kiến XC</th>' : ''}${sTh('status', 'Trạng thái')}<th></th></tr></thead><tbody>
       ${list.map(s => {
-        const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.flag}</span>` : ''}${contractOverdue(s) ? `<span title="Thuê ghép >${overdueDays()} ngày chưa ký HĐ" style="color:var(--red-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
+        const flags = `${isOccupying(s) && s.residency_status !== 'registered' ? `<span title="Chưa đăng ký tạm trú"> ${IC.flag}</span>` : ''}${contractPending(s) ? `<span title="Chưa ký hợp đồng thuê phòng" style="color:var(--amber-ink)"> ${IC.fileText}</span>` : ''}${s.uses_washing ? `<span title="Máy giặt"> ${IC.washer}</span>` : ''}${s.vehicle_count ? `<span title="Xe gửi"> ${IC.bike}${s.vehicle_count}</span>` : ''}${s.violation_count ? `<span title="Vi phạm ${s.violation_count} lần" style="color:${s.violation_count >= vthr ? 'var(--red-ink)' : 'var(--amber-ink)'}"> ${IC.alert}${s.violation_count}</span>` : ''}`;
         const ds = esc((s.name + ' ' + (s.code || '') + ' ' + (s.phone || '') + ' ' + (s.class_name || '') + ' ' + (s.room_name || '')).toLowerCase());
         return `<tr data-s="${ds}">
         <td><div class="flex stu-name" data-act="studentDetail" data-args='[${s.id}]' role="button" tabindex="0" title="Xem chi tiết học viên"><span class="avatar">${esc(initials(s.name))}</span><div>
@@ -292,7 +293,7 @@ async function studentForm(id) {
         </div>
         <div class="field" style="margin:0 0 12px"><label>Tình trạng HĐ</label><select id="f_cstatus">
           ${['done', 'scanned', 'unsigned', 'none', 'handover'].map(k => opt(k, s.contract_status || 'unsigned', CONTRACT_LABEL[k])).join('')}</select></div>
-        <div class="hint" style="margin:0;font-size:11.5px">${IC.info} Thuê ghép <strong>dài hạn</strong> bắt buộc ký HĐ; quá ${overdueDays()} ngày chưa ký sẽ bị báo động. Thuê ghép <strong>ngắn hạn</strong> (dưới 2 tháng, có ngày trả) chỉ cần <strong>ký phiếu bàn giao</strong>.</div>
+        <div class="hint" style="margin:0;font-size:11.5px">${IC.info} Thuê <strong>trên ${shortTermMaxDays()} ngày</strong> (ghép hoặc nguyên phòng) → ký <strong>HĐ thuê phòng</strong>. Thuê <strong>dưới ${shortTermMaxDays()} ngày</strong> hoặc <strong>nhân viên công tác</strong> → ký <strong>phiếu đăng ký & bàn giao</strong>. Phòng an ninh không cần ký gì.</div>
         <div class="field" style="margin:0"><label>Ảnh CCCD <span class="opt">(chụp/chọn ảnh)</span></label>
           <input type="file" id="f_cccd" accept="image/*" data-change="onCccdPreview">
           <div id="cccdPrev" style="margin-top:8px">${s.cccd_image ? `<img src="${s.cccd_image}" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--line)">` : ''}</div>
@@ -392,8 +393,8 @@ async function studentDetail(id) {
 
       <div class="panel" style="margin-top:12px"><div class="hd"><h2 style="font-size:14px">${IC.fileText} Hợp đồng</h2></div><div class="pad">
         <p style="margin:0">Số HĐ: <strong>${esc(s.contract_no || '—')}</strong> · Ngày ký: ${fmtDate(s.contract_date)} · <span class="badge ${CONTRACT_BADGE[s.contract_status] || 'gray'}">${CONTRACT_LABEL[s.contract_status] || '—'}</span></p>
-        ${contractOverdue(s) ? `<div class="hint" style="margin:10px 0 0;background:var(--red-bg);border-color:#e3b8ad;color:var(--red-ink)">${IC.alert} <strong>Báo động:</strong> thuê ghép dài hạn đã vào ở ${stayDays(s)} ngày (>7) mà chưa ký hợp đồng.</div>`
-          : handoverPending(s) ? `<div class="hint" style="margin:10px 0 0">${IC.info} Thuê ghép ngắn hạn (dưới 2 tháng) — cần <strong>ký phiếu bàn giao phòng</strong> (đặt tình trạng HĐ = "Đã ký phiếu bàn giao").</div>` : ''}
+        ${contractPending(s) ? `<div class="hint" style="margin:10px 0 0;background:var(--amber-bg);border-color:var(--amber-ink);color:var(--amber-ink)">${IC.alert} <strong>Chưa ký HĐ:</strong> thuê trên ${shortTermMaxDays()} ngày — cần ký <strong>hợp đồng thuê phòng</strong>.</div>`
+          : handoverPending(s) ? `<div class="hint" style="margin:10px 0 0">${IC.info} Cần <strong>ký phiếu đăng ký & bàn giao phòng</strong> (thuê ngắn hạn hoặc nhân viên công tác) — đặt tình trạng HĐ = "Đã ký phiếu bàn giao".</div>` : ''}
         ${(s.cccd_front || s.cccd_back || s.cccd_image) ? `<div style="margin-top:10px"><div class="muted" style="font-size:12px;margin-bottom:4px">Ảnh CCCD:</div><div style="display:flex;gap:8px;flex-wrap:wrap">
           ${s.cccd_front ? `<img src="${s.cccd_front}" title="Mặt trước" style="max-width:48%;max-height:180px;border-radius:8px;border:1px solid var(--line)">` : ''}
           ${s.cccd_back ? `<img src="${s.cccd_back}" title="Mặt sau" style="max-width:48%;max-height:180px;border-radius:8px;border:1px solid var(--line)">` : ''}

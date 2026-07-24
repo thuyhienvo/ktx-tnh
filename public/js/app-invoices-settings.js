@@ -31,17 +31,27 @@ async function viewInvoices() {
   // Chỉ tự nhảy tới kỳ CÓ hóa đơn khi đang ở kỳ MẶC ĐỊNH (tháng hiện tại) mà nó chưa có hóa đơn.
   // Không ép nữa khi người dùng đã chọn kỳ khác — để chọn được cả kỳ chưa có hóa đơn (BL-53).
   if (months.length && invMonth === curMonth() && !months.includes(invMonth)) invMonth = months[0];
-  // Dải kỳ cho dropdown: gộp tháng đã có hóa đơn + kỳ đang xem + 24 tháng gần nhất, bỏ trùng, mới nhất trước.
+  // Dải kỳ cho dropdown: gộp tháng đã có hóa đơn + kỳ đang xem + cửa sổ 12 tháng TƯƠNG LAI ... 12 quá khứ
+  // (để chọn được cả kỳ sắp tới, không chỉ quá khứ), bỏ trùng, mới nhất trước (tương lai lên đầu).
   const imMonths = (() => {
     const set = new Set(months); set.add(invMonth);
-    let [y, mo] = curMonth().split('-').map(Number);
-    for (let k = 0; k < 24; k++) { set.add(`${y}-${String(mo).padStart(2, '0')}`); if (--mo === 0) { mo = 12; y--; } }
+    const [y, mo] = curMonth().split('-').map(Number);
+    for (let k = 12; k >= -12; k--) {           // +12 (tương lai) -> -12 (quá khứ)
+      let yy = y, mm = mo + k;
+      while (mm > 12) { mm -= 12; yy++; }
+      while (mm < 1) { mm += 12; yy--; }
+      set.add(`${yy}-${String(mm).padStart(2, '0')}`);
+    }
     return [...set].sort().reverse();
   })();
   const all = await guard(() => API.invoices(invMonth));
   _invAll = all;
   let ehist = { months: [], rooms: [] };
   try { ehist = await API.electricHistory(invMonth, 6); } catch {}
+  // Kỳ trước — để tính xu hướng cơ cấu doanh thu (▲▼ so kỳ trước)
+  let prevAll = [];
+  const prevInvMonth = (() => { let [yy, mm] = invMonth.split('-').map(Number); mm--; if (mm === 0) { mm = 12; yy--; } return `${yy}-${String(mm).padStart(2, '0')}`; })();
+  try { prevAll = await API.invoices(prevInvMonth); } catch {}
   const elecPanel = ehist.rooms.length ? `<div class="panel"><div class="hd"><h2>${IC.zap} Tiêu thụ điện theo phòng — so với tháng trước</h2><span class="muted" style="font-size:12px">${ehist.months.length} tháng gần nhất · cột cam = tháng này</span></div>
     <div class="table-wrap"><table><thead><tr><th>Phòng</th><th>Xu hướng</th><th class="num">Tháng này</th><th>Chênh lệch</th></tr></thead><tbody>
       ${ehist.rooms.map(r => { const cur = r.series[r.series.length - 1].kwh; const prev = r.series.length > 1 ? r.series[r.series.length - 2].kwh : 0; return `<tr>
@@ -59,12 +69,47 @@ async function viewInvoices() {
   const total = all.reduce((a, i) => a + (+i.total || 0), 0);
   const paid = all.filter(i => i.status === 'paid').reduce((a, i) => a + (+i.total || 0), 0);
 
+  // Cơ cấu doanh thu: tách Tổng theo từng khoản (tiền phòng/điện/nước/DV/giặt/xe) + xu hướng so kỳ trước.
+  const REV_COMP = [
+    ['Tiền phòng', 'room_charge', 'var(--brand)'], ['Điện', 'electric_charge', '#5f7ea3'],
+    ['Nước', 'water_charge', '#4f8f63'], ['Dịch vụ', 'service_charge', '#b5822f'],
+    ['Máy giặt', 'washing_charge', '#9a7bb0'], ['Gửi xe', 'parking_charge', '#c25545'],
+  ];
+  const sumK = (arr, k) => arr.reduce((a, i) => a + (+i[k] || 0), 0);
+  const comp = REV_COMP.map(([label, k, color]) => ({ label, color, amount: sumK(all, k), prev: sumK(prevAll, k) }));
+  const gross = comp.reduce((a, c) => a + c.amount, 0) || 1;
+  const maxComp = Math.max(1, ...comp.map(c => c.amount));
+  const discount = sumK(all, 'leader_discount') + sumK(all, 'room_discount');
+  const trendPct = (cur, prev) => { if (!prev) return ''; const d = Math.round((cur - prev) / prev * 100); return `<span class="muted" style="font-size:11px;margin-left:5px">${d > 0 ? '▲' : d < 0 ? '▼' : '—'}${d ? ' ' + Math.abs(d) + '%' : ''}</span>`; };
+  const revPanel = all.length ? `<div class="panel"><div class="hd"><h2>${IC.coins} Cơ cấu doanh thu — ${monthLabel(invMonth)}</h2><span class="muted" style="font-size:12px">Tổng dự báo ${money(total)}${prevAll.length ? ` · ▲▼ so ${monthLabel(prevInvMonth)}` : ''}</span></div>
+    <div class="pad rev-comp">
+      ${comp.map(c => `<div class="rev-row">
+        <div class="rev-lbl">${c.label}</div>
+        <div class="rev-track"><div class="rev-fill" style="width:${Math.round(c.amount / maxComp * 100)}%;background:${c.color}"></div></div>
+        <div class="rev-amt"><strong>${money(c.amount)}</strong> <span class="muted">${Math.round(c.amount / gross * 100)}%</span>${trendPct(c.amount, c.prev)}</div>
+      </div>`).join('')}
+      ${discount ? `<div class="rev-row"><div class="rev-lbl muted">Giảm trừ</div><div class="rev-track"></div><div class="rev-amt muted">−${money(discount)}</div></div>` : ''}
+    </div></div>` : '';
+
+  // #2: Tiền phòng theo phòng — tháng này so kỳ trước (dùng lại all + prevAll, không cần backend).
+  const rfCur = {}, rfPrev = {};
+  all.forEach(i => { if (i.room_id) { const b = rfCur[i.room_id] || (rfCur[i.room_id] = { name: i.room_name, amt: 0 }); b.amt += (+i.room_charge || 0); } });
+  prevAll.forEach(i => { if (i.room_id) rfPrev[i.room_id] = (rfPrev[i.room_id] || 0) + (+i.room_charge || 0); });
+  const rfRows = Object.entries(rfCur).map(([rid, v]) => ({ name: v.name, cur: v.amt, prev: rfPrev[rid] || 0 }))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi', { numeric: true }));
+  const moneyDelta = (cur, prev) => { const d = cur - prev; if (d === 0) return `<span class="muted">—</span>`; return `<span class="muted" style="font-weight:600">${d > 0 ? '▲' : '▼'} ${money(Math.abs(d))}</span>`; };
+  const roomFeePanel = rfRows.length ? `<div class="panel"><div class="hd"><h2>${IC.home} Tiền phòng theo phòng — so ${monthLabel(prevInvMonth)}</h2><span class="muted" style="font-size:12px">Tổng tiền phòng kỳ này ${money(sumK(all, 'room_charge'))}</span></div>
+    <div class="table-wrap card-tbl"><table><thead><tr><th>Phòng</th><th class="num">Tháng này</th><th>Chênh lệch</th></tr></thead><tbody>
+      ${rfRows.map(r => `<tr><td data-label="Phòng"><strong>${esc(r.name || '—')}</strong></td><td class="num" data-label="Tháng này">${money(r.cur)}</td><td data-label="Chênh lệch">${moneyDelta(r.cur, r.prev)}</td></tr>`).join('')}
+    </tbody></table></div></div>` : '';
+
   el('content').innerHTML = `
     <div class="cards">
       <div class="stat"><div class="l">${IC.calendar} Kỳ</div><div class="v sm"><select id="im" style="font-size:15px;font-weight:600;padding:6px 8px">${imMonths.map(m => `<option value="${m}" ${m === invMonth ? 'selected' : ''}>${monthLabel(m)}</option>`).join('')}</select></div></div>
       <div class="stat"><div class="l">${IC.receipt} Số phiếu</div><div class="v sm">${all.length}</div></div>
       <div class="stat"><div class="l">Tổng tiền phiếu (dự báo)</div><div class="v sm">${money(total)}</div></div>
     </div>
+    ${revPanel}
     <div class="panel"><div class="hd"><h2>Phiếu báo tiền phòng ${monthLabel(invMonth)} (<span id="invCount">${list.length}</span>)</h2>
       <span class="muted" style="font-size:12px">Đơn vị: đồng</span>
       <div class="toolbar">
@@ -96,6 +141,7 @@ async function viewInvoices() {
         <tr class="no-result" style="display:none"><td colspan="12"><div class="empty">Không tìm thấy hóa đơn phù hợp.</div></td></tr>
       </tbody></table>` : `<div class="empty">Không có hóa đơn ${invFilter === 'paid' ? 'đã đóng' : 'chưa đóng'} trong kỳ này.</div>`}
     </div></div>
+    ${roomFeePanel}
     ${elecPanel}`;
   const im = el('im'); if (im) im.onchange = e => { invMonth = e.target.value; viewInvoices(); };
   const iv = el('invs'); if (iv) { iv.addEventListener('input', () => { invSearch = iv.value; syncFilterUrl(); }); attachRowSearch(iv, 'invCount'); }
