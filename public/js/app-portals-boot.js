@@ -508,6 +508,54 @@ function openCalendar(input) {
   setTimeout(() => document.addEventListener('mousedown', _calOutside, true), 0);
 }
 
+// Bộ chọn THÁNG (kỳ) dạng lịch: điều hướng năm ‹ › + lưới 12 tháng. Dùng lại .cal-pop/closeCalendar.
+function attachMonth(input, ym, opt) {
+  if (!input) return;
+  input.readOnly = true;
+  input.dataset.ym = (ym || curMonth()).slice(0, 7);
+  input.value = monthLabel(input.dataset.ym);
+  input.classList.add('date-in');
+  if (opt && opt.max) input.dataset.max = opt.max;   // 'YYYY-MM'
+  if (opt && opt.min) input.dataset.min = opt.min;
+  input.onclick = () => openMonthPicker(input);
+  input.onfocus = () => openMonthPicker(input);
+}
+function openMonthPicker(input) {
+  closeCalendar();
+  let year = +(input.dataset.ym || curMonth()).slice(0, 4);
+  const cal = document.createElement('div'); cal.className = 'cal-pop'; cal._input = input;
+  const pick = ym => { input.dataset.ym = ym; input.value = monthLabel(ym); closeCalendar(); input.dispatchEvent(new Event('change')); };
+  const render = () => {
+    const sel = input.dataset.ym, max = input.dataset.max || '', min = input.dataset.min || '';
+    let cells = '';
+    for (let mo = 1; mo <= 12; mo++) {
+      const ym = `${year}-${String(mo).padStart(2, '0')}`;
+      const cam = (max && ym > max) || (min && ym < min);   // ngoài khoảng -> mờ, không bấm
+      cells += `<span class="mo-cell${ym === sel ? ' sel' : ''}${cam ? ' cam' : ''}" ${cam ? '' : `data-ym="${ym}"`}>Th${mo}</span>`;
+    }
+    cal.innerHTML = `
+      <div class="cal-hd">
+        <button type="button" class="cal-nav" data-nav="-1">‹</button>
+        <div class="cal-title" style="font-weight:700;font-size:15px">Năm ${year}</div>
+        <button type="button" class="cal-nav" data-nav="1">›</button>
+      </div>
+      <div class="cal-mgrid">${cells}</div>`;
+    cal.querySelectorAll('[data-ym]').forEach(e => e.onclick = () => pick(e.dataset.ym));
+    cal.querySelector('[data-nav="-1"]').onclick = () => { year--; render(); };
+    cal.querySelector('[data-nav="1"]').onclick = () => { year++; render(); };
+  };
+  document.body.appendChild(cal);
+  render();
+  const r = input.getBoundingClientRect();
+  const calH = cal.offsetHeight || 240, calW = cal.offsetWidth || 288;
+  let top = r.bottom + 6;
+  if (top + calH > window.innerHeight - 8) top = Math.max(8, r.top - calH - 6);
+  cal.style.top = top + 'px';
+  cal.style.left = Math.max(8, Math.min(r.left, window.innerWidth - calW - 8)) + 'px';
+  _calEl = cal;
+  setTimeout(() => document.addEventListener('mousedown', _calOutside, true), 0);
+}
+
 /* ================= KÉO GIÃN CỘT BẢNG ================= */
 function _rzKey(table) {
   const heads = [...table.querySelectorAll('thead th')].map(th => (th.dataset.h || th.textContent).trim()).join('|');

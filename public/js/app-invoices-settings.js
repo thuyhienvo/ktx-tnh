@@ -31,19 +31,6 @@ async function viewInvoices() {
   // Chỉ tự nhảy tới kỳ CÓ hóa đơn khi đang ở kỳ MẶC ĐỊNH (tháng hiện tại) mà nó chưa có hóa đơn.
   // Không ép nữa khi người dùng đã chọn kỳ khác — để chọn được cả kỳ chưa có hóa đơn (BL-53).
   if (months.length && invMonth === curMonth() && !months.includes(invMonth)) invMonth = months[0];
-  // Dải kỳ cho dropdown: gộp tháng đã có hóa đơn + kỳ đang xem + cửa sổ 12 tháng TƯƠNG LAI ... 12 quá khứ
-  // (để chọn được cả kỳ sắp tới, không chỉ quá khứ), bỏ trùng, mới nhất trước (tương lai lên đầu).
-  const imMonths = (() => {
-    const set = new Set(months); set.add(invMonth);
-    const [y, mo] = curMonth().split('-').map(Number);
-    for (let k = 12; k >= -12; k--) {           // +12 (tương lai) -> -12 (quá khứ)
-      let yy = y, mm = mo + k;
-      while (mm > 12) { mm -= 12; yy++; }
-      while (mm < 1) { mm += 12; yy--; }
-      set.add(`${yy}-${String(mm).padStart(2, '0')}`);
-    }
-    return [...set].sort().reverse();
-  })();
   const all = await guard(() => API.invoices(invMonth));
   _invAll = all;
   let ehist = { months: [], rooms: [] };
@@ -105,7 +92,7 @@ async function viewInvoices() {
 
   el('content').innerHTML = `
     <div class="cards">
-      <div class="stat"><div class="l">${IC.calendar} Kỳ</div><div class="v sm"><select id="im" style="font-size:15px;font-weight:600;padding:6px 8px">${imMonths.map(m => `<option value="${m}" ${m === invMonth ? 'selected' : ''}>${monthLabel(m)}</option>`).join('')}</select></div></div>
+      <div class="stat"><div class="l">${IC.calendar} Kỳ</div><div class="v sm"><input id="im" style="font-size:15px;font-weight:600;padding:6px 8px;width:100%" title="Chọn kỳ (tháng)"></div></div>
       <div class="stat"><div class="l">${IC.receipt} Số phiếu</div><div class="v sm">${all.length}</div></div>
       <div class="stat"><div class="l">Tổng tiền phiếu (dự báo)</div><div class="v sm">${money(total)}</div></div>
     </div>
@@ -143,7 +130,7 @@ async function viewInvoices() {
     </div></div>
     ${roomFeePanel}
     ${elecPanel}`;
-  const im = el('im'); if (im) im.onchange = e => { invMonth = e.target.value; viewInvoices(); };
+  const im = el('im'); if (im) { attachMonth(im, invMonth); im.onchange = () => { invMonth = im.dataset.ym; viewInvoices(); }; }
   const iv = el('invs'); if (iv) { iv.addEventListener('input', () => { invSearch = iv.value; syncFilterUrl(); }); attachRowSearch(iv, 'invCount'); }
   syncFilterUrl(); // BL-17: kỳ (thang, đã nắn theo tháng có dữ liệu) + tìm kiếm lên URL
 }

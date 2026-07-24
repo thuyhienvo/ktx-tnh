@@ -521,6 +521,13 @@ a.ci-row:hover{border-color:var(--brand)}
 .cal-d.sel{background:var(--ink);color:#f7f2e8;font-weight:700}
 .cal-d.empty{cursor:default}
 .cal-ft{display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+/* Bộ chọn THÁNG (kỳ): lưới 12 tháng */
+.cal-mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:4px}
+.mo-cell{text-align:center;padding:12px 4px;border-radius:9px;cursor:pointer;font-size:13.5px;font-weight:600;color:var(--ink);transition:background .12s,color .12s}
+.mo-cell:hover{background:var(--brand-soft);color:var(--brand-d)}
+.mo-cell.sel{background:var(--ink);color:#f7f2e8}
+.mo-cell.cam{opacity:.32;cursor:default}
+.mo-cell.cam:hover{background:none;color:var(--ink)}
 /* Trung tâm thông báo (chuông) */
 .notif-bell{position:relative;border:1px solid var(--line2);background:var(--card);border-radius:11px;width:40px;height:40px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:var(--ink);flex-shrink:0;transition:.16s}
 .notif-bell:hover{border-color:var(--brand);background:#f6f1e8}
